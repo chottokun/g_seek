@@ -1,9 +1,9 @@
-from ..config.config import Configuration
+from deep_research_project.config.config import Configuration
 from .state import ResearchState, SearchResult, Source # Adjusted import path
 
 # Placeholder for LLM and Search Tool clients (to be implemented in Step 5)
-from ..tools.llm_client import LLMClient # Example
-from ..tools.search_client import SearchClient # Example
+from deep_research_project.tools.llm_client import LLMClient # Example
+from deep_research_project.tools.search_client import SearchClient # Example
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,13 @@ class ResearchLoop:
     def _generate_initial_query(self):
         logger.info(f"Generating initial query for topic: {self.state.research_topic}")
         try:
-            query_prompt = f"Generate a concise search query for the topic: {self.state.research_topic}"
+            # LLMに検索クエリのみを生成させるための厳密なプロンプト
+            query_prompt = (
+                f"Based on the following research topic, generate a concise search query suitable for a web search engine.\n"
+                f"Research Topic: {self.state.research_topic}\n\n"
+                f"Output only the search query itself, nothing else. "
+                f"The query should be concise and specific, ideally no more than 12 words."
+            )
             query = self.llm_client.generate_text(prompt=query_prompt)
         # query = f"Initial search query for {self.state.research_topic}" # Placeholder
             self.state.initial_query = query
@@ -110,15 +116,10 @@ class ResearchLoop:
                f"Accumulated summary so far:\n{self.state.accumulated_summary}\n\n"
                f"Based on the summary, identify key knowledge gaps or areas that need further investigation. "
                f"Generate a new, specific search query to address these gaps. If the topic seems well-covered, output 'None'. "
-               f"This is for loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS}." # Corrected placeholder text
+               f"Your search query must be concise and specific, no more than 12 words. Output only the query itself, nothing else. "
+               f"This is for loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS}."
             )
             next_query = self.llm_client.generate_text(prompt=reflection_prompt)
-
-        # Placeholder logic
-        # if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS -1 : # Subtract 1 because completed_loops is 0-indexed for the first loop
-        #     next_query = f"Refined query based on loop {self.state.completed_loops + 1} for {self.state.research_topic}"
-        # else:
-        #     next_query = "None" # End condition for placeholder
 
             if next_query.strip().lower() == "none":
                 self.state.current_query = None

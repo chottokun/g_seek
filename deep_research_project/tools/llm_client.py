@@ -1,4 +1,4 @@
-from ..config.config import Configuration # Adjusted import path
+from deep_research_project.config.config import Configuration
 import logging
 
 logger = logging.getLogger(__name__)
@@ -8,21 +8,36 @@ class LLMClient:
         self.config = config
         self.llm = None # Placeholder for the actual LLM client
 
-        if self.config.LLM_PROVIDER == "placeholder_llm": # A default that doesn't require keys
+        if self.config.LLM_PROVIDER == "openai":
+            try:
+                from langchain_openai import ChatOpenAI
+                if not self.config.OPENAI_API_KEY:
+                    logger.error("OpenAI API key not configured.")
+                    raise ValueError("OpenAI API key not configured.")
+                self.llm = ChatOpenAI(
+                    api_key=self.config.OPENAI_API_KEY,
+                    model_name=self.config.LLM_MODEL,
+                    temperature=0.7,
+                )
+                logger.info(f"Initialized OpenAI LLM Client with model: {self.config.LLM_MODEL}")
+            except ImportError:
+                logger.error("langchain_openai is not installed. Please install it.")
+                raise
+        elif self.config.LLM_PROVIDER == "ollama":
+            try:
+                from langchain_community.llms import Ollama
+                # base_url を config から取得し、Ollama に渡す
+                ollama_kwargs = {"model": self.config.LLM_MODEL}
+                if hasattr(self.config, "OLLAMA_BASE_URL") and self.config.OLLAMA_BASE_URL:
+                    ollama_kwargs["base_url"] = self.config.OLLAMA_BASE_URL
+                self.llm = Ollama(**ollama_kwargs)
+                logger.info(f"Initialized Ollama LLM Client with model: {self.config.LLM_MODEL}, base_url: {ollama_kwargs.get('base_url', 'default')}")
+            except ImportError:
+                logger.error("langchain_community is not installed. Please install it.")
+                raise
+        elif self.config.LLM_PROVIDER == "placeholder_llm": # A default that doesn't require keys
             logger.info("Initialized Placeholder LLM Client.")
             self.llm = "PlaceholderLLMInstance"
-            # In a real scenario, you'd initialize based on config.LLM_PROVIDER
-            # from langchain_openai import ChatOpenAI
-            # if self.config.LLM_PROVIDER == "openai":
-            #     if not self.config.OPENAI_API_KEY:
-            #         logger.error("OpenAI API key not configured.")
-            #         raise ValueError("OpenAI API key not configured.")
-            #     self.llm = ChatOpenAI(api_key=self.config.OPENAI_API_KEY, model_name=self.config.LLM_MODEL)
-            #     logger.info(f"Initialized OpenAI LLM Client with model: {self.config.LLM_MODEL}")
-            # else:
-            #     # Basic placeholder for non-OpenAI, non-functional
-            #     logger.info(f"LLM Provider set to {self.config.LLM_PROVIDER}, but client is a placeholder.")
-            #     self.llm = "PlaceholderLLMInstance" # This would be a mock/dummy LLM object
         elif self.config.LLM_PROVIDER == "default_llm_provider": # From default config
              logger.info(f"LLM Provider set to '{self.config.LLM_PROVIDER}'. This is a placeholder and will simulate LLM calls.")
              self.llm = "PlaceholderLLMInstance"
@@ -59,10 +74,17 @@ class LLMClient:
             logger.debug(f"Placeholder LLM generated default response: {default_response}")
             return default_response
 
-        # Actual LLM call would be here
-        # logger.info(f"LLMClient generating text with {self.config.LLM_PROVIDER} for prompt: '{prompt}'")
-        # response = self.llm.invoke(prompt) # Example for LangChain LLM objects
-        # return response.content if hasattr(response, 'content') else str(response)
+        # OpenAI LLM 実際の呼び出し
+        if self.config.LLM_PROVIDER == "openai":
+            logger.info(f"LLMClient generating text with OpenAI for prompt: '{prompt[:80]}...'")
+            response = self.llm.invoke(prompt, temperature=temperature, max_tokens=max_tokens)
+            return response.content if hasattr(response, 'content') else str(response)
+
+        # Ollama LLM 実際の呼び出し
+        if self.config.LLM_PROVIDER == "ollama":
+            logger.info(f"LLMClient generating text with Ollama for prompt: '{prompt[:80]}...'")
+            return self.llm(prompt)
+
         logger.error("Actual LLM client logic is not implemented yet.")
         raise NotImplementedError("Actual LLM client logic is not implemented yet.")
 

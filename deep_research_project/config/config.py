@@ -5,26 +5,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Configuration:
-    # LLM Configuration
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "placeholder_llm")  # e.g., "openai", "ollama"
-    LLM_MODEL = os.getenv("LLM_MODEL", "default_model_name") # e.g., "gpt-3.5-turbo", "llama3"
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") # Only needed if LLM_PROVIDER is openai
-
-    # Search Configuration
-    SEARCH_API = os.getenv("SEARCH_API", "duckduckgo") # e.g., "duckduckgo", "tavily"
-    TAVILY_API_KEY = os.getenv("TAVILY_API_KEY") # Only needed if SEARCH_API is tavily
-
-    # Research Loop Configuration
-    MAX_RESEARCH_LOOPS = int(os.getenv("MAX_RESEARCH_LOOPS", "3"))
-    MAX_SEARCH_RESULTS_PER_QUERY = int(os.getenv("MAX_SEARCH_RESULTS_PER_QUERY", "3"))
-
-    # Output Configuration
-    OUTPUT_FILENAME = os.getenv("OUTPUT_FILENAME", "research_report.md")
-
-    # Logging Configuration
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-
     def __init__(self):
+        # LLM Configuration
+        self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "placeholder_llm")
+        self.LLM_MODEL = os.getenv("LLM_MODEL", "default_model_name")
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        self.OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", None)
+
+        # Search Configuration
+        self.SEARCH_API = os.getenv("SEARCH_API", "duckduckgo")
+        self.TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+        self.SEARXNG_BASE_URL = os.getenv("SEARXNG_BASE_URL", "http://localhost:8080")
+
+        # Research Loop Configuration
+        self.MAX_RESEARCH_LOOPS = int(os.getenv("MAX_RESEARCH_LOOPS", "3"))
+        self.MAX_SEARCH_RESULTS_PER_QUERY = int(os.getenv("MAX_SEARCH_RESULTS_PER_QUERY", "3"))
+
+        # Output Configuration
+        self.OUTPUT_FILENAME = os.getenv("OUTPUT_FILENAME", "research_report.md")
+
+        # Logging Configuration
+        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'")

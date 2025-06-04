@@ -1,3 +1,19 @@
+# Deep Research Project
+
+## 実行方法（必ずプロジェクトルートで実行してください）
+
+```sh
+python -m deep_research_project.main
+```
+または（uvを使う場合）
+```sh
+uv run -m deep_research_project.main
+```
+
+- `.env` ファイルはプロジェクトルート（g_seek）に置いてください。
+- 直接 `deep_research_project` ディレクトリで `python main.py` などと実行しないでください。
+- import文はすべて絶対import（`from deep_research_project...`）で統一されています。
+
 # Architecture
 
 The two LangChain projects share a multi-stage “research assistant” architecture, but differ in orchestration style.  **Open Deep Research** supports two modes: a **plan-and-execute graph workflow** (sequential) and a **multi-agent** (parallel) architecture. In the graph mode, a planner LLM first creates a structured report outline (sections), which the system then executes section-by-section. Each section loop involves generating search queries, retrieving documents, summarizing them, and reflecting on gaps. The multi-agent mode assigns a **Supervisor** agent to plan and combine outputs, and multiple **Researcher** agents to work in parallel on different sections. Each Researcher agent has dedicated tools (e.g. search) for its section, while the Supervisor aggregates results.

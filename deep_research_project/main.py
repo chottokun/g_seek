@@ -1,7 +1,14 @@
 import os
-from .config.config import Configuration
-from .core.state import ResearchState
-from .core.research_loop import ResearchLoop
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
+print("DEBUG: LLM_PROVIDER =", os.getenv("LLM_PROVIDER"))
+print("DEBUG: SEARCH_API =", os.getenv("SEARCH_API"))
+
+from deep_research_project.config.config import Configuration
+from deep_research_project.core.state import ResearchState
+from deep_research_project.core.research_loop import ResearchLoop
 import logging
 
 # Logger for this module (main.py) will be configured in main()
@@ -36,7 +43,8 @@ def main():
 
     # 2. Initialize Research State
     # TODO: Later, this topic could come from user input (e.g., command line argument or Streamlit UI)
-    research_topic = "The Role of Artificial Intelligence in Personalized Medicine"
+    research_topic = "The Role of Artificial Intelligence in RAG (Retrieval-Augmented Generation)."
+    logger.info(f"Initializing research state with topic: {research_topic}")
     state = ResearchState(research_topic=research_topic)
     logger.info(f"Research topic: {state.research_topic}")
 
@@ -81,22 +89,4 @@ def main():
     logger.info("Deep Research Application Finished.")
 
 if __name__ == "__main__":
-    # This initial .env creation logic runs before logging is configured by main().
-    # So, it uses print for this specific, one-time setup message.
-    # The .env file should exist in the root of the project, so /app/.env
-    # When running `python -m deep_research_project.main`, CWD is /app.
-    env_file_path = ".env"
-    if not os.path.exists(env_file_path):
-        print(f"Creating a dummy .env file at '{os.path.abspath(env_file_path)}' as it was not found (for placeholder run).")
-        try:
-            with open(env_file_path, "w") as f:
-                f.write("# This is a dummy .env file for placeholder runs\n")
-                f.write("LLM_PROVIDER=placeholder_llm\n")
-                f.write("SEARCH_API=duckduckgo\n")
-                f.write(f"LOG_LEVEL=INFO\n") # Add default log level
-        except IOError as e:
-            print(f"Failed to create dummy .env file: {e}")
-            # Application might still run if defaults in config.py are sufficient
-            # and no sensitive keys are strictly required by chosen providers.
-
     main()
