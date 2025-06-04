@@ -1,13 +1,3 @@
-了解しました。LangChainチームの2つのGitHubリポジトリ（`open_deep_research` と `local-deep-researcher`）に基づき、Deep Researchの基本ロジックについて以下を中心に分析を行います：
-
-* 全体の構成図レベルでのシステム構成
-* 各構成関数やモジュールの役割
-* Web検索、RAGによる質問応答、Agent制御の仕組み
-* 情報収集・整理を目的としたStreamlit + LangChainでの再実装に必要な要素
-
-調査結果をまとめてご報告しますので、しばらくお待ちください。
-
-
 # Architecture
 
 The two LangChain projects share a multi-stage “research assistant” architecture, but differ in orchestration style.  **Open Deep Research** supports two modes: a **plan-and-execute graph workflow** (sequential) and a **multi-agent** (parallel) architecture. In the graph mode, a planner LLM first creates a structured report outline (sections), which the system then executes section-by-section. Each section loop involves generating search queries, retrieving documents, summarizing them, and reflecting on gaps. The multi-agent mode assigns a **Supervisor** agent to plan and combine outputs, and multiple **Researcher** agents to work in parallel on different sections. Each Researcher agent has dedicated tools (e.g. search) for its section, while the Supervisor aggregates results.
