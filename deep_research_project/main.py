@@ -43,7 +43,7 @@ def main():
 
     # 2. Initialize Research State
     # TODO: Later, this topic could come from user input (e.g., command line argument or Streamlit UI)
-    research_topic = "The Role of Artificial Intelligence in RAG (Retrieval-Augmented Generation)."
+    research_topic = "The impact of AI on modern industries"
     logger.info(f"Initializing research state with topic: {research_topic}")
     state = ResearchState(research_topic=research_topic)
     logger.info(f"Research topic: {state.research_topic}")
