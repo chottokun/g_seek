@@ -1,7 +1,7 @@
-# Deep Research Project
+# Deep Research っぽいもの
 
-AIを活用したリサーチ自動化ツールです。  
-LLM（大規模言語モデル）とWeb検索API（DuckDuckGo, SearxNG等）を組み合わせて、指定トピックの調査・レポート生成を行います。
+AIを活用したリサーチ自動化ツールにチャレンジします。。  
+LLM（大規模言語モデル）とWeb検索API（DuckDuckGo, SearxNG等）を組み合わせて、指定トピックの調査・レポート生成を行います。特にUIは準備していません。
 
 ## 狙い
 Google社のAIコーディングアシスタント[Jules](https://jules.google.com/)を利用した実装の勉強
