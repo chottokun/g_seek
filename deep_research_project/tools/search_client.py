@@ -1,4 +1,5 @@
 from langchain_community.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
+from langchain_community.utilities import SearxNGSearchWrapper
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import SearchResult
 import logging
@@ -6,68 +7,69 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-class SearxngSearchClient:
-    def __init__(self, base_url="http://localhost:8080"):
-        self.base_url = base_url.rstrip("/")
-
-    def search(self, query, num_results=3):
-        import re
-        MAX_QUERY_LENGTH = 256
-        # 改行・余分な空白を除去し1行に整形
-        query = ' '.join(query.split())
-        # Markdownや記号、論理演算子、引用符などを除去
-        query = re.sub(r'[\*`\[\]"\'\-\_\=\~\|\^\$\#\@\!\?\<\>\(\)\{\}\:\;]', '', query)
-        # 先頭や末尾の空白を除去
-        query = query.strip() # Strip after cleaning symbols
-        # 先頭5単語だけをクエリに
-        # query = ' '.join(query.split()[:5])
-        # LLMの出力が長すぎる場合を考慮し、単語数で制限する（例: 最初の15単語）
-        query_words = query.split()
-        if len(query_words) > 15:
-            logger.warning(f"Query has too many words ({len(query_words)}). Truncating to 15 words.")
-            query = ' '.join(query_words[:15])
-
-        if len(query) > MAX_QUERY_LENGTH:
-            logger.warning(f"Query too long for Searxng (length={len(query)}). Truncating to {MAX_QUERY_LENGTH} chars.")
-            query = query[:MAX_QUERY_LENGTH]
-        logger.debug(f"Searxng送信クエリ: '{query}' (length={len(query)})")
-        params = {
-            "q": query,
-            "format": "json",
-            "language": "ja",
-            "safesearch": 1,
-            "categories": "general",
-            "count": num_results
-        }
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; SearxngBot/1.0; +https://github.com/searxng/searxng)"
-        }
-        try:
-            resp = requests.get(f"{self.base_url}/search", params=params, headers=headers, timeout=10)
-            try:
-                resp.raise_for_status()
-            except requests.exceptions.HTTPError as http_err:
-                if resp.status_code == 403:
-                    logger.warning("Searxng returned 403 Forbidden. クエリが不正か、サーバー側でブロックされています。検索結果なしとして返します。")
-                    return []
-                else:
-                    logger.error(f"Searxng search failed: {http_err}", exc_info=True)
-                    return []
-            if 'application/json' not in resp.headers.get('Content-Type', ''):
-                logger.error(f"Searxng returned non-JSON response: {resp.text[:200]}")
-                return []
-            data = resp.json()
-            results = []
-            for r in data.get("results", []):
-                results.append({
-                    "title": r.get("title", ""),
-                    "link": r.get("url", ""),
-                    "snippet": r.get("content", "")
-                })
-            return results
-        except Exception as e:
-            logger.error(f"Searxng search failed: {e}", exc_info=True)
-            return []
+# The SearxngSearchClient class is no longer needed as we are using SearxNGSearchWrapper.
+# class SearxngSearchClient:
+#     def __init__(self, base_url="http://localhost:8080"):
+#         self.base_url = base_url.rstrip("/")
+#
+#     def search(self, query, num_results=3):
+#         import re
+#         MAX_QUERY_LENGTH = 256
+#         # 改行・余分な空白を除去し1行に整形
+#         query = ' '.join(query.split())
+#         # Markdownや記号、論理演算子、引用符などを除去
+#         query = re.sub(r'[\*`\[\]"\'\-\_\=\~\|\^\$\#\@\!\?\<\>\(\)\{\}\:\;]', '', query)
+#         # 先頭や末尾の空白を除去
+#         query = query.strip() # Strip after cleaning symbols
+#         # 先頭5単語だけをクエリに
+#         # query = ' '.join(query.split()[:5])
+#         # LLMの出力が長すぎる場合を考慮し、単語数で制限する（例: 最初の15単語）
+#         query_words = query.split()
+#         if len(query_words) > 15:
+#             logger.warning(f"Query has too many words ({len(query_words)}). Truncating to 15 words.")
+#             query = ' '.join(query_words[:15])
+#
+#         if len(query) > MAX_QUERY_LENGTH:
+#             logger.warning(f"Query too long for Searxng (length={len(query)}). Truncating to {MAX_QUERY_LENGTH} chars.")
+#             query = query[:MAX_QUERY_LENGTH]
+#         logger.debug(f"Searxng送信クエリ: '{query}' (length={len(query)})")
+#         params = {
+#             "q": query,
+#             "format": "json",
+#             "language": "ja",
+#             "safesearch": 1,
+#             "categories": "general",
+#             "count": num_results
+#         }
+#         headers = {
+#             "User-Agent": "Mozilla/5.0 (compatible; SearxngBot/1.0; +https://github.com/searxng/searxng)"
+#         }
+#         try:
+#             resp = requests.get(f"{self.base_url}/search", params=params, headers=headers, timeout=10)
+#             try:
+#                 resp.raise_for_status()
+#             except requests.exceptions.HTTPError as http_err:
+#                 if resp.status_code == 403:
+#                     logger.warning("Searxng returned 403 Forbidden. クエリが不正か、サーバー側でブロックされています。検索結果なしとして返します。")
+#                     return []
+#                 else:
+#                     logger.error(f"Searxng search failed: {http_err}", exc_info=True)
+#                     return []
+#             if 'application/json' not in resp.headers.get('Content-Type', ''):
+#                 logger.error(f"Searxng returned non-JSON response: {resp.text[:200]}")
+#                 return []
+#             data = resp.json()
+#             results = []
+#             for r in data.get("results", []):
+#                 results.append({
+#                     "title": r.get("title", ""),
+#                     "link": r.get("url", ""),
+#                     "snippet": r.get("content", "")
+#                 })
+#             return results
+#         except Exception as e:
+#             logger.error(f"Searxng search failed: {e}", exc_info=True)
+#             return []
 
 class SearchClient:
     def __init__(self, config: Configuration):
@@ -82,11 +84,15 @@ class SearchClient:
                 raise ValueError(f"Failed to initialize DuckDuckGo client: {e}")
         elif self.config.SEARCH_API == "searxng":
             try:
-                self.search_tool = SearxngSearchClient(base_url=getattr(self.config, "SEARXNG_BASE_URL", "http://localhost:8080"))
-                logger.info("Initialized Searxng Search Client.")
+                searxng_host = getattr(self.config, "SEARXNG_BASE_URL", "http://localhost:8080")
+                # Assuming MAX_SEARCH_RESULTS_PER_QUERY is available in config, else default to 3 for 'k'
+                k_results = getattr(self.config, "MAX_SEARCH_RESULTS_PER_QUERY", 3)
+                searx_params = {"language": "ja", "safesearch": 1, "categories": "general"}
+                self.search_tool = SearxNGSearchWrapper(searxng_host=searxng_host, k=k_results, params=searx_params)
+                logger.info("Initialized SearxNGSearchWrapper.")
             except Exception as e:
-                logger.error(f"Failed to initialize SearxngSearchClient: {e}", exc_info=True)
-                raise ValueError(f"Failed to initialize Searxng client: {e}")
+                logger.error(f"Failed to initialize SearxNGSearchWrapper: {e}", exc_info=True)
+                raise ValueError(f"Failed to initialize Searxng client using SearxNGSearchWrapper: {e}")
         # Add other search APIs here later if needed, e.g., Tavily
         # elif self.config.SEARCH_API == "tavily":
         #     if not self.config.TAVILY_API_KEY:
@@ -102,9 +108,12 @@ class SearchClient:
         logger.info(f"Searching with {self.config.SEARCH_API} for: '{query}', num_results={num_results}")
         try:
             if self.config.SEARCH_API == "searxng":
-                raw_results = self.search_tool.search(query, num_results)
+                # The 'k' parameter in SearxNGSearchWrapper's constructor sets the default number of results.
+                # If num_results is different from the initialized 'k', we might need to adjust,
+                # but SearxNGSearchWrapper.results takes num_results which should override 'k'.
+                raw_results = self.search_tool.results(query=query, num_results=num_results)
                 processed_results: list[SearchResult] = []
-                for res in raw_results:
+                for res in raw_results: # Assuming results are dicts: {'title': ..., 'link': ..., 'snippet': ...}
                     processed_results.append(
                         SearchResult(
                             title=res.get("title", "N/A"),
@@ -112,7 +121,7 @@ class SearchClient:
                             snippet=res.get("snippet", "No snippet available.")
                         )
                     )
-                logger.info(f"Found {len(processed_results)} results via SearxngSearchClient.")
+                logger.info(f"Found {len(processed_results)} results via SearxNGSearchWrapper.")
                 return processed_results
 
             if hasattr(self.search_tool, 'k') and self.config.SEARCH_API == "duckduckgo":
