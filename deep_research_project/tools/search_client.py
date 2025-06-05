@@ -1,5 +1,5 @@
 from langchain_community.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
-from langchain_community.utilities.searx_search import SearxNGSearchWrapper
+from langchain_community.utilities import SearxSearchWrapper
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import SearchResult
 import logging
@@ -85,14 +85,21 @@ class SearchClient:
         elif self.config.SEARCH_API == "searxng":
             try:
                 searxng_host = getattr(self.config, "SEARXNG_BASE_URL", "http://localhost:8080")
-                # Assuming MAX_SEARCH_RESULTS_PER_QUERY is available in config, else default to 3 for 'k'
                 k_results = getattr(self.config, "MAX_SEARCH_RESULTS_PER_QUERY", 3)
                 searx_params = {"language": "ja", "safesearch": 1, "categories": "general"}
-                self.search_tool = SearxNGSearchWrapper(searxng_host=searxng_host, k=k_results, params=searx_params)
-                logger.info("Initialized SearxNGSearchWrapper.")
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (compatible; SearxngBot/1.0; +https://github.com/searxng/searxng)"
+                }
+                self.search_tool = SearxSearchWrapper(
+                    searx_host=searxng_host,
+                    k=k_results,
+                    params=searx_params,
+                    headers=headers
+                )
+                logger.info("Initialized SearxSearchWrapper.")
             except Exception as e:
-                logger.error(f"Failed to initialize SearxNGSearchWrapper: {e}", exc_info=True)
-                raise ValueError(f"Failed to initialize Searxng client using SearxNGSearchWrapper: {e}")
+                logger.error(f"Failed to initialize SearxSearchWrapper: {e}", exc_info=True)
+                raise ValueError(f"Failed to initialize Searxng client using SearxSearchWrapper: {e}")
         # Add other search APIs here later if needed, e.g., Tavily
         # elif self.config.SEARCH_API == "tavily":
         #     if not self.config.TAVILY_API_KEY:
@@ -108,12 +115,14 @@ class SearchClient:
         logger.info(f"Searching with {self.config.SEARCH_API} for: '{query}', num_results={num_results}")
         try:
             if self.config.SEARCH_API == "searxng":
-                # The 'k' parameter in SearxNGSearchWrapper's constructor sets the default number of results.
-                # If num_results is different from the initialized 'k', we might need to adjust,
-                # but SearxNGSearchWrapper.results takes num_results which should override 'k'.
-                raw_results = self.search_tool.results(query=query, num_results=num_results)
+                try:
+                    # SearxSearchWrapperのresultsは query, num_results のようなキーワード引数ではなく、位置引数で渡す必要がある
+                    raw_results = self.search_tool.results(query, num_results)
+                except Exception as e:
+                    logger.error(f"SearxNG search failed: {e}", exc_info=True)
+                    return []
                 processed_results: list[SearchResult] = []
-                for res in raw_results: # Assuming results are dicts: {'title': ..., 'link': ..., 'snippet': ...}
+                for res in raw_results:
                     processed_results.append(
                         SearchResult(
                             title=res.get("title", "N/A"),
@@ -121,12 +130,10 @@ class SearchClient:
                             snippet=res.get("snippet", "No snippet available.")
                         )
                     )
-                logger.info(f"Found {len(processed_results)} results via SearxNGSearchWrapper.")
+                logger.info(f"Found {len(processed_results)} results via SearxSearchWrapper.")
                 return processed_results
 
-            if hasattr(self.search_tool, 'k') and self.config.SEARCH_API == "duckduckgo":
-                 self.search_tool.k = num_results
-
+            # DuckDuckGoSearchAPIWrapperのresultsは query, max_results を受け付ける
             try:
                 raw_results = self.search_tool.results(query=query, max_results=num_results)
             except Exception as e:
