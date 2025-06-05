@@ -1,5 +1,5 @@
 from langchain_community.utilities.duckduckgo_search import DuckDuckGoSearchAPIWrapper
-from langchain_community.tools import SearxNGSearchWrapper
+from langchain_community.utilities.searx_search import SearxNGSearchWrapper
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import SearchResult
 import logging
