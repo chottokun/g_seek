@@ -28,6 +28,9 @@ class Configuration:
         # Logging Configuration
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+        # Interactive Mode Configuration
+        self.INTERACTIVE_MODE = os.getenv("INTERACTIVE_MODE", "True").lower() == "true"
+
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai'")
@@ -43,7 +46,8 @@ class Configuration:
             f"  Search API: {self.SEARCH_API}\n"
             f"  Max Research Loops: {self.MAX_RESEARCH_LOOPS}\n"
             f"  Max Search Results: {self.MAX_SEARCH_RESULTS_PER_QUERY}\n"
-            f"  Output Filename: {self.OUTPUT_FILENAME}"
+            f"  Output Filename: {self.OUTPUT_FILENAME}\n"
+            f"  Interactive Mode: {self.INTERACTIVE_MODE}"
         )
 
 # Example usage (optional, for testing)

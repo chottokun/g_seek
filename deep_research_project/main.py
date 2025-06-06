@@ -15,6 +15,11 @@ import logging
 # but other modules will use their own loggers configured by basicConfig.
 
 def main():
+    # For CLI runs, ensure INTERACTIVE_MODE is False by setting the environment variable
+    # This needs to be done before Configuration is instantiated.
+    os.environ["INTERACTIVE_MODE"] = "False"
+    print("DEBUG: Set INTERACTIVE_MODE to False for CLI run.") # For verification
+
     # Initialize Configuration first, as it contains LOG_LEVEL
     try:
         config = Configuration()
@@ -39,6 +44,7 @@ def main():
     logger.info(f"  Search API: {config.SEARCH_API}")
     logger.info(f"  Max Loops: {config.MAX_RESEARCH_LOOPS}")
     logger.info(f"  Log Level: {config.LOG_LEVEL}")
+    logger.info(f"  Interactive Mode (from config): {config.INTERACTIVE_MODE}") # Log the actual loaded value
 
     # 2. Initialize Research State
     # TODO: Later, this topic could come from user input (e.g., command line argument or Streamlit UI)

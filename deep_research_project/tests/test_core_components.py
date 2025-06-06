@@ -201,5 +201,153 @@ class TestResearchLoopReflectOnSummary(unittest.TestCase):
         self.loop._reflect_on_summary()
         self.assertIsNone(self.state.current_query)
 
+
+class TestResearchLoopKnowledgeGraph(unittest.TestCase):
+    def setUp(self):
+        self.mock_config = MagicMock(spec=Configuration)
+        # Set necessary config attributes for ResearchLoop and its components
+        self.mock_config.LLM_PROVIDER = "placeholder_llm"
+        self.mock_config.LOG_LEVEL = "DEBUG"
+        self.mock_config.OPENAI_API_KEY = None # Ensure not needed if placeholder
+        self.mock_config.OLLAMA_BASE_URL = None # Ensure not needed if placeholder
+        self.mock_config.MAX_SEARCH_RESULTS_PER_QUERY = 3
+        self.mock_config.LLM_MAX_TOKENS = 1024
+        self.mock_config.INTERACTIVE_MODE = False # Default for tests unless specified
+
+        self.state = ResearchState(research_topic="KG Test Topic")
+
+        # Mock LLMClient that ResearchLoop will instantiate
+        self.mock_llm_client_instance = MagicMock(spec=LLMClient)
+
+        # Patch the LLMClient constructor within the research_loop module
+        self.llm_client_patcher = patch('deep_research_project.core.research_loop.LLMClient', return_value=self.mock_llm_client_instance)
+        self.MockLLMClient = self.llm_client_patcher.start()
+        self.addCleanup(self.llm_client_patcher.stop)
+
+        # Patch SearchClient as it's also initialized in ResearchLoop (though not directly used by _extract_entities_and_relations)
+        self.search_client_patcher = patch('deep_research_project.core.research_loop.SearchClient')
+        self.MockSearchClient = self.search_client_patcher.start()
+        self.addCleanup(self.search_client_patcher.stop)
+
+        # Patch ContentRetriever
+        self.content_retriever_patcher = patch('deep_research_project.core.research_loop.ContentRetriever')
+        self.MockContentRetriever = self.content_retriever_patcher.start()
+        self.addCleanup(self.content_retriever_patcher.stop)
+
+        self.research_loop = ResearchLoop(config=self.mock_config, state=self.state)
+
+    def test_successful_extraction(self):
+        self.state.new_information = "Alice is a person. Bob is a person. Alice knows Bob."
+        expected_nodes = [{"id": "alice", "label": "Alice", "type": "Person"}]
+        expected_edges = [{"source": "alice", "target": "bob", "label": "knows"}]
+        self.mock_llm_client_instance.generate_text.return_value = \
+            f'{{"nodes": {expected_nodes!r}, "edges": {expected_edges!r}}}'.replace("'", '"') # Ensure valid JSON
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_called_once()
+        self.assertEqual(self.state.knowledge_graph_nodes, expected_nodes)
+        self.assertEqual(self.state.knowledge_graph_edges, expected_edges)
+
+    def test_llm_returns_invalid_json(self):
+        self.state.new_information = "Some text to process."
+        # Invalid JSON (single quotes)
+        self.mock_llm_client_instance.generate_text.return_value = "{'nodes': [{'id': 'node1', 'label': 'Entity A'}]}"
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_called_once()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+        # TODO: Add log capture assertion if possible and desired
+
+    def test_llm_returns_json_with_missing_keys(self):
+        self.state.new_information = "Some text."
+        self.mock_llm_client_instance.generate_text.return_value = '{"data": [], "info": "missing keys"}'
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_called_once()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_no_new_information(self):
+        self.state.new_information = None
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_not_called()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_new_information_is_empty_string(self):
+        self.state.new_information = "  " # Whitespace only
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_not_called()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_new_information_indicates_error(self):
+        self.state.new_information = "Error occurred during summary generation."
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_not_called()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_new_information_indicates_no_sources_selected(self):
+        self.state.new_information = "No sources were selected for summarization."
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_not_called()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_new_information_indicates_no_content_found(self):
+        self.state.new_information = "Could not retrieve or find content for any of the selected sources."
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_not_called()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_llm_returns_empty_json_object(self):
+        self.state.new_information = "Some relevant text."
+        self.mock_llm_client_instance.generate_text.return_value = '{}'
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_called_once()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_llm_returns_json_with_empty_node_edge_lists(self):
+        self.state.new_information = "Text that might not have entities."
+        self.mock_llm_client_instance.generate_text.return_value = '{"nodes": [], "edges": []}'
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_called_once()
+        self.assertEqual(self.state.knowledge_graph_nodes, [])
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+    def test_llm_response_has_extra_text_around_json(self):
+        self.state.new_information = "Alice is a person."
+        expected_nodes = [{"id": "alice", "label": "Alice", "type": "Person"}]
+        json_payload = f'{{"nodes": {expected_nodes!r}, "edges": []}}'.replace("'", '"')
+        self.mock_llm_client_instance.generate_text.return_value = f"Sure, here is the JSON you requested:\n```json\n{json_payload}\n```\nI hope this helps!"
+
+        self.research_loop._extract_entities_and_relations()
+
+        self.mock_llm_client_instance.generate_text.assert_called_once()
+        self.assertEqual(self.state.knowledge_graph_nodes, expected_nodes)
+        self.assertEqual(self.state.knowledge_graph_edges, [])
+
+
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)

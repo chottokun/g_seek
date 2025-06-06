@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import ResearchState
 from deep_research_project.core.research_loop import ResearchLoop # Will be used later
+from streamlit_agraph import agraph, Node, Edge, Config # Corrected import
 
 def main():
     st.set_page_config(layout="wide", page_title="Deep Research Assistant")
@@ -197,8 +198,76 @@ def main():
             st.info("No summary available yet.")
 
         st.markdown("---")
-        st.subheader("4. Knowledge Graph (Placeholder)")
-        # graph_area = st.empty() # Will display the graph
+        st.subheader("4. Knowledge Graph")
+        if st.session_state.research_state and \
+           st.session_state.research_state.knowledge_graph_nodes and \
+           st.session_state.research_state.knowledge_graph_edges:
+
+            nodes = []
+            edges = []
+
+            for node_data in st.session_state.research_state.knowledge_graph_nodes:
+                nodes.append(Node(id=node_data['id'],
+                                  label=node_data['label'],
+                                  # title=node_data.get('type', 'Unknown'), # Add type to tooltip
+                                  shape="box", # Default shape
+                                  color="lightblue" # Default color
+                                 )) # You can add more properties like size, shape, color based on type
+
+            for edge_data in st.session_state.research_state.knowledge_graph_edges:
+                edges.append(Edge(source=edge_data['source'],
+                                  target=edge_data['target'],
+                                  label=edge_data.get('label', ''),
+                                  color="gray"
+                                 ))
+
+            # Define Agraph configuration
+            # https://github.com/ChrisChs/streamlit-agraph/blob/master/README.md?plain=1#L104
+            # https://visjs.github.io/vis-network/docs/network/layout.html
+            config_builder = Config(
+                width=750, # Adjust as needed
+                height=600, # Adjust as needed
+                directed=True,
+                physics=True, # Enable physics for better layout
+                hierarchical=False, # Set to True for hierarchical layout if desired
+                # layoutAlgorithm='barnesHut', # 'barnesHut', 'forceAtlas2Based', 'repulsion', 'hierarchicalRepulsion'
+                # nodeHighlightBehavior=True,
+                # highlightColor="#F7A7A6",
+                # collapsable=True,
+                # node={'labelProperty':'label'},
+                # link={'labelProperty':'label', 'renderLabel':True},
+                # **kwargs
+            )
+            config = config_builder.build()
+
+
+            if nodes and edges:
+                try:
+                    # Note: st_agraph was an old name, now it's just agraph directly
+                    return_value = agraph(nodes=nodes, edges=edges, config=config)
+                    if return_value:
+                        st.write("Selected node:", return_value)
+                except Exception as e:
+                    st.error(f"Error rendering knowledge graph: {e}")
+                    st.error("Please ensure Graphviz is installed on your system if using 'dot' or other Graphviz layouts directly with older versions or certain configurations, though streamlit-agraph typically uses vis.js which is browser-based.")
+            elif nodes: # Only nodes, no edges
+                 st.info("Knowledge graph has nodes but no edges defined yet.")
+                 try:
+                    return_value = agraph(nodes=nodes, edges=[], config=config)
+                    if return_value:
+                        st.write("Selected node:", return_value)
+                 except Exception as e:
+                    st.error(f"Error rendering knowledge graph nodes: {e}")
+            else: # No nodes (and thus no edges either)
+                st.info("No knowledge graph data to display. Nodes and edges lists are empty.")
+
+        elif st.session_state.research_state and \
+             (not st.session_state.research_state.knowledge_graph_nodes or \
+              not st.session_state.research_state.knowledge_graph_edges):
+            st.info("Knowledge graph will appear here after information extraction. Currently, no nodes or edges data available.")
+        else:
+            st.info("Start research to generate a knowledge graph.")
+
 
     else:
         st.info("Enter a research topic and click 'Start Research' to begin.")

@@ -6,6 +6,7 @@ from deep_research_project.tools.llm_client import LLMClient # Example
 from deep_research_project.tools.search_client import SearchClient # Example
 from deep_research_project.tools.content_retriever import ContentRetriever # Added import
 import logging
+import json # Added for knowledge graph extraction
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -14,7 +15,8 @@ class ResearchLoop:
     def __init__(self, config: Configuration, state: ResearchState):
         self.config = config
         self.state = state
-        logger.info("Initializing LLM and Search clients for ResearchLoop.")
+        self.interactive_mode = config.INTERACTIVE_MODE  # Store interactive_mode
+        logger.info(f"Initializing LLM and Search clients for ResearchLoop. Interactive mode: {self.interactive_mode}")
         try:
             self.llm_client = LLMClient(config)
             self.search_client = SearchClient(config)
@@ -145,6 +147,70 @@ class ResearchLoop:
         finally:
             self.state.pending_source_selection = False # Summarization attempt made, selection process is over
 
+        # After generating new_information, extract entities and relations
+        if self.state.new_information and "Error occurred during summary generation." not in self.state.new_information and "No sources were selected" not in self.state.new_information and "Could not retrieve or find content" not in self.state.new_information :
+            self._extract_entities_and_relations()
+
+
+    def _extract_entities_and_relations(self):
+        logger.debug("Entering _extract_entities_and_relations.")
+        if not self.state.new_information or self.state.new_information.strip() == "" or \
+           "Error occurred during summary generation." in self.state.new_information or \
+           "No sources were selected for summarization." == self.state.new_information.strip() or \
+           "Could not retrieve or find content for any of the selected sources." == self.state.new_information.strip():
+            logger.warning("No new information available or information indicates previous error/lack of content, skipping entity and relation extraction.")
+            self.state.knowledge_graph_nodes = [] # Ensure it's empty if no info
+            self.state.knowledge_graph_edges = []
+            return
+
+        logger.info("Extracting entities and relations from new information.")
+
+        text_content = self.state.new_information
+
+        prompt = (
+            f"Based on the following text, identify key entities (people, organizations, concepts, locations) and their relationships.\n"
+            f"Format the output as a single JSON object with two keys: \"nodes\" and \"edges\".\n"
+            f"\"nodes\" should be a list of objects, each with \"id\" (unique string, e.g., entity_name_type_1), \"label\" (entity name), and \"type\" (e.g., \"Person\", \"Organization\", \"Concept\", \"Location\").\n"
+            f"\"edges\" should be a list of objects, each with \"source\" (id of source node), \"target\" (id of target node), and \"label\" (relationship description).\n\n"
+            f"Ensure all node IDs used in \"edges\" are defined in \"nodes\". Use concise and descriptive labels for relationships.\n"
+            f"If no entities or relationships are found, return a JSON object with empty lists for \"nodes\" and \"edges\".\n\n"
+            f"Text:\n"
+            f"---\n"
+            f"{text_content}\n"
+            f"---\n\n"
+            f"JSON Output:"
+        )
+
+        try:
+            llm_response = self.llm_client.generate_text(prompt=prompt)
+            logger.debug(f"LLM response for KG extraction:\n{llm_response}")
+
+            # Attempt to find JSON within the response if the LLM includes extra text
+            json_start_index = llm_response.find('{')
+            json_end_index = llm_response.rfind('}') + 1
+
+            if json_start_index == -1 or json_end_index == 0:
+                logger.error("No JSON object found in LLM response for KG extraction.")
+                parsed_json = {"nodes": [], "edges": []}
+            else:
+                json_string = llm_response[json_start_index:json_end_index]
+                try:
+                    parsed_json = json.loads(json_string)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to decode JSON from LLM response for KG: {e}. Response snippet: {json_string[:200]}...", exc_info=True)
+                    parsed_json = {"nodes": [], "edges": []} # Fallback
+
+            # Replace strategy for nodes and edges
+            self.state.knowledge_graph_nodes = parsed_json.get('nodes', [])
+            self.state.knowledge_graph_edges = parsed_json.get('edges', [])
+
+            logger.info(f"Extracted {len(self.state.knowledge_graph_nodes)} nodes and {len(self.state.knowledge_graph_edges)} edges.")
+
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during entity and relation extraction: {e}", exc_info=True)
+            self.state.knowledge_graph_nodes = [] # Ensure consistent state on error
+            self.state.knowledge_graph_edges = []
+
 
     def _reflect_on_summary(self):
         logger.debug("Entering _reflect_on_summary.")
@@ -272,34 +338,89 @@ class ResearchLoop:
 
         self._generate_initial_query()
 
-        # This loop structure will be more heavily driven by Streamlit UI interactions eventually.
-        # For now, if a current_query is set (e.g., by direct script or future UI that skips proposal),
-        # it can still run. The pending_source_selection flag will gate summarization.
-        while self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS and self.state.current_query:
-            logger.info(f"--- Starting Loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS} ---")
+        # Auto-approve initial query if not in interactive mode
+        if not self.interactive_mode and self.state.proposed_query:
+            logger.info(f"Non-interactive mode: Auto-approving initial query: {self.state.proposed_query}")
+            self.state.current_query = self.state.proposed_query
+            self.state.proposed_query = None # Clear proposed query
 
-            if not self.state.pending_source_selection: # Only search if not waiting for selection
+        while self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
+            if not self.state.current_query:
+                logger.info("No current query. Checking for proposed query or terminating loop.")
+                # In interactive mode, UI would handle this. In non-interactive, if proposed_query exists, use it.
+                if not self.interactive_mode and self.state.proposed_query:
+                    logger.info(f"Non-interactive mode: Auto-approving next proposed query: {self.state.proposed_query}")
+                    self.state.current_query = self.state.proposed_query
+                    self.state.proposed_query = None
+                else: # No query to proceed with
+                    logger.info("No current or auto-approved proposed query. Terminating loop.")
+                    break # Exit loop if no query can be set
+
+            logger.info(f"--- Starting Loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS} for query: '{self.state.current_query}' ---")
+
+            if not self.state.pending_source_selection:
                 self._web_search()
 
-            # Temporary shim for run_loop to pass all results to _summarize_sources
-            # In Streamlit, this will be driven by user selection.
-            if self.state.pending_source_selection: # Check if search results are pending selection
-                logger.info("Web search complete, results pending source selection (run_loop bypass).")
-                # This is where Streamlit app would take over for selection.
-                # For this non-interactive run_loop, we'll "auto-select" all for now.
-                temp_selected_results = self.state.search_results if self.state.search_results else []
-                self._summarize_sources(selected_results=temp_selected_results)
-                # self.state.pending_source_selection should be set to False within _summarize_sources
+            if self.state.pending_source_selection:
+                if not self.interactive_mode:
+                    if self.state.search_results:
+                        logger.info(f"Non-interactive mode: Auto-selecting all {len(self.state.search_results)} sources for summarization.")
+                        selected_results = self.state.search_results # Select all
+                    else:
+                        logger.info("Non-interactive mode: No search results to auto-select.")
+                        selected_results = []
+                    self._summarize_sources(selected_results=selected_results)
+                    # pending_source_selection is set to False in _summarize_sources
+                else:
+                    # In interactive mode, we would wait for UI to provide selected_results
+                    # For now, this means the loop might pause here if not handled by UI.
+                    # This part of the logic is more for when a UI is driving the ResearchLoop.
+                    # For a purely programmatic run (like in main.py without interactivity),
+                    # this branch means we might get stuck if pending_source_selection is True
+                    # and interactive_mode is True. However, main.py will set interactive_mode to False.
+                    logger.info("Interactive mode: Waiting for source selection from UI (not implemented in this flow). Loop may stall here if not externally driven.")
+                    # To prevent stalling in a non-UI interactive context (if that were to happen),
+                    # we might need a timeout or a way for the loop to know it's not UI-driven.
+                    # For this subtask, assuming main.py sets interactive_mode=False, this branch is less critical.
+                    # If we are in interactive mode and pending_source_selection is true,
+                    # the loop should pause, waiting for external input (e.g. from Streamlit app)
+                    # to call a method that provides selected sources and then calls _summarize_sources.
+                    # For the current CLI run, this state should ideally not be maintained across loop iterations
+                    # without resolution.
+                    # Given the current structure, if interactive_mode is True and we hit this,
+                    # the loop will effectively pause as _summarize_sources won't be called.
+                    # This is the desired behavior for Streamlit.
+                    # For CLI, interactive_mode will be False.
+                    pass # Wait for external call in interactive mode
 
-            self.state.completed_loops += 1
-            if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS and self.state.current_query:
-                 self._reflect_on_summary() # Generates proposed_query, clears current_query
-                 # Loop will likely break here if current_query is not reset by an external agent (UI)
-            elif self.state.current_query is None: # Query was set to None by a failing step or reflection
-                logger.info("Current query is None, terminating loop early.")
-            else: # Max loops reached
-                logger.info(f"Max research loops ({self.config.MAX_RESEARCH_LOOPS}) reached.")
-                self.state.current_query = None # Ensure loop terminates
+            # Only proceed if sources have been summarized (or no sources were found/selected)
+            if not self.state.pending_source_selection:
+                self.state.completed_loops += 1
+                if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
+                    self._reflect_on_summary() # Generates proposed_query, clears current_query
+                    # In non-interactive mode, the next iteration will auto-approve proposed_query if it exists
+                    if not self.interactive_mode and self.state.proposed_query:
+                        logger.info(f"Non-interactive mode: Auto-approving next query from reflection: {self.state.proposed_query}")
+                        self.state.current_query = self.state.proposed_query
+                        self.state.proposed_query = None
+                    elif self.interactive_mode: # In interactive mode, current_query remains None after reflection
+                        self.state.current_query = None # Explicitly ensure UI needs to approve next query
+                        logger.info("Interactive mode: Reflection complete. Proposed query needs UI approval.")
+                    else: # Non-interactive and no proposed_query from reflection (e.g. CONCLUDE)
+                        logger.info("Non-interactive mode: No new query proposed by reflection or reflection led to CONCLUDE. Terminating.")
+                        self.state.current_query = None # Ensure loop terminates
+                else: # Max loops reached
+                    logger.info(f"Max research loops ({self.config.MAX_RESEARCH_LOOPS}) reached.")
+                    self.state.current_query = None # Ensure loop terminates
+            else:
+                # This case (pending_source_selection still true) should only happen in interactive mode
+                # if the UI hasn't provided selected sources yet.
+                logger.info("Loop iteration paused: Pending source selection in interactive mode.")
+                # We break here to prevent an infinite loop if in interactive mode and sources are not selected.
+                # The UI would typically call a method to continue.
+                if self.interactive_mode: # Ensure this break only happens in interactive mode
+                    break
+
 
         self._finalize_summary()
         logger.info("Research loop finished.")
