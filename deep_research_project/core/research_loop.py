@@ -11,6 +11,58 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
+
+def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+    """
+    Splits a given text into overlapping chunks.
+
+    Args:
+        text: The text content to be split.
+        chunk_size: The maximum size of each chunk in characters.
+        chunk_overlap: The number of characters to overlap between consecutive chunks.
+
+    Returns:
+        A list of text chunks.
+
+    Raises:
+        ValueError: If chunk_size is non-positive, or if chunk_overlap is negative or
+                    greater than or equal to chunk_size.
+    """
+    if not text:
+        return []
+
+    if chunk_size <= 0:
+        raise ValueError("Chunk size must be positive.")
+    if chunk_overlap < 0:
+        raise ValueError("Chunk overlap cannot be negative.")
+    if chunk_overlap >= chunk_size:
+        raise ValueError("Chunk overlap must be less than chunk size.")
+
+    text_len = len(text)
+    if text_len <= chunk_size:
+        return [text]
+
+    chunks = []
+    idx = 0
+    while idx < text_len:
+        end_idx = idx + chunk_size
+        chunks.append(text[idx:end_idx])
+
+        # If the current chunk reaches or exceeds the end of the text, stop
+        if end_idx >= text_len:
+            break
+
+        idx += (chunk_size - chunk_overlap)
+
+        # Safety break in case of misconfiguration leading to non-positive step,
+        # though validation should prevent this.
+        if (chunk_size - chunk_overlap) <= 0:
+            logger.error("Chunk step is non-positive, breaking to prevent infinite loop.")
+            break
+
+    return chunks
+
+
 class ResearchLoop:
     def __init__(self, config: Configuration, state: ResearchState):
         self.config = config
@@ -83,73 +135,121 @@ class ResearchLoop:
 
     def _summarize_sources(self, selected_results: List[SearchResult]):
         logger.debug("Entering _summarize_sources.")
-        if not selected_results: # Check if list is empty or None
-            logger.info("No selected results to summarize.")
-            self.state.new_information = "No sources were selected for summarization."
-            self.state.pending_source_selection = False # Ensure this is reset if no selection is summarized
-            return
-
-        logger.info(f"Attempting to fetch and summarize content for {len(selected_results)} selected search results...")
-
-        if self.state.fetched_content is None:
-            self.state.fetched_content = {}
-
-        for result in selected_results:
-            link = result['link']
-            if link not in self.state.fetched_content or not self.state.fetched_content[link]: # Fetch if not already fetched or empty
-                logger.info(f"Fetching full text for: {link}")
-                full_text = self.content_retriever.retrieve_and_extract(link)
-                if full_text:
-                    self.state.fetched_content[link] = full_text
-                    logger.debug(f"Successfully fetched text for {link} (length: {len(full_text)}).")
-                else:
-                    logger.warning(f"Failed to fetch full text for {link}. Using snippet as fallback.")
-                    self.state.fetched_content[link] = result.get('snippet', '') # Use snippet or empty string
-
-        texts_to_summarize = []
-        for r in selected_results:
-            content = self.state.fetched_content.get(r['link'])
-            if content: # Only include if content (either full or snippet fallback) exists
-                texts_to_summarize.append(f"Source URL: {r['link']}\nTitle: {r['title']}\nContent:\n{content}")
-
-        if not texts_to_summarize:
-            logger.warning("No content (neither fetched nor snippet) available for any selected sources.")
-            self.state.new_information = "Could not retrieve or find content for any of the selected sources."
-            # Still update sources_gathered as the user intended to select these
-            for res in selected_results:
-                if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
-                    self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
-            self.state.pending_source_selection = False
-            return
-
-        combined_text = "\n\n---\n\n".join(texts_to_summarize)
-
-        if len(combined_text) > 100000: # Configurable threshold might be better
-            logger.warning(f"Combined text for summarization is very long: {len(combined_text)} chars. May exceed LLM context limit.")
+        final_summary = "" # Initialize final_summary to ensure it has a value
 
         try:
-            summary_prompt = f"Summarize the following information relevant to the query '{self.state.current_query}':\n{combined_text}"
-            new_summary = self.llm_client.generate_text(prompt=summary_prompt)
+            chunk_size = self.config.SUMMARIZATION_CHUNK_SIZE_CHARS
+            chunk_overlap = self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS
 
-            self.state.new_information = new_summary
-            self.state.accumulated_summary += f"\n\n## Findings for query: {self.state.current_query}\n{new_summary}"
+            if not selected_results:
+                logger.info("No selected results to summarize.")
+                self.state.new_information = "No sources were selected for summarization."
+                # self.state.pending_source_selection is set in finally
+                return
 
-            # Update sources gathered from the selected results (already done if no content was found)
-            for res in selected_results:
+            logger.info(f"Attempting to fetch and summarize content for {len(selected_results)} selected search results using chunking.")
+
+            if self.state.fetched_content is None:
+                self.state.fetched_content = {}
+
+            all_chunk_summaries = []
+
+            for result in selected_results:
+                link = result['link']
+                logger.info(f"Processing source: {link}")
+                if link not in self.state.fetched_content or not self.state.fetched_content[link]:
+                    logger.info(f"Fetching full text for: {link}")
+                    full_text = self.content_retriever.retrieve_and_extract(link)
+                    if full_text:
+                        self.state.fetched_content[link] = full_text
+                        logger.debug(f"Successfully fetched text for {link} (length: {len(full_text)}).")
+                    else:
+                        logger.warning(f"Failed to fetch full text for {link}. Using snippet as fallback.")
+                        self.state.fetched_content[link] = result.get('snippet', '')
+
+                content = self.state.fetched_content.get(link)
+                if not content or content.isspace():
+                    logger.warning(f"No content available for source: {link}. Skipping.")
+                    continue
+
+                try:
+                    chunks = split_text_into_chunks(content, chunk_size, chunk_overlap)
+                    logger.info(f"Split content from {link} into {len(chunks)} chunks.")
+                except ValueError as e:
+                    logger.error(f"Error splitting text for source {link}: {e}. Skipping this source.")
+                    continue
+
+                for i, chunk_text in enumerate(chunks):
+                    chunk_summary_prompt = (
+                        f"This is a segment of a larger document. "
+                        f"Summarize the following text segment focusing on information relevant to the research query: '{self.state.current_query}'.\n\n"
+                        f"Text Segment:\n---\n{chunk_text}\n---\n\n"
+                        f"Concise Summary of the Segment:"
+                    )
+                    try:
+                        logger.debug(f"Summarizing chunk {i+1}/{len(chunks)} for source {link}...")
+                        chunk_summary = self.llm_client.generate_text(prompt=chunk_summary_prompt)
+                        if chunk_summary and not chunk_summary.isspace():
+                            all_chunk_summaries.append(chunk_summary)
+                            logger.debug(f"Chunk {i+1}/{len(chunks)} summary (len: {len(chunk_summary)}): {chunk_summary[:100]}...")
+                        else:
+                            logger.warning(f"Empty summary received for chunk {i+1}/{len(chunks)} of source {link}.")
+                    except Exception as e:
+                        logger.error(f"Error summarizing chunk {i+1}/{len(chunks)} for source {link}: {e}", exc_info=True)
+                        # Continue to next chunk
+
+            if not all_chunk_summaries:
+                logger.warning("No content could be summarized from any chunks of the selected sources.")
+                self.state.new_information = "No content could be summarized from the selected sources."
+                # self.state.pending_source_selection is set in finally
+                # Call _extract_entities_and_relations here as per instruction,
+                # though it won't do much if new_information indicates no summary.
+                self._extract_entities_and_relations()
+                return
+
+            logger.info(f"Generated {len(all_chunk_summaries)} chunk summaries in total.")
+            combined_chunk_summaries = "\n\n---\n\n".join(all_chunk_summaries)
+
+            # Optional: Check length of combined_chunk_summaries if it could be an issue for the consolidation prompt
+            # For example: if len(combined_chunk_summaries) > some_large_threshold: logger.warning(...)
+
+            consolidation_prompt = (
+                f"The following are individual summaries from different segments of text(s) related to the research query: '{self.state.current_query}'.\n"
+                f"Combine these into a single, coherent, and comprehensive summary that addresses the research query.\n\n"
+                f"Individual Summaries:\n---\n{combined_chunk_summaries}\n---\n\n"
+                f"Final Comprehensive Summary:"
+            )
+
+            logger.info("Consolidating chunk summaries into a final summary...")
+            try:
+                final_summary = self.llm_client.generate_text(prompt=consolidation_prompt)
+                self.state.new_information = final_summary
+                logger.info(f"Final summary generated (length: {len(final_summary)}).")
+            except Exception as e:
+                logger.error(f"Error consolidating chunk summaries for query '{self.state.current_query}': {e}", exc_info=True)
+                self.state.new_information = "Error occurred during final summary consolidation."
+                # If consolidation fails, we might still want to keep the chunk summaries
+                # or some part of it, but for now, just an error message.
+
+            # Update accumulated summary and sources gathered
+            if self.state.new_information and "Error occurred" not in self.state.new_information:
+                 self.state.accumulated_summary += f"\n\n## Findings for query: {self.state.current_query}\n{self.state.new_information}"
+
+            for res in selected_results: # Always record sources that were part of the selection attempt
                 if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
                     self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
 
-            logger.info(f"New information summary generated (length: {len(self.state.new_information) if self.state.new_information else 0}).")
             logger.debug(f"Accumulated summary length: {len(self.state.accumulated_summary)}")
-        except Exception as e:
-            logger.error(f"Error summarizing sources for query '{self.state.current_query}': {e}", exc_info=True)
-            self.state.new_information = "Error occurred during summary generation."
-        finally:
-            self.state.pending_source_selection = False # Summarization attempt made, selection process is over
 
-        # After generating new_information, extract entities and relations
-        if self.state.new_information and "Error occurred during summary generation." not in self.state.new_information and "No sources were selected" not in self.state.new_information and "Could not retrieve or find content" not in self.state.new_information :
-            self._extract_entities_and_relations()
+        except Exception as e: # Catch-all for unexpected errors in the summarization process
+            logger.error(f"An unexpected error occurred in _summarize_sources: {e}", exc_info=True)
+            self.state.new_information = "An unexpected error occurred during source summarization."
+        finally:
+            self.state.pending_source_selection = False # Summarization attempt made (or skipped), selection process is over
+
+        # After generating new_information (or error message), extract entities and relations
+        # This call was already here and should be fine as _extract_entities_and_relations checks new_information validity.
+        self._extract_entities_and_relations()
 
 
     def _extract_entities_and_relations(self):

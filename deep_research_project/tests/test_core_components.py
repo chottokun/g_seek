@@ -4,8 +4,8 @@ from unittest.mock import patch, MagicMock
 
 # Modules to be tested
 from deep_research_project.config.config import Configuration
-from deep_research_project.core.research_loop import ResearchLoop
-from deep_research_project.core.state import ResearchState, Source
+from deep_research_project.core.research_loop import ResearchLoop, split_text_into_chunks
+from deep_research_project.core.state import ResearchState, Source, SearchResult
 from deep_research_project.tools.llm_client import LLMClient
 
 # Configure logging for tests (optional, but can be helpful)
@@ -202,6 +202,72 @@ class TestResearchLoopReflectOnSummary(unittest.TestCase):
         self.assertIsNone(self.state.current_query)
 
 
+class TestSplitTextIntoChunks(unittest.TestCase):
+    def test_empty_text(self):
+        self.assertEqual(split_text_into_chunks("", 100, 10), [])
+
+    def test_none_text(self):
+        self.assertEqual(split_text_into_chunks(None, 100, 10), [])
+
+    def test_text_shorter_than_chunk_size(self):
+        self.assertEqual(split_text_into_chunks("abc", 10, 2), ["abc"])
+
+    def test_simple_chunking_no_overlap(self):
+        text = "abcdefghij" # len 10
+        self.assertEqual(split_text_into_chunks(text, 5, 0), ["abcde", "fghij"])
+
+    def test_chunking_with_overlap(self):
+        text = "abcdefghij" # len 10
+        # chunk1: "abcde" (idx=0, end_idx=5) -> next_idx = 0 + (5-2) = 3
+        # chunk2: "defgh" (idx=3, end_idx=8) -> next_idx = 3 + (5-2) = 6
+        # chunk3: "ghij"  (idx=6, end_idx=11) -> end_idx >= len, break
+        self.assertEqual(split_text_into_chunks(text, 5, 2), ["abcde", "defgh", "ghij"])
+
+    def test_chunking_exact_multiple_no_overlap(self):
+        text = "abcdefghij"
+        self.assertEqual(split_text_into_chunks(text, 5, 0), ["abcde", "fghij"])
+
+    def test_chunking_exact_multiple_with_overlap(self):
+        text = "abcdefghijklmno" # len 15
+        chunk_size = 5
+        overlap = 1
+        # c1: "abcde" (idx=0, end=5) -> next_idx = 0 + (5-1) = 4
+        # c2: "efghi" (idx=4, end=9) -> next_idx = 4 + (5-1) = 8
+        # c3: "ijklm" (idx=8, end=13) -> next_idx = 8 + (5-1) = 12
+        # c4: "mno"   (idx=12, end=17) -> end_idx >= len, break
+        expected = ["abcde", "efghi", "ijklm", "mno"]
+        self.assertEqual(split_text_into_chunks(text, chunk_size, overlap), expected)
+
+    def test_invalid_chunk_size_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("some text", 0, 0)
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("some text", -1, 0)
+
+    def test_invalid_overlap_raises_value_error(self):
+        with self.assertRaises(ValueError): # overlap < 0
+            split_text_into_chunks("some text", 10, -1)
+        with self.assertRaises(ValueError): # overlap == chunk_size
+            split_text_into_chunks("some text", 10, 10)
+        with self.assertRaises(ValueError): # overlap > chunk_size
+            split_text_into_chunks("some text", 10, 11)
+
+    def test_non_positive_step_safety_break_is_not_hit_with_valid_inputs(self):
+        # This test implicitly checks that valid inputs don't cause the safety break.
+        # The ValueError checks for overlap >= chunk_size already cover the direct cause.
+        text = "abcdefghij"
+        # This should not hang or error out due to the internal safety break
+        split_text_into_chunks(text, 5, 2)
+        # For an actual non-positive step, ValueError is raised before loop.
+        # So, direct testing of the safety break log is hard without deeper mocking.
+
+    def test_last_chunk_smaller(self):
+        text = "abcdefg" # len 7
+        # c1: "abcde" (idx=0, end=5) -> next_idx = 0 + (5-0) = 5
+        # c2: "fg"    (idx=5, end=10) -> end_idx >= len, break
+        self.assertEqual(split_text_into_chunks(text, 5, 0), ["abcde", "fg"])
+
+
 class TestResearchLoopKnowledgeGraph(unittest.TestCase):
     def setUp(self):
         self.mock_config = MagicMock(spec=Configuration)
@@ -347,6 +413,183 @@ class TestResearchLoopKnowledgeGraph(unittest.TestCase):
         self.mock_llm_client_instance.generate_text.assert_called_once()
         self.assertEqual(self.state.knowledge_graph_nodes, expected_nodes)
         self.assertEqual(self.state.knowledge_graph_edges, [])
+
+
+@patch('deep_research_project.core.research_loop.split_text_into_chunks')
+class TestResearchLoopSummarizeSources(unittest.TestCase):
+    def setUp(self):
+        self.mock_config = MagicMock(spec=Configuration)
+        self.mock_config.LLM_PROVIDER = "placeholder_llm"
+        self.mock_config.LOG_LEVEL = "DEBUG"
+        self.mock_config.OPENAI_API_KEY = None
+        self.mock_config.OLLAMA_BASE_URL = None
+        self.mock_config.MAX_SEARCH_RESULTS_PER_QUERY = 3
+        self.mock_config.LLM_MAX_TOKENS = 1024
+        self.mock_config.INTERACTIVE_MODE = False
+        # New config values for chunking
+        self.mock_config.SUMMARIZATION_CHUNK_SIZE_CHARS = 100 # Small for testing
+        self.mock_config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = 10 # Small for testing
+
+        self.state = ResearchState(research_topic="Summarization Test Topic")
+        self.state.current_query = "Test query for summarization"
+
+        self.mock_llm_client_instance = MagicMock(spec=LLMClient)
+        self.llm_client_patcher = patch('deep_research_project.core.research_loop.LLMClient', return_value=self.mock_llm_client_instance)
+        self.MockLLMClient = self.llm_client_patcher.start()
+        self.addCleanup(self.llm_client_patcher.stop)
+
+        self.mock_search_client_instance = MagicMock()
+        self.search_client_patcher = patch('deep_research_project.core.research_loop.SearchClient', return_value=self.mock_search_client_instance)
+        self.MockSearchClient = self.search_client_patcher.start()
+        self.addCleanup(self.search_client_patcher.stop)
+
+        self.mock_content_retriever_instance = MagicMock()
+        # Mock retrieve_and_extract to return content directly
+        self.mock_content_retriever_instance.retrieve_and_extract.return_value = "Full text for source 1. " * 10 # Make it > chunk_size
+        self.content_retriever_patcher = patch('deep_research_project.core.research_loop.ContentRetriever', return_value=self.mock_content_retriever_instance)
+        self.MockContentRetriever = self.content_retriever_patcher.start()
+        self.addCleanup(self.content_retriever_patcher.stop)
+
+        # Mock _extract_entities_and_relations as it's called at the end of _summarize_sources
+        self.extract_entities_patcher = patch.object(ResearchLoop, '_extract_entities_and_relations', return_value=None)
+        self.mock_extract_entities = self.extract_entities_patcher.start()
+        self.addCleanup(self.extract_entities_patcher.stop)
+
+        self.research_loop = ResearchLoop(config=self.mock_config, state=self.state)
+        # Initialize fetched_content as _summarize_sources expects it
+        self.state.fetched_content = {}
+
+
+    def test_successful_chunked_summarization_one_source_two_chunks(self, mock_split_text_into_chunks):
+        selected_results = [SearchResult(title="Source 1", link="http://s1.com", snippet="")]
+        self.state.fetched_content["http://s1.com"] = "Chunk one content. Chunk two content a bit longer."
+
+        mock_split_text_into_chunks.return_value = ["Chunk one content.", "Chunk two content a bit longer."]
+
+        self.mock_llm_client_instance.generate_text.side_effect = [
+            "Summary of chunk1.",
+            "Summary of chunk2.",
+            "Final consolidated summary."
+        ]
+
+        self.research_loop._summarize_sources(selected_results)
+
+        self.assertEqual(self.mock_llm_client_instance.generate_text.call_count, 3)
+
+        # Check first call (chunk1 summary)
+        args_chunk1, _ = self.mock_llm_client_instance.generate_text.call_args_list[0]
+        self.assertIn("Chunk one content.", args_chunk1[0]['prompt']) # prompt is a kwarg
+        self.assertIn(self.state.current_query, args_chunk1[0]['prompt'])
+
+        # Check second call (chunk2 summary)
+        args_chunk2, _ = self.mock_llm_client_instance.generate_text.call_args_list[1]
+        self.assertIn("Chunk two content a bit longer.", args_chunk2[0]['prompt'])
+
+        # Check third call (consolidation)
+        args_consolidation, _ = self.mock_llm_client_instance.generate_text.call_args_list[2]
+        self.assertIn("Summary of chunk1.", args_consolidation[0]['prompt'])
+        self.assertIn("Summary of chunk2.", args_consolidation[0]['prompt'])
+
+        self.assertEqual(self.state.new_information, "Final consolidated summary.")
+        self.assertFalse(self.state.pending_source_selection)
+        self.assertIn("Final consolidated summary.", self.state.accumulated_summary)
+        self.mock_extract_entities.assert_called_once()
+
+
+    def test_one_chunk_summarization_fails_empty_string(self, mock_split_text_into_chunks):
+        selected_results = [SearchResult(title="Source 1", link="http://s1.com", snippet="")]
+        self.state.fetched_content["http://s1.com"] = "Content for two chunks."
+        mock_split_text_into_chunks.return_value = ["Chunk1 text", "Chunk2 text"]
+
+        self.mock_llm_client_instance.generate_text.side_effect = [
+            "",  # Chunk 1 summary fails (empty string)
+            "Summary of chunk2.",
+            "Final summary from chunk2." # Consolidation with only chunk2's summary
+        ]
+
+        self.research_loop._summarize_sources(selected_results)
+
+        self.assertEqual(self.mock_llm_client_instance.generate_text.call_count, 3)
+        self.assertEqual(self.state.new_information, "Final summary from chunk2.")
+        self.assertIn("Summary of chunk2.", self.mock_llm_client_instance.generate_text.call_args_list[2].kwargs['prompt'])
+        self.assertNotIn("Chunk1 text", self.mock_llm_client_instance.generate_text.call_args_list[2].kwargs['prompt']) # Assuming "" is not added
+        self.assertFalse(self.state.pending_source_selection)
+        self.mock_extract_entities.assert_called_once()
+
+
+    def test_all_chunk_summarizations_fail(self, mock_split_text_into_chunks):
+        selected_results = [SearchResult(title="Source 1", link="http://s1.com", snippet="")]
+        self.state.fetched_content["http://s1.com"] = "Content for two chunks."
+        mock_split_text_into_chunks.return_value = ["Chunk1 text", "Chunk2 text"]
+
+        self.mock_llm_client_instance.generate_text.side_effect = [
+            "",  # Chunk 1 summary fails
+            None # Chunk 2 summary fails (None also treated as empty)
+        ] # No call for consolidation if all_chunk_summaries is empty
+
+        self.research_loop._summarize_sources(selected_results)
+
+        self.assertEqual(self.mock_llm_client_instance.generate_text.call_count, 2) # Only two chunk summary attempts
+        self.assertEqual(self.state.new_information, "No content could be summarized from the selected sources.")
+        self.assertFalse(self.state.pending_source_selection)
+        self.mock_extract_entities.assert_called_once() # Should still be called
+
+
+    def test_final_consolidation_fails(self, mock_split_text_into_chunks):
+        selected_results = [SearchResult(title="Source 1", link="http://s1.com", snippet="")]
+        self.state.fetched_content["http://s1.com"] = "Content for two chunks."
+        mock_split_text_into_chunks.return_value = ["Chunk1 text", "Chunk2 text"]
+
+        self.mock_llm_client_instance.generate_text.side_effect = [
+            "Summary of chunk1.",
+            "Summary of chunk2.",
+            Exception("LLM error during consolidation") # Consolidation fails
+        ]
+
+        self.research_loop._summarize_sources(selected_results)
+
+        self.assertEqual(self.mock_llm_client_instance.generate_text.call_count, 3)
+        self.assertEqual(self.state.new_information, "Error occurred during final summary consolidation.")
+        self.assertFalse(self.state.pending_source_selection)
+        self.mock_extract_entities.assert_called_once()
+
+    def test_no_sources_selected(self, mock_split_text_into_chunks):
+        # This case is handled before fetching/chunking loop
+        self.research_loop._summarize_sources(selected_results=[])
+
+        mock_split_text_into_chunks.assert_not_called()
+        self.mock_llm_client_instance.generate_text.assert_not_called()
+        self.assertEqual(self.state.new_information, "No sources were selected for summarization.")
+        # self.state.pending_source_selection will be False due to the finally block,
+        # but it might be set to False even before that by the early return.
+        # self.mock_extract_entities.assert_called_once() # _extract_entities_and_relations is NOT called if no selected_results (early return)
+
+    def test_no_content_to_chunk_for_selected_source(self, mock_split_text_into_chunks):
+        selected_results = [SearchResult(title="Source 1", link="http://s1.com", snippet="")]
+        self.state.fetched_content["http://s1.com"] = "" # Empty content
+
+        # split_text_into_chunks would return [] for empty string, so LLM not called for chunk summaries
+        mock_split_text_into_chunks.return_value = []
+
+        self.research_loop._summarize_sources(selected_results)
+
+        mock_split_text_into_chunks.assert_called_once_with("", self.mock_config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.mock_config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
+        self.mock_llm_client_instance.generate_text.assert_not_called() # No chunk summaries, no consolidation
+        self.assertEqual(self.state.new_information, "No content could be summarized from the selected sources.")
+        self.assertFalse(self.state.pending_source_selection)
+        self.mock_extract_entities.assert_called_once()
+
+    def test_split_text_raises_valueerror(self, mock_split_text_into_chunks):
+        selected_results = [SearchResult(title="Source 1", link="http://s1.com", snippet="")]
+        self.state.fetched_content["http://s1.com"] = "Some text that would cause split_text_into_chunks to fail."
+        mock_split_text_into_chunks.side_effect = ValueError("Test error from splitter")
+
+        self.research_loop._summarize_sources(selected_results)
+
+        mock_split_text_into_chunks.assert_called_once()
+        self.mock_llm_client_instance.generate_text.assert_not_called() # Should skip to end if no chunks
+        self.assertEqual(self.state.new_information, "No content could be summarized from the selected sources.")
+        self.mock_extract_entities.assert_called_once()
 
 
 if __name__ == '__main__':
