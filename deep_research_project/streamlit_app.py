@@ -62,14 +62,21 @@ def main():
                     mode_message = "interactively" if config.INTERACTIVE_MODE else "non-interactively (automated)"
                     st.session_state.messages.append({"role": "assistant", "content": f"Research initialized to run {mode_message}."})
 
-                    # Trigger initial query generation
-                    st.session_state.messages.append({"role": "assistant", "content": "Generating initial query..."})
-                    st.session_state.research_loop._generate_initial_query()
-                    st.session_state.messages.append({"role": "assistant", "content": f"Initial query proposed: {st.session_state.research_state.proposed_query}"})
-                    st.rerun() # Rerun to update UI with proposed query
+                    if not config.INTERACTIVE_MODE:
+                        st.session_state.messages.append({"role": "assistant", "content": "Research running automatically..."})
+                        with st.spinner("Automated research in progress... Please wait."): # Show spinner during run_loop
+                            st.session_state.research_loop.run_loop()
+                        st.session_state.messages.append({"role": "assistant", "content": "Automated research complete."})
+                        st.rerun() # Refresh UI to show final results
+                    else:
+                        # Interactive mode: Trigger initial query generation
+                        st.session_state.messages.append({"role": "assistant", "content": "Generating initial query..."})
+                        st.session_state.research_loop._generate_initial_query()
+                        st.session_state.messages.append({"role": "assistant", "content": f"Initial query proposed: {st.session_state.research_state.proposed_query}"})
+                        st.rerun() # Rerun to update UI for interactive steps
 
                 except Exception as e:
-                    st.error(f"Error during initialization or initial query generation: {e}")
+                    st.error(f"Error during research process: {e}")
                     st.session_state.messages.append({"role": "assistant", "content": f"Error: {e}"})
                     # Reset state if loop initialization fails
                     st.session_state.research_state = None
@@ -92,199 +99,156 @@ def main():
     st.header("Research Output")
 
     if st.session_state.research_state:
-        # Display current topic and active query
+        research_state = st.session_state.research_state # Alias for convenience
+
+        # Display current topic
         st.subheader("Current State:")
-        st.text(f"Topic: {st.session_state.research_state.research_topic}")
-        if st.session_state.research_state.current_query:
-            st.info(f"Current Active Query: {st.session_state.research_state.current_query}")
+        st.text(f"Topic: {research_state.research_topic}")
 
-        # --- Query Proposal and Approval ---
-        st.markdown("---")
-        st.subheader("1. Query Management")
-        if st.session_state.research_state.proposed_query:
-            edited_query = st.text_area(
-                "Edit proposed query if needed:",
-                value=st.session_state.research_state.proposed_query,
-                key="edited_query_text_area",
-                height=100
-            )
-            if st.button("Approve and Use Query", key="approve_query_button"):
-                if edited_query:
-                    st.session_state.research_state.current_query = edited_query
-                    st.session_state.research_state.proposed_query = None
-                    # Reset search_results when a new query is approved to allow new search
-                    st.session_state.research_state.search_results = None
-                    st.session_state.research_state.pending_source_selection = False
-                    st.session_state.messages.append({"role": "user", "content": f"Query approved: {edited_query}"})
-                    st.rerun()
-                else:
-                    st.warning("Cannot approve an empty query.")
-        elif st.session_state.research_state.current_query:
-            st.success(f"Query approved and active: {st.session_state.research_state.current_query}")
-        else:
-            st.info("No query proposed or active. Start research or wait for initial query generation.")
+        # If a final report exists, it means an automated run likely completed, or interactive run finished.
+        if research_state.final_report:
+            st.success("Research process complete. Final report generated.")
+            # Optionally, display the last active query if available from the completed run
+            if research_state.current_query: # This might be None if loop ended without a query
+                 st.info(f"Last Active Query: {research_state.current_query}")
+        elif research_state.current_query : # Interactive run, query active
+            st.info(f"Current Active Query: {research_state.current_query}")
 
-        # --- Web Search Triggering ---
-        if st.session_state.research_state.current_query and \
-           not st.session_state.research_state.search_results and \
-           not st.session_state.research_state.pending_source_selection:
-            try:
-                st.session_state.messages.append({"role": "assistant", "content": f"Performing web search for: {st.session_state.research_state.current_query}"})
-                st.session_state.research_loop._web_search() # This will set search_results and pending_source_selection
-                st.session_state.messages.append({"role": "assistant", "content": f"Web search completed. Found {len(st.session_state.research_state.search_results) if st.session_state.research_state.search_results else 0} results."})
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error during web search: {e}")
-                st.session_state.messages.append({"role": "assistant", "content": f"Error during web search: {e}"})
 
-        # --- Search Results Display and Selection ---
-        st.markdown("---")
-        st.subheader("2. Source Selection")
-        if st.session_state.research_state.pending_source_selection and st.session_state.research_state.search_results:
-            st.info("Select sources from the search results below to include in the summary.")
-
-            # Ensure selected_sources is initialized for this selection instance
-            # This check helps if we re-enter this state without clearing selected_sources from a previous error.
-            # However, st.session_state.selected_sources is globally initialized now.
-            # We might want to clear it specifically when pending_source_selection becomes true if it's not empty.
-            # For now, relying on the global init and clearing after "Summarize" button.
-
-            for i, result in enumerate(st.session_state.research_state.search_results):
-                checkbox_key = f"source_{result['link']}" # Use link as it's more likely unique
-                # Initialize checkbox state if not already set
-                if checkbox_key not in st.session_state.selected_sources:
-                     st.session_state.selected_sources[checkbox_key] = False # Default to not selected
-
-                is_selected = st.checkbox(
-                    f"{result['title']}",
-                    key=checkbox_key,
-                    value=st.session_state.selected_sources[checkbox_key], # Persist state across reruns
-                    on_change=lambda key=checkbox_key: st.session_state.selected_sources.update({key: st.session_state[key]})
+        # --- Interactive Controls (Query Management & Source Selection) ---
+        # These sections are primarily for interactive mode.
+        # If final_report exists, these steps are already done.
+        if st.session_state.research_loop and st.session_state.research_loop.interactive_mode and not research_state.final_report:
+            st.markdown("---")
+            st.subheader("1. Query Management")
+            if research_state.proposed_query:
+                edited_query = st.text_area(
+                    "Edit proposed query if needed:",
+                    value=research_state.proposed_query,
+                    key="edited_query_text_area",
+                    height=100
                 )
-                # st.session_state.selected_sources[checkbox_key] = is_selected # Update based on interaction
-                st.caption(f"{result['link']}")
-                st.markdown(f"<small>{result['snippet']}</small>", unsafe_allow_html=True)
-                st.markdown("---")
+                if st.button("Approve and Use Query", key="approve_query_button"):
+                    if edited_query:
+                        research_state.current_query = edited_query
+                        research_state.proposed_query = None
+                        research_state.search_results = None # Reset for new search
+                        research_state.pending_source_selection = False
+                        st.session_state.messages.append({"role": "user", "content": f"Query approved: {edited_query}"})
+                        st.rerun()
+                    else:
+                        st.warning("Cannot approve an empty query.")
+            elif research_state.current_query:
+                st.success(f"Query approved and active: {research_state.current_query}")
+            else:
+                st.info("No query proposed or active. Waiting for initial query generation or next step.")
 
-            if st.button("Summarize Selected Sources", key="summarize_button"):
-                actual_selected_results = []
-                for result in st.session_state.research_state.search_results:
-                    if st.session_state.selected_sources.get(f"source_{result['link']}", False):
-                        actual_selected_results.append(result)
+            # --- Web Search Triggering (Interactive) ---
+            if research_state.current_query and \
+               not research_state.search_results and \
+               not research_state.pending_source_selection:
+                try:
+                    st.session_state.messages.append({"role": "assistant", "content": f"Performing web search for: {research_state.current_query}"})
+                    st.session_state.research_loop._web_search()
+                    st.session_state.messages.append({"role": "assistant", "content": f"Web search completed. Found {len(research_state.search_results) if research_state.search_results else 0} results."})
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error during web search: {e}")
+                    st.session_state.messages.append({"role": "assistant", "content": f"Error during web search: {e}"})
 
-                if actual_selected_results:
-                    st.session_state.messages.append({"role": "user", "content": f"Summarizing {len(actual_selected_results)} selected sources..."})
-                    try:
-                        st.session_state.research_loop._summarize_sources(selected_results=actual_selected_results)
-                        st.session_state.messages.append({"role": "assistant", "content": "Summarization complete."})
-                        # research_loop._summarize_sources now sets pending_source_selection to False
-                    except Exception as e:
-                        st.error(f"Error during summarization: {e}")
-                        st.session_state.messages.append({"role": "assistant", "content": f"Error during summarization: {e}"})
-                else:
-                    st.warning("No sources selected for summarization. Click checkboxes to select.")
-                    # User clicked "Summarize" but selected nothing, so we are no longer pending selection for THIS set of results.
-                    # However, if they want to select again from the same results, we should not set pending_source_selection to False here.
-                    # The _summarize_sources method in research_loop handles setting pending_source_selection to False.
-                    # If no sources selected, we just don't call it.
-                    # Let's add a message and keep pending_source_selection True.
-                    st.session_state.messages.append({"role": "assistant", "content": "No sources were selected. Please select at least one source to proceed with summarization."})
+            # --- Search Results Display and Selection (Interactive) ---
+            st.markdown("---")
+            st.subheader("2. Source Selection")
+            if research_state.pending_source_selection and research_state.search_results:
+                st.info("Select sources from the search results below to include in the summary.")
+                for i, result in enumerate(research_state.search_results):
+                    checkbox_key = f"source_{result['link']}"
+                    if checkbox_key not in st.session_state.selected_sources:
+                         st.session_state.selected_sources[checkbox_key] = False
+                    is_selected = st.checkbox(
+                        f"{result['title']}",
+                        key=checkbox_key,
+                        value=st.session_state.selected_sources[checkbox_key],
+                        on_change=lambda key=checkbox_key: st.session_state.selected_sources.update({key: st.session_state[key]})
+                    )
+                    st.caption(f"{result['link']}")
+                    st.markdown(f"<small>{result['snippet']}</small>", unsafe_allow_html=True)
+                    st.markdown("---")
+
+                if st.button("Summarize Selected Sources", key="summarize_button"):
+                    actual_selected_results = [res for res in research_state.search_results if st.session_state.selected_sources.get(f"source_{res['link']}", False)]
+                    if actual_selected_results:
+                        st.session_state.messages.append({"role": "user", "content": f"Summarizing {len(actual_selected_results)} selected sources..."})
+                        try:
+                            st.session_state.research_loop._summarize_sources(selected_results=actual_selected_results)
+                            st.session_state.messages.append({"role": "assistant", "content": "Summarization complete."})
+                        except Exception as e:
+                            st.error(f"Error during summarization: {e}")
+                            st.session_state.messages.append({"role": "assistant", "content": f"Error during summarization: {e}"})
+                    else:
+                        st.warning("No sources selected. Click checkboxes to select.")
+                        st.session_state.messages.append({"role": "assistant", "content": "No sources were selected. Please select at least one source."})
+                    st.session_state.selected_sources = {} # Clear selections
+                    st.rerun()
+            elif research_state.search_results and not research_state.pending_source_selection:
+                 st.success("Sources processed. Ready for next step or reflection.")
+        elif research_state.final_report: # For completed non-interactive runs
+            st.markdown("---")
+            st.info("Research was run in automated mode. Interactive steps like query approval and source selection were bypassed.")
 
 
-                # Clear selection dict for next round, regardless of whether summarization happened or not,
-                # as the user has "submitted" their selection (or lack thereof) for this batch.
-                st.session_state.selected_sources = {}
-                st.rerun()
-        elif st.session_state.research_state.search_results and not st.session_state.research_state.pending_source_selection:
-             st.success("Sources have been processed (summarized or skipped). Ready for next reflection or new query.")
-
-
-        # --- Summary Display ---
+        # --- Summary Display (Common for both modes) ---
         st.markdown("---")
         st.subheader("3. Research Summaries")
-        if st.session_state.research_state.new_information:
-            st.markdown("#### Latest Findings:")
-            st.info(st.session_state.research_state.new_information)
-
-        if st.session_state.research_state.accumulated_summary:
-            with st.expander("View Accumulated Research Summary"):
-                st.markdown(st.session_state.research_state.accumulated_summary)
-        else:
-            st.info("No summary available yet.")
+        if research_state.final_report: # If final report exists, show it primarily
+            with st.expander("View Final Research Report", expanded=True):
+                st.markdown(research_state.final_report)
+        else: # Otherwise, show ongoing summary information
+            if research_state.new_information:
+                st.markdown("#### Latest Findings:")
+                st.info(research_state.new_information)
+            if research_state.accumulated_summary:
+                with st.expander("View Accumulated Research Summary"):
+                    st.markdown(research_state.accumulated_summary)
+            else:
+                st.info("No summary available yet.")
 
         st.markdown("---")
         st.subheader("4. Knowledge Graph")
-        if st.session_state.research_state and \
-           st.session_state.research_state.knowledge_graph_nodes and \
-           st.session_state.research_state.knowledge_graph_edges:
-
+        if research_state and research_state.knowledge_graph_nodes: # Check if nodes exist
             nodes = []
             edges = []
-
-            for node_data in st.session_state.research_state.knowledge_graph_nodes:
+            for node_data in research_state.knowledge_graph_nodes:
                 nodes.append(Node(id=node_data['id'],
                                   label=node_data['label'],
-                                  # title=node_data.get('type', 'Unknown'), # Add type to tooltip
-                                  shape="box", # Default shape
-                                  color="lightblue" # Default color
-                                 )) # You can add more properties like size, shape, color based on type
-
-            for edge_data in st.session_state.research_state.knowledge_graph_edges:
-                edges.append(Edge(source=edge_data['source'],
-                                  target=edge_data['target'],
-                                  label=edge_data.get('label', ''),
-                                  color="gray"
+                                  shape="box",
+                                  color="lightblue"
                                  ))
+            if research_state.knowledge_graph_edges: # Edges might be empty
+                for edge_data in research_state.knowledge_graph_edges:
+                    edges.append(Edge(source=edge_data['source'],
+                                      target=edge_data['target'],
+                                      label=edge_data.get('label', ''),
+                                      color="gray"
+                                     ))
 
-            # Define Agraph configuration
-            # https://github.com/ChrisChs/streamlit-agraph/blob/master/README.md?plain=1#L104
-            # https://visjs.github.io/vis-network/docs/network/layout.html
-            config_builder = Config(
-                width=750, # Adjust as needed
-                height=600, # Adjust as needed
-                directed=True,
-                physics=True, # Enable physics for better layout
-                hierarchical=False, # Set to True for hierarchical layout if desired
-                # layoutAlgorithm='barnesHut', # 'barnesHut', 'forceAtlas2Based', 'repulsion', 'hierarchicalRepulsion'
-                # nodeHighlightBehavior=True,
-                # highlightColor="#F7A7A6",
-                # collapsable=True,
-                # node={'labelProperty':'label'},
-                # link={'labelProperty':'label', 'renderLabel':True},
-                # **kwargs
-            )
-            config = config_builder.build()
-
-
-            if nodes and edges:
+            if nodes: # Only proceed if there are nodes
+                config_builder = Config(
+                    width=750, height=600, directed=True, physics=True, hierarchical=False,
+                    # **kwargs
+                )
+                config = config_builder.build()
                 try:
-                    # Note: st_agraph was an old name, now it's just agraph directly
-                    return_value = agraph(nodes=nodes, edges=edges, config=config)
-                    if return_value:
-                        st.write("Selected node:", return_value)
+                    agraph(nodes=nodes, edges=edges, config=config) # Display graph, ignore return value for now
                 except Exception as e:
                     st.error(f"Error rendering knowledge graph: {e}")
-                    st.error("Please ensure Graphviz is installed on your system if using 'dot' or other Graphviz layouts directly with older versions or certain configurations, though streamlit-agraph typically uses vis.js which is browser-based.")
-            elif nodes: # Only nodes, no edges
-                 st.info("Knowledge graph has nodes but no edges defined yet.")
-                 try:
-                    return_value = agraph(nodes=nodes, edges=[], config=config)
-                    if return_value:
-                        st.write("Selected node:", return_value)
-                 except Exception as e:
-                    st.error(f"Error rendering knowledge graph nodes: {e}")
-            else: # No nodes (and thus no edges either)
-                st.info("No knowledge graph data to display. Nodes and edges lists are empty.")
+            else: # No nodes to display
+                st.info("No knowledge graph data to display. Nodes list is empty.")
+        elif research_state: # research_state exists but no KG nodes
+             st.info("Knowledge graph will appear here after information extraction. No graph data generated yet.")
+        # else: # research_state itself is None, already handled by outer if/else for "Start research..."
 
-        elif st.session_state.research_state and \
-             (not st.session_state.research_state.knowledge_graph_nodes or \
-              not st.session_state.research_state.knowledge_graph_edges):
-            st.info("Knowledge graph will appear here after information extraction. Currently, no nodes or edges data available.")
-        else:
-            st.info("Start research to generate a knowledge graph.")
-
-
-    else:
+    else: # st.session_state.research_state is None
         st.info("Enter a research topic and click 'Start Research' to begin.")
 
 if __name__ == "__main__":
