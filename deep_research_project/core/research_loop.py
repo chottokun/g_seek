@@ -4,6 +4,7 @@ from .state import ResearchState, SearchResult, Source # Adjusted import path
 # Placeholder for LLM and Search Tool clients (to be implemented in Step 5)
 from deep_research_project.tools.llm_client import LLMClient # Example
 from deep_research_project.tools.search_client import SearchClient # Example
+from deep_research_project.tools.content_retriever import ContentRetriever # Added import
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ class ResearchLoop:
         try:
             self.llm_client = LLMClient(config)
             self.search_client = SearchClient(config)
+            self.content_retriever = ContentRetriever() # Added content retriever
             logger.info("ResearchLoop initialized successfully.")
             logger.info(f"Configuration: LLM Provider={self.config.LLM_PROVIDER}, Search API={self.config.SEARCH_API}")
             logger.info(f"Initial State: Research Topic='{self.state.research_topic}'")
@@ -36,11 +38,13 @@ class ResearchLoop:
             )
             query = self.llm_client.generate_text(prompt=query_prompt)
         # query = f"Initial search query for {self.state.research_topic}" # Placeholder
-            self.state.initial_query = query
-            self.state.current_query = query
-            logger.info(f"Initial query generated: {self.state.initial_query}")
+            self.state.initial_query = query # Keep initial_query for record
+            self.state.proposed_query = query
+            self.state.current_query = None # Explicitly set current_query to None until approved
+            logger.info(f"Initial query proposed: {self.state.proposed_query}")
         except Exception as e:
             logger.error(f"Error generating initial query: {e}", exc_info=True)
+            self.state.proposed_query = None
             self.state.current_query = None # Stop loop if query generation fails
 
 
@@ -60,43 +64,75 @@ class ResearchLoop:
                 for r in search_results_raw
             ]
 
-            logger.info(f"Found {len(self.state.search_results)} results.")
-            for i, res in enumerate(self.state.search_results):
-                logger.debug(f"  Result {i+1}: {res['title']} ({res['link']})")
+            if self.state.search_results:
+                self.state.pending_source_selection = True
+                logger.info(f"Found {len(self.state.search_results)} results. Pending source selection.")
+                for i, res in enumerate(self.state.search_results):
+                    logger.debug(f"  Result {i+1}: {res['title']} ({res['link']})")
+            else:
+                self.state.pending_source_selection = False
+                logger.info("No results found from web search.")
         except Exception as e:
             logger.error(f"Error during web search for query '{self.state.current_query}': {e}", exc_info=True)
             self.state.search_results = []
+            self.state.pending_source_selection = False
 
 
-    def _summarize_sources(self):
+    def _summarize_sources(self, selected_results: List[SearchResult]):
         logger.debug("Entering _summarize_sources.")
-        if not self.state.search_results: # Check if list is empty or None
-            logger.info("No search results to summarize.")
-            self.state.new_information = None
+        if not selected_results: # Check if list is empty or None
+            logger.info("No selected results to summarize.")
+            self.state.new_information = "No sources were selected for summarization."
+            self.state.pending_source_selection = False # Ensure this is reset if no selection is summarized
             return
 
-        logger.info("Summarizing search results...")
-        try:
-            valid_results = [res for res in self.state.search_results if res.get('snippet')]
-            if not valid_results:
-                logger.warning("No search results with snippets to summarize.")
-                self.state.new_information = "No new information with snippets found to summarize." # Set a message
-                # Still add sources that might have titles/links even without snippets
-                for res in self.state.search_results:
-                    if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
-                        self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
-                return
+        logger.info(f"Attempting to fetch and summarize content for {len(selected_results)} selected search results...")
 
-            combined_text = "\n".join([f"Title: {r['title']}\nLink: {r['link']}\nSnippet: {r['snippet']}" for r in valid_results])
+        if self.state.fetched_content is None:
+            self.state.fetched_content = {}
+
+        for result in selected_results:
+            link = result['link']
+            if link not in self.state.fetched_content or not self.state.fetched_content[link]: # Fetch if not already fetched or empty
+                logger.info(f"Fetching full text for: {link}")
+                full_text = self.content_retriever.retrieve_and_extract(link)
+                if full_text:
+                    self.state.fetched_content[link] = full_text
+                    logger.debug(f"Successfully fetched text for {link} (length: {len(full_text)}).")
+                else:
+                    logger.warning(f"Failed to fetch full text for {link}. Using snippet as fallback.")
+                    self.state.fetched_content[link] = result.get('snippet', '') # Use snippet or empty string
+
+        texts_to_summarize = []
+        for r in selected_results:
+            content = self.state.fetched_content.get(r['link'])
+            if content: # Only include if content (either full or snippet fallback) exists
+                texts_to_summarize.append(f"Source URL: {r['link']}\nTitle: {r['title']}\nContent:\n{content}")
+
+        if not texts_to_summarize:
+            logger.warning("No content (neither fetched nor snippet) available for any selected sources.")
+            self.state.new_information = "Could not retrieve or find content for any of the selected sources."
+            # Still update sources_gathered as the user intended to select these
+            for res in selected_results:
+                if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
+                    self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
+            self.state.pending_source_selection = False
+            return
+
+        combined_text = "\n\n---\n\n".join(texts_to_summarize)
+
+        if len(combined_text) > 100000: # Configurable threshold might be better
+            logger.warning(f"Combined text for summarization is very long: {len(combined_text)} chars. May exceed LLM context limit.")
+
+        try:
             summary_prompt = f"Summarize the following information relevant to the query '{self.state.current_query}':\n{combined_text}"
             new_summary = self.llm_client.generate_text(prompt=summary_prompt)
 
-        #new_summary = f"This is a summary of new information found for query '{self.state.current_query}'." # Placeholder
             self.state.new_information = new_summary
             self.state.accumulated_summary += f"\n\n## Findings for query: {self.state.current_query}\n{new_summary}"
 
-        # Update sources gathered
-            for res in self.state.search_results: # Log all sources found in search, even if snippet was empty for summary
+            # Update sources gathered from the selected results (already done if no content was found)
+            for res in selected_results:
                 if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
                     self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
 
@@ -105,6 +141,8 @@ class ResearchLoop:
         except Exception as e:
             logger.error(f"Error summarizing sources for query '{self.state.current_query}': {e}", exc_info=True)
             self.state.new_information = "Error occurred during summary generation."
+        finally:
+            self.state.pending_source_selection = False # Summarization attempt made, selection process is over
 
 
     def _reflect_on_summary(self):
@@ -149,28 +187,35 @@ class ResearchLoop:
 
             if evaluation == "CONCLUDE":
                 logger.info("Reflection evaluation is CONCLUDE. Terminating research loop.")
+                self.state.proposed_query = None
                 self.state.current_query = None
             elif evaluation == "MODIFY_TOPIC":
-                logger.info("Reflection evaluation is MODIFY_TOPIC. Current query will be updated. Deeper topic modification is out of scope for now.")
+                logger.info("Reflection evaluation is MODIFY_TOPIC. A new query will be proposed.")
                 if next_query:
-                    self.state.current_query = f"Refined Topic Query: {next_query}" # Simplified handling
-                    logger.info(f"New query based on topic modification suggestion: {self.state.current_query}")
+                    self.state.proposed_query = f"Refined Topic Query: {next_query}" # Simplified handling
+                    self.state.current_query = None # Ensure current_query is cleared until approval
+                    logger.info(f"New query proposed based on topic modification: {self.state.proposed_query}")
                 else:
                     logger.warning("MODIFY_TOPIC suggested, but no new query provided by LLM. Concluding research.")
+                    self.state.proposed_query = None
                     self.state.current_query = None
             elif evaluation == "CONTINUE":
                 if next_query:
-                    self.state.current_query = next_query
-                    logger.info(f"Continuing with new query: {self.state.current_query}")
+                    self.state.proposed_query = next_query
+                    self.state.current_query = None # Ensure current_query is cleared until approval
+                    logger.info(f"Continuing with proposed query: {self.state.proposed_query}")
                 else:
                     logger.info("Reflection evaluation is CONTINUE, but no next query provided. Terminating research loop.")
+                    self.state.proposed_query = None
                     self.state.current_query = None
             else: # Handles "ERROR" or any unexpected evaluation
                 logger.warning(f"Reflection evaluation was '{evaluation}'. Terminating research due to unclear direction or error.")
+                self.state.proposed_query = None
                 self.state.current_query = None
 
         except Exception as e:
             logger.error(f"Error during reflection and next query generation: {e}", exc_info=True)
+            self.state.proposed_query = None
             self.state.current_query = None # Stop loop on error
 
 
@@ -226,13 +271,29 @@ class ResearchLoop:
 
         self._generate_initial_query()
 
+        # This loop structure will be more heavily driven by Streamlit UI interactions eventually.
+        # For now, if a current_query is set (e.g., by direct script or future UI that skips proposal),
+        # it can still run. The pending_source_selection flag will gate summarization.
         while self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS and self.state.current_query:
             logger.info(f"--- Starting Loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS} ---")
-            self._web_search()
-            self._summarize_sources()
+
+            if not self.state.pending_source_selection: # Only search if not waiting for selection
+                self._web_search()
+
+            # Temporary shim for run_loop to pass all results to _summarize_sources
+            # In Streamlit, this will be driven by user selection.
+            if self.state.pending_source_selection: # Check if search results are pending selection
+                logger.info("Web search complete, results pending source selection (run_loop bypass).")
+                # This is where Streamlit app would take over for selection.
+                # For this non-interactive run_loop, we'll "auto-select" all for now.
+                temp_selected_results = self.state.search_results if self.state.search_results else []
+                self._summarize_sources(selected_results=temp_selected_results)
+                # self.state.pending_source_selection should be set to False within _summarize_sources
+
             self.state.completed_loops += 1
-            if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS and self.state.current_query: # check current_query again
-                 self._reflect_on_summary()
+            if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS and self.state.current_query:
+                 self._reflect_on_summary() # Generates proposed_query, clears current_query
+                 # Loop will likely break here if current_query is not reset by an external agent (UI)
             elif self.state.current_query is None: # Query was set to None by a failing step or reflection
                 logger.info("Current query is None, terminating loop early.")
             else: # Max loops reached
