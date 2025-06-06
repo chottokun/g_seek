@@ -350,16 +350,29 @@ class ResearchLoop:
         logger.info("Reflecting on summary, evaluating research direction, and generating next query...")
         try:
             reflection_prompt = (
-                f"Current research topic: {self.state.research_topic}\n"
-                f"Accumulated summary so far:\n{self.state.accumulated_summary}\n\n"
+                f"Original Research Topic: {self.state.research_topic}\n\n"
+                f"Current Accumulated Summary (based on previous search queries):\n{self.state.accumulated_summary}\n\n"
+                f"Your task is to analyze the \"Current Accumulated Summary\" in the context of the \"Original Research Topic\".\n"
                 f"Instructions:\n"
-                f"1. Evaluate the current research direction. Available evaluations are: CONTINUE, MODIFY_TOPIC, CONCLUDE.\n"
-                f"2. Identify key knowledge gaps or areas that need further investigation based on the summary.\n"
-                f"3. Suggest a new, specific search query (max 12 words) to address these gaps. If evaluation is CONCLUDE, the query should be 'None'.\n"
-                f"4. If the topic seems well-covered or further investigation is unproductive, evaluate as CONCLUDE.\n"
-                f"5. Format your response exactly as follows:\n"
-                f"EVALUATION: <CONTINUE|MODIFY_TOPIC|CONCLUDE>\n"
-                f"QUERY: <Your new search query or None>\n\n"
+                f"1. Evaluate if the \"Current Accumulated Summary\" has sufficiently explored the \"Original Research Topic\". "
+                f"Possible evaluations are: CONTINUE, MODIFY_QUERY, CONCLUDE.\n"
+                f"   - Use CONCLUDE if the \"Original Research Topic\" seems well-covered by the summary or if further investigation "
+                f"seems unlikely to yield more relevant information *for the Original Research Topic*.\n"
+                f"   - Use CONTINUE if the summary is relevant but needs more depth *on the Original Research Topic*.\n"
+                f"   - Use MODIFY_QUERY if the summary suggests a closely related sub-topic that is critical for understanding "
+                f"the \"Original Research Topic\" but requires a slightly different query angle. The new query must still "
+                f"directly serve the \"Original Research Topic\".\n\n"
+                f"2. Based on your evaluation, and strictly focusing on advancing the understanding of the \"Original Research Topic\":\n"
+                f"   - If CONTINUE or MODIFY_QUERY: Identify key knowledge gaps in the \"Current Accumulated Summary\" "
+                f"*specifically concerning the Original Research Topic*.\n"
+                f"   - Suggest a new, specific search query (max 12 words) that directly targets these gaps to better "
+                f"understand the \"Original Research Topic\".\n"
+                f"   - If CONCLUDE: The new search query should be 'None'.\n\n"
+                f"3. Ensure the new search query is not a repeat of previous queries (if known) and is a logical next step "
+                f"to deepen insights *about the Original Research Topic*. Do not suggest queries that deviate to unrelated topics.\n\n"
+                f"Format your response exactly as follows:\n"
+                f"EVALUATION: <CONTINUE|MODIFY_QUERY|CONCLUDE>\n"
+                f"QUERY: <Your new search query, strictly related to the Original Research Topic, or None>\n\n"
                 f"This is for reflection cycle {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS}."
             )
 
@@ -389,14 +402,14 @@ class ResearchLoop:
                 logger.info("Reflection evaluation is CONCLUDE. Terminating research loop.")
                 self.state.proposed_query = None
                 self.state.current_query = None
-            elif evaluation == "MODIFY_TOPIC":
-                logger.info("Reflection evaluation is MODIFY_TOPIC. A new query will be proposed.")
+            elif evaluation == "MODIFY_QUERY": # Changed from MODIFY_TOPIC
+                logger.info("Reflection evaluation is MODIFY_QUERY. A new query will be proposed.")
                 if next_query:
-                    self.state.proposed_query = f"Refined Topic Query: {next_query}" # Simplified handling
+                    self.state.proposed_query = next_query # Propose the query directly
                     self.state.current_query = None # Ensure current_query is cleared until approval
-                    logger.info(f"New query proposed based on topic modification: {self.state.proposed_query}")
+                    logger.info(f"New query proposed based on query modification: {self.state.proposed_query}")
                 else:
-                    logger.warning("MODIFY_TOPIC suggested, but no new query provided by LLM. Concluding research.")
+                    logger.warning("MODIFY_QUERY suggested, but no new query provided by LLM. Concluding research.")
                     self.state.proposed_query = None
                     self.state.current_query = None
             elif evaluation == "CONTINUE":
