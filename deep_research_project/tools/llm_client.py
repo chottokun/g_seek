@@ -83,7 +83,7 @@ class LLMClient:
         # Ollama LLM 実際の呼び出し
         if self.config.LLM_PROVIDER == "ollama":
             logger.info(f"LLMClient generating text with Ollama for prompt: '{prompt[:80]}...'")
-            return self.llm(prompt)
+            return self.llm(prompt, max_tokens=self.config.LLM_MAX_TOKENS)
 
         logger.error("Actual LLM client logic is not implemented yet.")
         raise NotImplementedError("Actual LLM client logic is not implemented yet.")
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         class MockConfiguration:
             LLM_PROVIDER = "placeholder_llm"
             LLM_MODEL = "test_model"
-                LLM_MAX_TOKENS = 256 # Example value for testing
+            LLM_MAX_TOKENS = 256 # Example value for testing
             OPENAI_API_KEY = None # Not needed for placeholder
             LOG_LEVEL = "DEBUG"
 

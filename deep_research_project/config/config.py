@@ -9,9 +9,9 @@ class Configuration:
         # LLM Configuration
         self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "placeholder_llm")
         self.LLM_MODEL = os.getenv("LLM_MODEL", "default_model_name")
-        self.LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", None)
+        self.LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "256"))
 
         # Search Configuration
         self.SEARCH_API = os.getenv("SEARCH_API", "duckduckgo")
