@@ -13,6 +13,7 @@ class ResearchState:
     def __init__(self, research_topic: str):
         self.research_topic: str = research_topic
         self.initial_query: Optional[str] = None
+        self.proposed_query: Optional[str] = None # Added this line
         self.current_query: Optional[str] = None
         self.search_results: Optional[List[SearchResult]] = None
         self.new_information: Optional[str] = None # Summary of the latest search results
@@ -20,18 +21,23 @@ class ResearchState:
         self.accumulated_summary: str = "" # Initialize as empty string
         self.completed_loops: int = 0
         self.final_report: Optional[str] = None
+        self.pending_source_selection: bool = False # Added this line
+        self.fetched_content: Optional[Dict[str, str]] = None # Added this line
 
     def __str__(self):
         return (
             f"ResearchState:\n"
             f"  Topic: {self.research_topic}\n"
             f"  Initial Query: {self.initial_query}\n"
+            f"  Proposed Query: {self.proposed_query}\n" # Added this line
             f"  Current Query: {self.current_query}\n"
             f"  Search Results Count: {len(self.search_results) if self.search_results else 0}\n"
             f"  New Information: {'Yes' if self.new_information else 'No'}\n"
             f"  Sources Gathered Count: {len(self.sources_gathered)}\n"
             f"  Accumulated Summary Length: {len(self.accumulated_summary)}\n"
             f"  Completed Loops: {self.completed_loops}\n"
+            f"  Pending Source Selection: {self.pending_source_selection}\n" # Added this line
+            f"  Fetched Content Count: {len(self.fetched_content) if self.fetched_content else 0}\n" # Added this line
             f"  Final Report: {'Generated' if self.final_report else 'Not yet generated'}"
         )
 
