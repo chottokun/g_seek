@@ -233,13 +233,13 @@ def main():
                                      ))
 
             if nodes: # Only proceed if there are nodes
-                config_builder = Config(
+                agraph_config = Config(
                     width=750, height=600, directed=True, physics=True, hierarchical=False,
                     # **kwargs
                 )
-                config = config_builder.build()
+                # config = config_builder.build() # This line caused the error
                 try:
-                    agraph(nodes=nodes, edges=edges, config=config) # Display graph, ignore return value for now
+                    agraph(nodes=nodes, edges=edges, config=agraph_config) # Display graph, ignore return value for now
                 except Exception as e:
                     st.error(f"Error rendering knowledge graph: {e}")
             else: # No nodes to display
