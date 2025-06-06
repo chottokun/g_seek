@@ -50,7 +50,7 @@ def main():
                     st.session_state.messages.append({"role": "assistant", "content": "Generating initial query..."})
                     st.session_state.research_loop._generate_initial_query()
                     st.session_state.messages.append({"role": "assistant", "content": f"Initial query proposed: {st.session_state.research_state.proposed_query}"})
-                    st.experimental_rerun() # Rerun to update UI with proposed query
+                    st.rerun() # Rerun to update UI with proposed query
 
                 except Exception as e:
                     st.error(f"Error during initialization or initial query generation: {e}")
@@ -100,7 +100,7 @@ def main():
                     st.session_state.research_state.search_results = None
                     st.session_state.research_state.pending_source_selection = False
                     st.session_state.messages.append({"role": "user", "content": f"Query approved: {edited_query}"})
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.warning("Cannot approve an empty query.")
         elif st.session_state.research_state.current_query:
@@ -116,7 +116,7 @@ def main():
                 st.session_state.messages.append({"role": "assistant", "content": f"Performing web search for: {st.session_state.research_state.current_query}"})
                 st.session_state.research_loop._web_search() # This will set search_results and pending_source_selection
                 st.session_state.messages.append({"role": "assistant", "content": f"Web search completed. Found {len(st.session_state.research_state.search_results) if st.session_state.research_state.search_results else 0} results."})
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Error during web search: {e}")
                 st.session_state.messages.append({"role": "assistant", "content": f"Error during web search: {e}"})
@@ -178,7 +178,7 @@ def main():
                 # Clear selection dict for next round, regardless of whether summarization happened or not,
                 # as the user has "submitted" their selection (or lack thereof) for this batch.
                 st.session_state.selected_sources = {}
-                st.experimental_rerun()
+                st.rerun()
         elif st.session_state.research_state.search_results and not st.session_state.research_state.pending_source_selection:
              st.success("Sources have been processed (summarized or skipped). Ready for next reflection or new query.")
 

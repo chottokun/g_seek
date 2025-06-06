@@ -6,6 +6,7 @@ from deep_research_project.tools.llm_client import LLMClient # Example
 from deep_research_project.tools.search_client import SearchClient # Example
 from deep_research_project.tools.content_retriever import ContentRetriever # Added import
 import logging
+from typing import List
 
 logger = logging.getLogger(__name__)
 
