@@ -48,7 +48,7 @@ class LLMClient:
         logger.debug(f"[LLMClient __init__] self.llm is: '{self.llm}' (Type: {type(self.llm)})")
 
 
-    def generate_text(self, prompt: str, temperature: float = 0.7, max_tokens: int = 150) -> str:
+    def generate_text(self, prompt: str, temperature: float = 0.7) -> str:
         logger.debug(f"[LLMClient generate_text] self.llm is: '{self.llm}' (Type: {type(self.llm)})")
         if self.llm == "PlaceholderLLMInstance":
             # Simulate LLM response for placeholder
@@ -77,7 +77,7 @@ class LLMClient:
         # OpenAI LLM 実際の呼び出し
         if self.config.LLM_PROVIDER == "openai":
             logger.info(f"LLMClient generating text with OpenAI for prompt: '{prompt[:80]}...'")
-            response = self.llm.invoke(prompt, temperature=temperature, max_tokens=max_tokens)
+            response = self.llm.invoke(prompt, temperature=temperature, max_tokens=self.config.LLM_MAX_TOKENS)
             return response.content if hasattr(response, 'content') else str(response)
 
         # Ollama LLM 実際の呼び出し
@@ -98,6 +98,7 @@ if __name__ == "__main__":
         class MockConfiguration:
             LLM_PROVIDER = "placeholder_llm"
             LLM_MODEL = "test_model"
+                LLM_MAX_TOKENS = 256 # Example value for testing
             OPENAI_API_KEY = None # Not needed for placeholder
             LOG_LEVEL = "DEBUG"
 
