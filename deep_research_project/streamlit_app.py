@@ -25,10 +25,19 @@ def main():
         st.session_state.messages = [] # For displaying status or logs
     if "selected_sources" not in st.session_state: # For search result selection
         st.session_state.selected_sources = {}
+    if "run_interactive_in_streamlit" not in st.session_state:
+        st.session_state.run_interactive_in_streamlit = False # Default to OFF
 
     # Sidebar for controls
     with st.sidebar:
         st.header("Controls")
+        st.session_state.run_interactive_in_streamlit = st.toggle(
+            "Run Interactively?",
+            value=st.session_state.run_interactive_in_streamlit,
+            key="interactive_mode_toggle",
+            help="If ON, the system will pause for your approval for queries and source selections. If OFF, it will run automatically."
+        )
+        st.markdown("---") # Add a separator
         research_topic_input = st.text_input(
             "Enter Research Topic:",
             value=st.session_state.research_topic,
@@ -43,9 +52,15 @@ def main():
                 # Initialize Configuration and ResearchState
                 try:
                     config = Configuration()
+                    # Override INTERACTIVE_MODE based on Streamlit toggle
+                    config.INTERACTIVE_MODE = st.session_state.run_interactive_in_streamlit
+
                     st.session_state.research_state = ResearchState(research_topic=st.session_state.research_topic)
+                    # Pass the modified config to ResearchLoop
                     st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state)
-                    st.session_state.messages.append({"role": "assistant", "content": "Research initialized."})
+
+                    mode_message = "interactively" if config.INTERACTIVE_MODE else "non-interactively (automated)"
+                    st.session_state.messages.append({"role": "assistant", "content": f"Research initialized to run {mode_message}."})
 
                     # Trigger initial query generation
                     st.session_state.messages.append({"role": "assistant", "content": "Generating initial query..."})
