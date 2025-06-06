@@ -40,10 +40,9 @@ def main():
     logger.info(f"  Max Loops: {config.MAX_RESEARCH_LOOPS}")
     logger.info(f"  Log Level: {config.LOG_LEVEL}")
 
-
     # 2. Initialize Research State
     # TODO: Later, this topic could come from user input (e.g., command line argument or Streamlit UI)
-    research_topic = "The impact of AI on modern industries"
+    research_topic = "The impact of generative AI on modern industries"
     logger.info(f"Initializing research state with topic: {research_topic}")
     state = ResearchState(research_topic=research_topic)
     logger.info(f"Research topic: {state.research_topic}")

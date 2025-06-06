@@ -11,6 +11,7 @@ class Configuration:
         self.LLM_MODEL = os.getenv("LLM_MODEL", "default_model_name")
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", None)
+        self.LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "256"))
 
         # Search Configuration
         self.SEARCH_API = os.getenv("SEARCH_API", "duckduckgo")
@@ -38,6 +39,7 @@ class Configuration:
             f"Configuration:\n"
             f"  LLM Provider: {self.LLM_PROVIDER}\n"
             f"  LLM Model: {self.LLM_MODEL}\n"
+            f"  LLM Max Tokens: {self.LLM_MAX_TOKENS}\n"
             f"  Search API: {self.SEARCH_API}\n"
             f"  Max Research Loops: {self.MAX_RESEARCH_LOOPS}\n"
             f"  Max Search Results: {self.MAX_SEARCH_RESULTS_PER_QUERY}\n"

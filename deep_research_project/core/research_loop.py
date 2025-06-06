@@ -109,24 +109,66 @@ class ResearchLoop:
 
     def _reflect_on_summary(self):
         logger.debug("Entering _reflect_on_summary.")
-        logger.info("Reflecting on summary and generating next query...")
+        logger.info("Reflecting on summary, evaluating research direction, and generating next query...")
         try:
             reflection_prompt = (
-               f"Current research topic: {self.state.research_topic}\n"
-               f"Accumulated summary so far:\n{self.state.accumulated_summary}\n\n"
-               f"Based on the summary, identify key knowledge gaps or areas that need further investigation. "
-               f"Generate a new, specific search query to address these gaps. If the topic seems well-covered, output 'None'. "
-               f"Your search query must be concise and specific, no more than 12 words. Output only the query itself, nothing else. "
-               f"This is for loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS}."
+                f"Current research topic: {self.state.research_topic}\n"
+                f"Accumulated summary so far:\n{self.state.accumulated_summary}\n\n"
+                f"Instructions:\n"
+                f"1. Evaluate the current research direction. Available evaluations are: CONTINUE, MODIFY_TOPIC, CONCLUDE.\n"
+                f"2. Identify key knowledge gaps or areas that need further investigation based on the summary.\n"
+                f"3. Suggest a new, specific search query (max 12 words) to address these gaps. If evaluation is CONCLUDE, the query should be 'None'.\n"
+                f"4. If the topic seems well-covered or further investigation is unproductive, evaluate as CONCLUDE.\n"
+                f"5. Format your response exactly as follows:\n"
+                f"EVALUATION: <CONTINUE|MODIFY_TOPIC|CONCLUDE>\n"
+                f"QUERY: <Your new search query or None>\n\n"
+                f"This is for reflection cycle {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS}."
             )
-            next_query = self.llm_client.generate_text(prompt=reflection_prompt)
 
-            if next_query.strip().lower() == "none":
+            llm_response = self.llm_client.generate_text(prompt=reflection_prompt)
+            logger.debug(f"LLM reflection response:\n{llm_response}")
+
+            # Parse LLM response
+            evaluation = "ERROR" # Default in case of parsing failure
+            next_query = None
+
+            try:
+                lines = llm_response.strip().split('\n')
+                for line in lines:
+                    if line.startswith("EVALUATION:"):
+                        evaluation = line.split(":", 1)[1].strip().upper()
+                    elif line.startswith("QUERY:"):
+                        next_query_str = line.split(":", 1)[1].strip()
+                        if next_query_str.lower() != "none":
+                            next_query = next_query_str
+            except Exception as parse_error:
+                logger.error(f"Error parsing LLM reflection response: {parse_error}. Response was:\n{llm_response}", exc_info=True)
+                # Keep evaluation as "ERROR" and next_query as None
+
+            logger.info(f"Reflection - Evaluation: {evaluation}, Next Query: '{next_query}'")
+
+            if evaluation == "CONCLUDE":
+                logger.info("Reflection evaluation is CONCLUDE. Terminating research loop.")
                 self.state.current_query = None
-                logger.info("Reflection: No further queries needed.")
-            else:
-                self.state.current_query = next_query
-                logger.info(f"Next query: {self.state.current_query}")
+            elif evaluation == "MODIFY_TOPIC":
+                logger.info("Reflection evaluation is MODIFY_TOPIC. Current query will be updated. Deeper topic modification is out of scope for now.")
+                if next_query:
+                    self.state.current_query = f"Refined Topic Query: {next_query}" # Simplified handling
+                    logger.info(f"New query based on topic modification suggestion: {self.state.current_query}")
+                else:
+                    logger.warning("MODIFY_TOPIC suggested, but no new query provided by LLM. Concluding research.")
+                    self.state.current_query = None
+            elif evaluation == "CONTINUE":
+                if next_query:
+                    self.state.current_query = next_query
+                    logger.info(f"Continuing with new query: {self.state.current_query}")
+                else:
+                    logger.info("Reflection evaluation is CONTINUE, but no next query provided. Terminating research loop.")
+                    self.state.current_query = None
+            else: # Handles "ERROR" or any unexpected evaluation
+                logger.warning(f"Reflection evaluation was '{evaluation}'. Terminating research due to unclear direction or error.")
+                self.state.current_query = None
+
         except Exception as e:
             logger.error(f"Error during reflection and next query generation: {e}", exc_info=True)
             self.state.current_query = None # Stop loop on error
@@ -135,20 +177,47 @@ class ResearchLoop:
     def _finalize_summary(self):
         logger.debug("Entering _finalize_summary.")
         logger.info("Finalizing summary...")
-        report_parts = [f"# Research Report: {self.state.research_topic}\n"]
-        report_parts.append("## Accumulated Findings") # Removed \n, added later
-        if self.state.accumulated_summary.strip(): # Add summary only if it's not empty
-            report_parts.append(self.state.accumulated_summary.strip())
+
+        if not self.state.accumulated_summary or self.state.accumulated_summary.isspace():
+            logger.info("Accumulated summary is empty. Reporting no information gathered.")
+            report_content = (
+                f"# Research Report: {self.state.research_topic}\n\n"
+                "No information was gathered during the research process."
+            )
         else:
-            report_parts.append("No information was gathered during the research process.")
+            logger.info("Accumulated summary has content. Generating final report with LLM.")
+            prompt = (
+                f"Research Topic: {self.state.research_topic}\n\n"
+                f"Accumulated Information:\n{self.state.accumulated_summary}\n\n"
+                f"Task: Based on the research topic and the accumulated information, synthesize a comprehensive and detailed report. "
+                f"Ensure all key findings are included, the report is well-organized, and it is presented in a professional tone. "
+                f"The report should be a narrative synthesis of the information, not just a list of summaries."
+            )
+            try:
+                llm_generated_report = self.llm_client.generate_text(prompt=prompt)
+                report_content = f"# Research Report: {self.state.research_topic}\n\n{llm_generated_report}"
+                logger.info("LLM generated the final report content.")
+            except Exception as e:
+                logger.error(f"Error during LLM call for final report generation: {e}", exc_info=True)
+                report_content = (
+                    f"# Research Report: {self.state.research_topic}\n\n"
+                    "## Accumulated Findings\n"
+                    f"{self.state.accumulated_summary.strip()}\n\n"
+                    "## Error\n"
+                    "An error occurred while generating the final synthesized report with the LLM. "
+                    "The above are the raw accumulated findings."
+                )
 
+        # Append sources
+        sources_section = ""
         if self.state.sources_gathered:
-            report_parts.append("\n\n## Sources") # Removed \n, added later
+            sources_list = []
             for i, source in enumerate(self.state.sources_gathered):
-                report_parts.append(f"\n{i+1}. {source['title']} ({source['link']})") # Added \n before each source
+                sources_list.append(f"{i+1}. {source['title']} ({source['link']})")
+            sources_section = "\n\n## Sources\n" + "\n".join(sources_list)
 
-        self.state.final_report = "\n".join(report_parts)
-        logger.info("Final report generated.")
+        self.state.final_report = report_content + sources_section
+        logger.info("Final report constructed.")
         logger.debug(f"Final Report Content (first 200 chars):\n{self.state.final_report[:200]}...")
 
 
