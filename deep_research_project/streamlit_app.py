@@ -360,50 +360,44 @@ def main():
 
             if st.button("Ask Follow-up", key="ask_follow_up_button"):
                 try:
-                    # Inside the global try-except for the button:
-                    print("DEBUG_streamlit_app: 'Ask Follow-up' button clicked (stripped_down_test_v1).")
-                    st.write("DEBUG_streamlit_app: Button click registered (stripped_down_test_v1).")
-                    # All other logic (checking current_follow_up_question, calling answer_follow_up,
-                    # state updates, st.rerun()) should be COMMENTED OUT for this first test.
+                    # print("DEBUG_streamlit_app: 'Ask Follow-up' button clicked (stripped_down_test_v1).") # Can be updated or removed
+                    print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block (test_v2_call_clean_answer_follow_up).")
 
-                    # print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block.")
-                    # if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
-                    #     question = st.session_state.current_follow_up_question
+                    if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
+                        question = st.session_state.current_follow_up_question
+                        print(f"DEBUG_streamlit_app: Follow-up question: {question}")
 
-                    #     answer = "Error: Answer not initialized in button handler" # Default
-                    #     try:
-                    #         # This is the specific try-except around answer_follow_up to be kept
-                    #         if st.session_state.research_loop:
-                    #             answer = st.session_state.research_loop.answer_follow_up(question)
-                    #             print(f"DEBUG_streamlit_app: Back from answer_follow_up. Received: {str(answer)}")
-                    #         else:
-                    #             answer = "Error: research_loop not found in session state."
-                    #             st.error(answer)
-                    #             # print(f"DEBUG_streamlit_app: {answer}") # Removed for cleanup
-                    #     except Exception as e_ans_followup:
-                    #         logger.error(f"Exception when calling answer_follow_up: {e_ans_followup}", exc_info=True)
-                    #         st.error(f"An error occurred while getting the answer: {e_ans_followup}")
-                    #         answer = f"Error during answer_follow_up call: {e_ans_followup}"
+                        answer_from_loop = "DEBUG: answer_from_loop not set." # Default
+                        try:
+                            print("DEBUG_streamlit_app: About to call (clean) answer_follow_up.")
+                            if st.session_state.research_loop: # Ensure research_loop exists
+                                answer_from_loop = st.session_state.research_loop.answer_follow_up(question)
+                                print(f"DEBUG_streamlit_app: Back from (clean) answer_follow_up. Received: {str(answer_from_loop)}")
+                            else:
+                                answer_from_loop = "DEBUG_ERROR: research_loop not in session_state."
+                                print(answer_from_loop)
+                                st.error(answer_from_loop)
 
-                    #     # Restore state updates
-                    #     st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"})
-                    #     st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" })
+                        except Exception as e_ans_followup_call: # Catch errors from the (clean) answer_follow_up call
+                            print(f"DEBUG_streamlit_app: EXCEPTION calling (clean) answer_follow_up: {e_ans_followup_call}")
+                            logger.error(f"Error calling (clean) answer_follow_up: {e_ans_followup_call}", exc_info=True)
+                            answer_from_loop = f"Error from (clean) answer_follow_up call: {e_ans_followup_call}"
+                            st.error(answer_from_loop) # Display error in UI
 
-                    #     if st.session_state.research_state:
-                    #         if not hasattr(st.session_state.research_state, "follow_up_log") or \
-                    #            st.session_state.research_state.follow_up_log is None or \
-                    #            not isinstance(st.session_state.research_state.follow_up_log, list):
-                    #             # This print is a safety check, useful if state gets corrupted.
-                    #             print(f"DEBUG_streamlit_app: follow_up_log was missing or not a list. Re-initializing.")
-                    #             st.session_state.research_state.follow_up_log = []
-                    #         st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)})
+                        st.write(f"DEBUG MODE - Answer from (clean) answer_follow_up: {str(answer_from_loop)}")
 
-                    #     st.session_state.current_follow_up_question = ""
-                    #     print("DEBUG_streamlit_app: State updated. About to st.rerun().")
-                    #     st.rerun() # Unconditional rerun
-                    # else:
-                    #     st.warning("Please enter a follow-up question.")
-                        # print("DEBUG_streamlit_app: Follow-up question was empty.") # Removed this specific one for cleanup
+                        # State updates and st.rerun() remain COMMENTED OUT for this test:
+                        # print("DEBUG_streamlit_app: About to append user question to st.session_state.messages.")
+                        # st.session_state.messages.append(...)
+                        # ... etc. ...
+                        # st.rerun()
+                        print("DEBUG_streamlit_app: End of follow-up logic for this test. State updates and rerun are still disabled.")
+
+                    else:
+                        st.warning("Please enter a follow-up question.")
+                        print("DEBUG_streamlit_app: Follow-up question was empty.")
+
+                    print("DEBUG_streamlit_app: End of button handler (test_v2).")
 
                 except Exception as e_global_handler:
                     st.error(f"A critical error occurred in the follow-up button's operations: {e_global_handler}")
