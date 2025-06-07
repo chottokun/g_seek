@@ -179,6 +179,8 @@ def main():
 
     if st.session_state.research_state:
         research_state = st.session_state.research_state # Alias for convenience
+        logger.debug(f"Re-rendering. Current follow_up_log length: {len(research_state.follow_up_log) if research_state and hasattr(research_state, 'follow_up_log') else 'N/A'}")
+        logger.debug(f"Full research_state on rerender: {research_state}") # Might be verbose
 
         # Display current topic
         st.subheader("Current State:")
@@ -372,16 +374,16 @@ def main():
                             st.error(answer) # Show error in main UI as well
 
                     # Log to sidebar and append to research_state's follow_up_log
-                    logger.info(f"Adding to follow_up_log - Question: {question[:100]}...")
-                    logger.debug(f"Follow-up Question (full): {question}")
-                    logger.info(f"Adding to follow_up_log - Answer: {str(answer)[:200]}...")
-                    logger.debug(f"Follow-up Answer (full): {str(answer)}")
+                    logger.debug(f"Before append, follow_up_log length: {len(st.session_state.research_state.follow_up_log) if st.session_state.research_state else 'N/A'}")
 
                     st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" }) # Ensure answer is str for message
                     if st.session_state.research_state: # Should always be true if we are in this part of UI
                         st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)}) # Ensure answer is str for log
+                        logger.info(f"After append, follow_up_log length: {len(st.session_state.research_state.follow_up_log)}")
+                        logger.debug(f"Current follow_up_log content: {st.session_state.research_state.follow_up_log}")
 
                     st.session_state.current_follow_up_question = "" # Clear input box
+                    logger.info("About to st.rerun() for follow-up.")
                     st.rerun()
                 else:
                     st.warning("Please enter a follow-up question.")
