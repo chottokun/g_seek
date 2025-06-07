@@ -157,24 +157,34 @@ class ResearchLoop:
             for result in selected_results:
                 link = result['link']
                 logger.info(f"Processing source: {link}")
-                if link not in self.state.fetched_content or not self.state.fetched_content[link]:
-                    logger.info(f"Fetching full text for: {link}")
-                    full_text = self.content_retriever.retrieve_and_extract(link)
-                    if full_text:
-                        self.state.fetched_content[link] = full_text
-                        logger.debug(f"Successfully fetched text for {link} (length: {len(full_text)}).")
-                    else:
-                        logger.warning(f"Failed to fetch full text for {link}. Using snippet as fallback.")
-                        self.state.fetched_content[link] = result.get('snippet', '')
+                content_to_use_for_chunking = None
 
-                content = self.state.fetched_content.get(link)
-                if not content or content.isspace():
-                    logger.warning(f"No content available for source: {link}. Skipping.")
+                if self.config.USE_SNIPPETS_ONLY_MODE:
+                    logger.info(f"Snippet-only mode is ON. Using snippet directly for {link}.")
+                    content_to_use_for_chunking = result.get('snippet', '')
+                    # Store the snippet in fetched_content for consistency,
+                    # especially if KG or other future steps might want to know what was processed.
+                    if link not in self.state.fetched_content or not self.state.fetched_content[link]:
+                        self.state.fetched_content[link] = content_to_use_for_chunking
+                else: # Attempt to fetch full text
+                    if link not in self.state.fetched_content or not self.state.fetched_content[link]:
+                        logger.info(f"Fetching full text for: {link}")
+                        full_text = self.content_retriever.retrieve_and_extract(link)
+                        if full_text:
+                            self.state.fetched_content[link] = full_text
+                            logger.debug(f"Successfully fetched text for {link} (length: {len(full_text)}).")
+                        else:
+                            logger.warning(f"Failed to fetch full text for {link}. Using snippet as fallback.")
+                            self.state.fetched_content[link] = result.get('snippet', '')
+                    content_to_use_for_chunking = self.state.fetched_content.get(link)
+
+                if not content_to_use_for_chunking or content_to_use_for_chunking.isspace():
+                    logger.warning(f"No content available for source: {link} (after considering snippet/full text mode). Skipping.")
                     continue
 
                 try:
-                    chunks = split_text_into_chunks(content, chunk_size, chunk_overlap)
-                    logger.info(f"Split content from {link} into {len(chunks)} chunks.")
+                    chunks = split_text_into_chunks(content_to_use_for_chunking, chunk_size, chunk_overlap)
+                    logger.info(f"Split content from {link} (using {'snippet' if self.config.USE_SNIPPETS_ONLY_MODE else 'full text'}) into {len(chunks)} chunks.")
                 except ValueError as e:
                     logger.error(f"Error splitting text for source {link}: {e}. Skipping this source.")
                     continue

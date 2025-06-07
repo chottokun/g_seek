@@ -34,6 +34,7 @@ class Configuration:
         # Summarization Configuration
         self.SUMMARIZATION_CHUNK_SIZE_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_SIZE_CHARS", 10000))
         self.SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_OVERLAP_CHARS", 500))
+        self.USE_SNIPPETS_ONLY_MODE: bool = os.getenv("USE_SNIPPETS_ONLY_MODE", "False").lower() == 'true'
 
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
@@ -53,7 +54,8 @@ class Configuration:
             f"  Output Filename: {self.OUTPUT_FILENAME}\n"
             f"  Interactive Mode: {self.INTERACTIVE_MODE}\n"
             f"  Summarization Chunk Size Chars: {self.SUMMARIZATION_CHUNK_SIZE_CHARS}\n"
-            f"  Summarization Chunk Overlap Chars: {self.SUMMARIZATION_CHUNK_OVERLAP_CHARS}"
+            f"  Summarization Chunk Overlap Chars: {self.SUMMARIZATION_CHUNK_OVERLAP_CHARS}\n"
+            f"  Use Snippets Only Mode: {self.USE_SNIPPETS_ONLY_MODE}"
         )
 
 # Example usage (optional, for testing)

@@ -27,6 +27,8 @@ def main():
         st.session_state.selected_sources = {}
     if "run_interactive_in_streamlit" not in st.session_state:
         st.session_state.run_interactive_in_streamlit = False # Default to OFF
+    if "use_snippets_only_mode" not in st.session_state:
+        st.session_state.use_snippets_only_mode = False # Default to OFF
 
     # Sidebar for controls
     with st.sidebar:
@@ -36,6 +38,12 @@ def main():
             value=st.session_state.run_interactive_in_streamlit,
             key="interactive_mode_toggle",
             help="If ON, the system will pause for your approval for queries and source selections. If OFF, it will run automatically."
+        )
+        st.session_state.use_snippets_only_mode = st.toggle(
+            "Use Snippets Only?",
+            value=st.session_state.use_snippets_only_mode,
+            key="snippets_only_toggle",
+            help="If ON, the system will only use search result snippets for summarization, skipping full web page downloads. This is faster but may be less comprehensive."
         )
         st.markdown("---") # Add a separator
         research_topic_input = st.text_input(
@@ -54,6 +62,8 @@ def main():
                     config = Configuration()
                     # Override INTERACTIVE_MODE based on Streamlit toggle
                     config.INTERACTIVE_MODE = st.session_state.run_interactive_in_streamlit
+                    # Set USE_SNIPPETS_ONLY_MODE based on Streamlit toggle
+                    config.USE_SNIPPETS_ONLY_MODE = st.session_state.use_snippets_only_mode
 
                     st.session_state.research_state = ResearchState(research_topic=st.session_state.research_topic)
                     # Pass the modified config to ResearchLoop
@@ -61,6 +71,11 @@ def main():
 
                     mode_message = "interactively" if config.INTERACTIVE_MODE else "non-interactively (automated)"
                     st.session_state.messages.append({"role": "assistant", "content": f"Research initialized to run {mode_message}."})
+
+                    if config.USE_SNIPPETS_ONLY_MODE:
+                        st.session_state.messages.append({"role": "assistant", "content": "Snippet-only mode is ON: Full content download will be skipped."})
+                    else:
+                        st.session_state.messages.append({"role": "assistant", "content": "Snippet-only mode is OFF: Attempting to download full content."})
 
                     if not config.INTERACTIVE_MODE:
                         st.session_state.messages.append({"role": "assistant", "content": "Research running automatically..."})
