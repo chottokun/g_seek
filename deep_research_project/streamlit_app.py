@@ -364,26 +364,33 @@ def main():
                         question = st.session_state.current_follow_up_question
                         print(f"DEBUG_streamlit_app: Follow-up question: {question}")
 
-                        answer = "DEBUG_streamlit_app: Answer not set due to pre-call error or structure change." # Default before try
-                        print("DEBUG_streamlit_app: About to call answer_follow_up in a dedicated try-except block.")
+                        answer = "DEBUG_streamlit_app: Answer not set due to pre-call error or structure change."
+                        print("DEBUG_streamlit_app: About to call answer_follow_up (spinner removed for this test).")
+                        raw_answer_from_method = None
                         try:
-                            # Ensure research_loop is available
-                            if st.session_state.research_loop:
-                                answer = st.session_state.research_loop.answer_follow_up(question)
-                                print(f"DEBUG_streamlit_app: Call to answer_follow_up completed. Raw answer type: {type(answer)}, Answer snippet: {str(answer)[:100]}")
-                            else:
-                                answer = "Error: research_loop not found in session state."
-                                print(f"DEBUG_streamlit_app: {answer}")
-                                st.error(answer)
+                            print("DEBUG_streamlit_app: research_loop exists, calling answer_follow_up.") # Assuming research_loop check passes or is handled by global try-except
+                            raw_answer_from_method = st.session_state.research_loop.answer_follow_up(question)
+                            print("DEBUG_streamlit_app: answer_follow_up call finished.")
+                        except Exception as e_direct_call:
+                            print(f"DEBUG_streamlit_app: EXCEPTION DURING DIRECT CALL to answer_follow_up: {e_direct_call}")
+                            st.error(f"Exception during answer_follow_up: {e_direct_call}")
+                            raw_answer_from_method = f"Error in answer_follow_up: {e_direct_call}"
 
-                        except Exception as e_ans_followup:
-                            print(f"DEBUG_streamlit_app: EXCEPTION DIRECTLY AROUND answer_follow_up CALL: {e_ans_followup}")
-                            logger.error(f"Exception directly around answer_follow_up call: {e_ans_followup}", exc_info=True)
-                            st.error(f"Error directly calling answer_follow_up: {e_ans_followup}")
-                            answer = f"Error during answer_follow_up internal call: {e_ans_followup}"
+                        if raw_answer_from_method is not None:
+                            print(f"DEBUG_streamlit_app: Type of raw_answer_from_method: {type(raw_answer_from_method)}")
+                            try:
+                                answer_str = str(raw_answer_from_method)
+                                print(f"DEBUG_streamlit_app: Successfully converted raw_answer_from_method to string. Snippet: {answer_str[:100]}")
+                                answer = answer_str
+                            except Exception as e_str_conversion:
+                                print(f"DEBUG_streamlit_app: EXCEPTION during str(raw_answer_from_method): {e_str_conversion}")
+                                st.error(f"Error converting answer_follow_up result to string: {e_str_conversion}")
+                                answer = f"Error converting result to string: {e_str_conversion}"
+                        else:
+                            print("DEBUG_streamlit_app: raw_answer_from_method is None (likely from earlier exception).")
+                            answer = "Error: Answer from method was None."
 
-                        # This print uses the 'answer' from the new try-except block
-                        print(f"DEBUG_streamlit_app: answer_follow_up returned to main handler. Answer snippet: {str(answer)[:100]}")
+                        # The previous print "DEBUG_streamlit_app: answer_follow_up returned to main handler..." is now covered by the detailed prints above.
 
                         # st.write(f"DEBUG MODE - Answer received: {str(answer)}") # This was for a specific debug, keeping it commented
 
