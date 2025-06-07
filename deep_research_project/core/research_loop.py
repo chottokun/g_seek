@@ -284,17 +284,21 @@ class ResearchLoop:
         self._extract_entities_and_relations()
 
     def answer_follow_up(self, follow_up_question: str) -> str:
+        print("DEBUG_answer_follow_up: Method started.")
         logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
 
         context_text = ""
         if self.state.final_report and self.state.final_report.strip():
             context_text = self.state.final_report
             logger.debug("Using final_report as context for follow-up.")
+            print(f"DEBUG_answer_follow_up: Context text (first 100 chars): {context_text[:100]}")
         elif self.state.accumulated_summary and self.state.accumulated_summary.strip():
             context_text = self.state.accumulated_summary
             logger.debug("Using accumulated_summary as context for follow-up (final_report was empty).")
+            print(f"DEBUG_answer_follow_up: Context text (first 100 chars): {context_text[:100]}")
         else:
             logger.warning("No context (final_report or accumulated_summary) available to answer follow-up question.")
+            print("DEBUG_answer_follow_up: No context found, returning message.")
             return "I don't have enough context from the previous research to answer that follow-up question."
 
         prompt = (
@@ -306,14 +310,18 @@ class ResearchLoop:
             f"User's Follow-up Question: {follow_up_question}\n\n"
             f"Answer:"
         )
+        print(f"DEBUG_answer_follow_up: Prompt constructed (first 100 chars of prompt): {prompt[:100]}")
 
         try:
             if self.progress_callback:
                 self.progress_callback(f"Generating answer for follow-up: '{follow_up_question[:50]}...'")
 
+            print("DEBUG_answer_follow_up: About to call llm_client.generate_text...")
             answer = self.llm_client.generate_text(prompt=prompt)
+            print(f"DEBUG_answer_follow_up: llm_client.generate_text returned. Answer (first 100 chars): {str(answer)[:100]}")
 
             if not answer or answer.strip() == "":
+                print("DEBUG_answer_follow_up: LLM returned empty answer.")
                 logger.warning(f"LLM returned empty answer for follow-up: '{follow_up_question[:100]}...'")
                 if self.progress_callback:
                     self.progress_callback("LLM provided no answer to the follow-up.")
@@ -322,8 +330,10 @@ class ResearchLoop:
             logger.info(f"Follow-up answer generated (length: {len(answer)}).")
             if self.progress_callback:
                 self.progress_callback("Follow-up answer generated.")
+            print("DEBUG_answer_follow_up: Returning successful answer.")
             return answer
         except Exception as e:
+            print(f"DEBUG_answer_follow_up: Exception caught: {e}")
             logger.error(f"Error generating answer for follow-up question '{follow_up_question[:100]}...': {e}", exc_info=True)
             if self.progress_callback:
                 self.progress_callback(f"Error generating follow-up answer: {e}")
