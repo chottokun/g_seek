@@ -287,7 +287,7 @@ class ResearchLoop:
         print("DEBUG_answer_follow_up: Method started.")
         logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
 
-        # Remove hardcoded return
+        # Removed hardcoded return for this step.
         # print("DEBUG_answer_follow_up: === RETURNING HARDCODED DIAGNOSTIC STRING ===")
         # return "DEBUG: This is a hardcoded test answer from answer_follow_up."
 
@@ -322,17 +322,16 @@ class ResearchLoop:
 
             print("DEBUG_answer_follow_up: About to call llm_client.generate_text...")
             answer = self.llm_client.generate_text(prompt=prompt)
-            # print(f"DEBUG_answer_follow_up: llm_client.generate_text returned. Answer (first 100 chars): {str(answer)[:100]}") # Old print
-
             print(f"DEBUG_answer_follow_up: LLM call returned. Raw answer type: {type(answer)}")
 
             if isinstance(answer, str):
                 original_llm_answer_length = len(answer)
                 print(f"DEBUG_answer_follow_up: Original LLM answer length: {original_llm_answer_length}")
 
+                # TEMPORARY TRUNCATION FOR DIAGNOSTICS:
                 diagnostic_truncate_limit = 20000
                 if original_llm_answer_length > diagnostic_truncate_limit:
-                    answer = answer[:diagnostic_truncate_limit]
+                    answer = answer[:diagnostic_truncate_limit] # Truncate the original answer variable
                     print(f"DEBUG_answer_follow_up: TRUNCATED LLM answer for diagnostic test. New length: {len(answer)}")
                 else:
                     print("DEBUG_answer_follow_up: LLM answer is within diagnostic truncation limit, not truncating here.")
@@ -341,19 +340,25 @@ class ResearchLoop:
             else:
                 print(f"DEBUG_answer_follow_up: LLM call returned non-string, non-None type: {type(answer)}. Will attempt str().")
 
+            # This print will now reflect the potentially truncated answer.
             print(f"DEBUG_answer_follow_up: llm_client.generate_text (potentially truncated) Answer (first 100 chars): {str(answer)[:100]}")
 
-            if not answer or str(answer).strip() == "": # Ensure we check str(answer) if it could be non-string initially
+            if not answer or str(answer).strip() == "":
                 print("DEBUG_answer_follow_up: LLM returned empty answer.")
                 logger.warning(f"LLM returned empty answer for follow-up: '{follow_up_question[:100]}...'")
                 if self.progress_callback:
                     self.progress_callback("LLM provided no answer to the follow-up.")
                 return "The LLM did not provide an answer to your follow-up question."
 
-            logger.info(f"Follow-up answer generated (length: {len(answer)}).")
+            # Before returning the (potentially modified) answer:
+            print(f"DEBUG_answer_follow_up: Original LLM answer was (first 100 chars): {str(answer)[:100]}") # Log original (or truncated)
+            answer = "DEBUG: Hardcoded string after real LLM call." # Replace with hardcoded string
+            print(f"DEBUG_answer_follow_up: Now returning hardcoded string: {answer}")
+
+            logger.info(f"Follow-up answer generated (length: {len(answer)}).") # This will log length of hardcoded string
             if self.progress_callback:
-                self.progress_callback("Follow-up answer generated.")
-            print("DEBUG_answer_follow_up: Returning successful answer.")
+                self.progress_callback("Follow-up answer generated.") # This implies the hardcoded one
+            print("DEBUG_answer_follow_up: Returning successful answer (actually the hardcoded one).")
             return answer
         except Exception as e:
             print(f"DEBUG_answer_follow_up: Exception caught: {e}")
