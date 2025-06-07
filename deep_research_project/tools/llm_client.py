@@ -28,12 +28,19 @@ class LLMClient:
                 # from langchain_community.llms import Ollama # Old import
                 from langchain_ollama import OllamaLLM # New import
 
-                ollama_kwargs = {"model": self.config.LLM_MODEL}
+                ollama_kwargs = {
+                    "model": self.config.LLM_MODEL,
+                    "num_predict": self.config.LLM_MAX_TOKENS  # Set max tokens at initialization
+                }
                 if hasattr(self.config, "OLLAMA_BASE_URL") and self.config.OLLAMA_BASE_URL:
                     ollama_kwargs["base_url"] = self.config.OLLAMA_BASE_URL
 
+                # Example for temperature, if it were in config:
+                # if hasattr(self.config, 'LLM_TEMPERATURE'):
+                #    ollama_kwargs['temperature'] = self.config.LLM_TEMPERATURE
+
                 self.llm = OllamaLLM(**ollama_kwargs) # Use new class name
-                logger.info(f"Initialized Ollama LLM Client (using OllamaLLM) with model: {self.config.LLM_MODEL}, base_url: {ollama_kwargs.get('base_url', 'default')}")
+                logger.info(f"Initialized Ollama LLM Client (OllamaLLM) with model: {self.config.LLM_MODEL}, base_url: {ollama_kwargs.get('base_url', 'default')}, num_predict: {self.config.LLM_MAX_TOKENS}")
             except ImportError:
                 logger.error("langchain_ollama is not installed. Please install it. You may also need langchain_community for other parts if not already installed.")
                 raise
@@ -105,10 +112,19 @@ class LLMClient:
             # Assuming __call__ still works for simplicity of this change:
             # return self.llm(prompt) # Old direct call
 
-            # New invoke call with num_predict for max_tokens
+            # New invoke call - num_predict is now set at initialization
             # OllamaLLM.invoke is expected to return a string directly.
-            response = self.llm.invoke(prompt, num_predict=self.config.LLM_MAX_TOKENS)
-            return response
+            logger.info(f"LLMClient generating text with Ollama (model: {self.config.LLM_MODEL}, max_tokens via num_predict at init) for prompt: '{prompt[:80]}...'")
+            try:
+                response = self.llm.invoke(prompt)
+                if response is None or response.strip() == "":
+                    logger.warning(f"Ollama LLM returned None or empty string for prompt: '{prompt[:80]}...'")
+                    return ""
+                logger.debug(f"Ollama LLM response: {response[:200]}...")
+                return response
+            except Exception as e:
+                logger.error(f"Error during Ollama LLM invoke: {e}", exc_info=True)
+                raise # Re-raise the exception to be handled by the caller
 
         logger.error(f"LLM provider '{self.config.LLM_PROVIDER}' not fully implemented for text generation or placeholder used.")
         # Fallback for placeholder or unimplemented providers if not caught by placeholder logic
