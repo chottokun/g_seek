@@ -334,10 +334,18 @@ def main():
 
             if research_state.follow_up_log:
                 for i, qa_pair in enumerate(research_state.follow_up_log):
-                    with st.chat_message("user", avatar="❓"):
-                        st.markdown(f"**Follow-up {i+1}:** {qa_pair['question']}")
-                    with st.chat_message("assistant", avatar="💡"):
-                        st.markdown(qa_pair['answer'])
+                    try:
+                        question_text = str(qa_pair.get('question', 'Error: Question not found'))
+                        answer_text = str(qa_pair.get('answer', 'Error: Answer not found'))
+
+                        with st.chat_message("user", avatar="❓"):
+                            st.markdown(f"**Follow-up {i+1}:** {question_text}")
+                        with st.chat_message("assistant", avatar="💡"):
+                            st.markdown(answer_text)
+                    except Exception as e_render:
+                        logger.error(f"Error rendering follow-up Q&A entry #{i}: {qa_pair}. Error: {e_render}", exc_info=True)
+                        st.error(f"Sorry, there was an error displaying follow-up entry #{i+1}. Please check the logs for details.")
+                        # st.text(f"Problematic data: {qa_pair}") # Optionally uncomment for debugging
                     st.markdown("---")
 
             st.session_state.current_follow_up_question = st.text_input(
@@ -364,9 +372,14 @@ def main():
                             st.error(answer) # Show error in main UI as well
 
                     # Log to sidebar and append to research_state's follow_up_log
-                    st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {answer}"})
+                    logger.info(f"Adding to follow_up_log - Question: {question[:100]}...")
+                    logger.debug(f"Follow-up Question (full): {question}")
+                    logger.info(f"Adding to follow_up_log - Answer: {str(answer)[:200]}...")
+                    logger.debug(f"Follow-up Answer (full): {str(answer)}")
+
+                    st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" }) # Ensure answer is str for message
                     if st.session_state.research_state: # Should always be true if we are in this part of UI
-                        st.session_state.research_state.follow_up_log.append({"question": question, "answer": answer})
+                        st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)}) # Ensure answer is str for log
 
                     st.session_state.current_follow_up_question = "" # Clear input box
                     st.rerun()
