@@ -362,18 +362,28 @@ def main():
                     print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block.") # New top-level print
                     if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
                         question = st.session_state.current_follow_up_question
-                        print(f"DEBUG_streamlit_app: Follow-up question: {question}") # Adjusted prefix from previous DEBUG PRINT
+                        print(f"DEBUG_streamlit_app: Follow-up question: {question}")
 
-                        answer = ""
-                        print("DEBUG_streamlit_app: Calling answer_follow_up...")
+                        answer = "DEBUG_streamlit_app: Answer not set due to pre-call error or structure change." # Default before try
+                        print("DEBUG_streamlit_app: About to call answer_follow_up in a dedicated try-except block.")
                         try:
-                            answer = st.session_state.research_loop.answer_follow_up(question)
-                            print(f"DEBUG_streamlit_app: answer_follow_up returned. Answer snippet: {str(answer)[:100]}")
-                        except Exception as e:
-                            logger.error(f"Error answering follow-up question: {e}", exc_info=True)
-                            print(f"DEBUG_streamlit_app: Exception caught during answer_follow_up: {e}")
-                            answer = f"Sorry, an error occurred while generating the answer: {e}"
-                            st.error(answer)
+                            # Ensure research_loop is available
+                            if st.session_state.research_loop:
+                                answer = st.session_state.research_loop.answer_follow_up(question)
+                                print(f"DEBUG_streamlit_app: Call to answer_follow_up completed. Raw answer type: {type(answer)}, Answer snippet: {str(answer)[:100]}")
+                            else:
+                                answer = "Error: research_loop not found in session state."
+                                print(f"DEBUG_streamlit_app: {answer}")
+                                st.error(answer)
+
+                        except Exception as e_ans_followup:
+                            print(f"DEBUG_streamlit_app: EXCEPTION DIRECTLY AROUND answer_follow_up CALL: {e_ans_followup}")
+                            logger.error(f"Exception directly around answer_follow_up call: {e_ans_followup}", exc_info=True)
+                            st.error(f"Error directly calling answer_follow_up: {e_ans_followup}")
+                            answer = f"Error during answer_follow_up internal call: {e_ans_followup}"
+
+                        # This print uses the 'answer' from the new try-except block
+                        print(f"DEBUG_streamlit_app: answer_follow_up returned to main handler. Answer snippet: {str(answer)[:100]}")
 
                         # st.write(f"DEBUG MODE - Answer received: {str(answer)}") # This was for a specific debug, keeping it commented
 
@@ -400,10 +410,20 @@ def main():
                         st.session_state.current_follow_up_question = ""
                         print("DEBUG_streamlit_app: Cleared current_follow_up_question.")
 
-                        print("DEBUG_streamlit_app: About to call st.rerun().")
-                        st.rerun()
-                        print("DEBUG_streamlit_app: st.rerun() has been called.") # Will not be printed if rerun is successful
-                    else:
+                        # Conditional rerun
+                        print("DEBUG_streamlit_app: Checking condition for st.rerun().")
+                        answer_str_for_check = str(answer)
+                        if not (answer_str_for_check.startswith("Sorry, an error occurred") or \
+                                answer_str_for_check.startswith("The LLM did not provide an answer") or \
+                                answer_str_for_check.startswith("I don't have enough context")):
+                            print("DEBUG_streamlit_app: Condition met, calling st.rerun().")
+                            st.rerun()
+                            # The print below won't be reached if rerun is successful
+                            # print("DEBUG_streamlit_app: st.rerun() has been called.")
+                        else:
+                            print(f"DEBUG_streamlit_app: Condition for st.rerun() NOT met. Answer was: {answer_str_for_check[:100]}...")
+
+                    else: # if not (st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != ""):
                         st.warning("Please enter a follow-up question.")
                         print("DEBUG_streamlit_app: Follow-up question was empty.")
                     print("DEBUG_streamlit_app: End of 'if question not empty' block, before outer try's except/else.")
