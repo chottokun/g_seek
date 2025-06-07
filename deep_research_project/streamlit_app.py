@@ -37,6 +37,8 @@ def main():
         st.session_state.max_text_length_chars = 0 # Default to 0 (unlimited)
     if "process_pdf_files" not in st.session_state:
         st.session_state.process_pdf_files = True # Default UI state to True
+    if "current_follow_up_question" not in st.session_state:
+        st.session_state.current_follow_up_question = ""
 
     # Sidebar for controls
     with st.sidebar:
@@ -324,6 +326,52 @@ def main():
         elif research_state: # research_state exists but no KG nodes
              st.info("Knowledge graph will appear here after information extraction. No graph data generated yet.")
         # else: # research_state itself is None, already handled by outer if/else for "Start research..."
+
+        # --- Follow-up Q&A Section ---
+        if research_state and (research_state.final_report or research_state.accumulated_summary):
+            st.markdown("---")
+            st.subheader("5. Follow-up Questions")
+
+            if research_state.follow_up_log:
+                for i, qa_pair in enumerate(research_state.follow_up_log):
+                    with st.chat_message("user", avatar="❓"):
+                        st.markdown(f"**Follow-up {i+1}:** {qa_pair['question']}")
+                    with st.chat_message("assistant", avatar="💡"):
+                        st.markdown(qa_pair['answer'])
+                    st.markdown("---")
+
+            st.session_state.current_follow_up_question = st.text_input(
+                "Ask a follow-up question based on the report/summary above:",
+                value=st.session_state.current_follow_up_question,
+                key="follow_up_input"
+            )
+
+            if st.button("Ask Follow-up", key="ask_follow_up_button"):
+                if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
+                    question = st.session_state.current_follow_up_question
+                    st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"}) # Log to sidebar
+
+                    answer = ""
+                    with st.spinner("Generating answer to your follow-up question..."):
+                        try:
+                            # Note: The ResearchLoop instance for interactive mode does not have the streamlit_progress_updater.
+                            # The progress_callback in answer_follow_up will only log to console if used by LLMClient.
+                            # For direct UI feedback here, we use st.spinner.
+                            answer = st.session_state.research_loop.answer_follow_up(question)
+                        except Exception as e:
+                            logger.error(f"Error answering follow-up question: {e}", exc_info=True)
+                            answer = f"Sorry, an error occurred while generating the answer: {e}"
+                            st.error(answer) # Show error in main UI as well
+
+                    # Log to sidebar and append to research_state's follow_up_log
+                    st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {answer}"})
+                    if st.session_state.research_state: # Should always be true if we are in this part of UI
+                        st.session_state.research_state.follow_up_log.append({"question": question, "answer": answer})
+
+                    st.session_state.current_follow_up_question = "" # Clear input box
+                    st.rerun()
+                else:
+                    st.warning("Please enter a follow-up question.")
 
     else: # st.session_state.research_state is None
         st.info("Enter a research topic and click 'Start Research' to begin.")

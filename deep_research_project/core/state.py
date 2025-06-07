@@ -25,6 +25,7 @@ class ResearchState:
         self.fetched_content: Optional[Dict[str, str]] = None # Added this line
         self.knowledge_graph_nodes: List[Dict] = []
         self.knowledge_graph_edges: List[Dict] = []
+        self.follow_up_log: List[Dict[str, str]] = []
 
     def __str__(self):
         return (
@@ -42,6 +43,7 @@ class ResearchState:
             f"  Fetched Content Count: {len(self.fetched_content) if self.fetched_content else 0}\n" # Added this line
             f"  Knowledge Graph Nodes: {len(self.knowledge_graph_nodes)}\n"
             f"  Knowledge Graph Edges: {len(self.knowledge_graph_edges)}\n"
+            f"  Follow-up Q&A Count: {len(self.follow_up_log)}\n"
             f"  Final Report: {'Generated' if self.final_report else 'Not yet generated'}"
         )
 

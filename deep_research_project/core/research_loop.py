@@ -283,6 +283,51 @@ class ResearchLoop:
         # This call was already here and should be fine as _extract_entities_and_relations checks new_information validity.
         self._extract_entities_and_relations()
 
+    def answer_follow_up(self, follow_up_question: str) -> str:
+        logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
+
+        context_text = ""
+        if self.state.final_report and self.state.final_report.strip():
+            context_text = self.state.final_report
+            logger.debug("Using final_report as context for follow-up.")
+        elif self.state.accumulated_summary and self.state.accumulated_summary.strip():
+            context_text = self.state.accumulated_summary
+            logger.debug("Using accumulated_summary as context for follow-up (final_report was empty).")
+        else:
+            logger.warning("No context (final_report or accumulated_summary) available to answer follow-up question.")
+            return "I don't have enough context from the previous research to answer that follow-up question."
+
+        prompt = (
+            f"Based on the provided research report context below, please answer the user's follow-up question.\n\n"
+            f"Research Report Context:\n"
+            f"---\n"
+            f"{context_text}\n"
+            f"---\n\n"
+            f"User's Follow-up Question: {follow_up_question}\n\n"
+            f"Answer:"
+        )
+
+        try:
+            if self.progress_callback:
+                self.progress_callback(f"Generating answer for follow-up: '{follow_up_question[:50]}...'")
+
+            answer = self.llm_client.generate_text(prompt=prompt)
+
+            if not answer or answer.strip() == "":
+                logger.warning(f"LLM returned empty answer for follow-up: '{follow_up_question[:100]}...'")
+                if self.progress_callback:
+                    self.progress_callback("LLM provided no answer to the follow-up.")
+                return "The LLM did not provide an answer to your follow-up question."
+
+            logger.info(f"Follow-up answer generated (length: {len(answer)}).")
+            if self.progress_callback:
+                self.progress_callback("Follow-up answer generated.")
+            return answer
+        except Exception as e:
+            logger.error(f"Error generating answer for follow-up question '{follow_up_question[:100]}...': {e}", exc_info=True)
+            if self.progress_callback:
+                self.progress_callback(f"Error generating follow-up answer: {e}")
+            return f"An error occurred while generating an answer: {e}"
 
     def _extract_entities_and_relations(self):
         logger.debug("Entering _extract_entities_and_relations.")
