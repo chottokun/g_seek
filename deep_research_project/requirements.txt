@@ -7,4 +7,5 @@ streamlit
 pyvis
 beautifulsoup4
 requests
+pypdf
 streamlit-agraph

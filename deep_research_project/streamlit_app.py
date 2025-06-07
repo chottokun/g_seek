@@ -35,6 +35,8 @@ def main():
         st.session_state.use_snippets_only_mode = False # Default to OFF
     if "max_text_length_chars" not in st.session_state:
         st.session_state.max_text_length_chars = 0 # Default to 0 (unlimited)
+    if "process_pdf_files" not in st.session_state:
+        st.session_state.process_pdf_files = True # Default UI state to True
 
     # Sidebar for controls
     with st.sidebar:
@@ -59,6 +61,12 @@ def main():
             key="max_text_length_input",
             help="Maximum characters to process per web source. 0 means no limit. Truncation occurs before chunking."
         )
+        st.session_state.process_pdf_files = st.toggle(
+            "Process PDF Files?",
+            value=st.session_state.process_pdf_files,
+            key="process_pdfs_toggle",
+            help="If ON, the system will attempt to download and extract text from PDF links. If OFF, PDF links will be skipped."
+        )
         st.markdown("---") # Add a separator
         research_topic_input = st.text_input(
             "Enter Research Topic:",
@@ -80,10 +88,13 @@ def main():
                     config.USE_SNIPPETS_ONLY_MODE = st.session_state.use_snippets_only_mode
                     # Set MAX_TEXT_LENGTH_PER_SOURCE_CHARS based on Streamlit input
                     config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = st.session_state.max_text_length_chars
+                    # Set PROCESS_PDF_FILES based on Streamlit toggle
+                    config.PROCESS_PDF_FILES = st.session_state.process_pdf_files
 
                     st.session_state.research_state = ResearchState(research_topic=st.session_state.research_topic)
                     # Pass the modified config to ResearchLoop
-                    st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state)
+                    # This initial ResearchLoop instance might be re-initialized later for non-interactive mode with callback
+                    st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state, progress_callback=None)
 
                     mode_message = "interactively" if config.INTERACTIVE_MODE else "non-interactively (automated)"
                     st.session_state.messages.append({"role": "assistant", "content": f"Research initialized to run {mode_message}."})
@@ -97,6 +108,11 @@ def main():
                         st.session_state.messages.append({"role": "assistant", "content": f"Max text length per source set to: {config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS} chars."})
                     else:
                         st.session_state.messages.append({"role": "assistant", "content": "Max text length per source: Unlimited."})
+
+                    if config.PROCESS_PDF_FILES:
+                        st.session_state.messages.append({"role": "assistant", "content": "PDF file processing is ON."})
+                    else:
+                        st.session_state.messages.append({"role": "assistant", "content": "PDF file processing is OFF."})
 
                     if not config.INTERACTIVE_MODE:
                         st.session_state.messages.append({"role": "assistant", "content": "Research running automatically..."}) # For sidebar

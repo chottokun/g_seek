@@ -73,7 +73,7 @@ class ResearchLoop:
         try:
             self.llm_client = LLMClient(config)
             self.search_client = SearchClient(config)
-            self.content_retriever = ContentRetriever() # Added content retriever
+            self.content_retriever = ContentRetriever(config=self.config) # Pass config
             logger.info("ResearchLoop initialized successfully.")
             logger.info(f"Configuration: LLM Provider={self.config.LLM_PROVIDER}, Search API={self.config.SEARCH_API}")
             logger.info(f"Initial State: Research Topic='{self.state.research_topic}'")

@@ -36,6 +36,7 @@ class Configuration:
         self.SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_OVERLAP_CHARS", 500))
         self.USE_SNIPPETS_ONLY_MODE: bool = os.getenv("USE_SNIPPETS_ONLY_MODE", "False").lower() == 'true'
         self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = int(os.getenv("MAX_TEXT_LENGTH_PER_SOURCE_CHARS", 0))
+        self.PROCESS_PDF_FILES: bool = os.getenv("PROCESS_PDF_FILES", "True").lower() == 'true'
 
 
         # Perform any validation or conditional setup if needed
@@ -58,7 +59,8 @@ class Configuration:
             f"  Summarization Chunk Size Chars: {self.SUMMARIZATION_CHUNK_SIZE_CHARS}\n"
             f"  Summarization Chunk Overlap Chars: {self.SUMMARIZATION_CHUNK_OVERLAP_CHARS}\n"
             f"  Use Snippets Only Mode: {self.USE_SNIPPETS_ONLY_MODE}\n"
-            f"  Max Text Length per Source (Chars): {self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS}"
+            f"  Max Text Length per Source (Chars): {self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS}\n"
+            f"  Process PDF Files: {self.PROCESS_PDF_FILES}"
         )
 
 # Example usage (optional, for testing)
