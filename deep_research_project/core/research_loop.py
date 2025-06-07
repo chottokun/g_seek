@@ -285,13 +285,11 @@ class ResearchLoop:
 
     def answer_follow_up(self, follow_up_question: str) -> str:
         print("DEBUG_answer_follow_up: Method started.")
-        # === START HARDCODED RETURN FOR DIAGNOSTIC ===
-        print("DEBUG_answer_follow_up: === RETURNING HARDCODED DIAGNOSTIC STRING ===")
-        return "DEBUG: This is a hardcoded test answer from answer_follow_up."
-        # === END HARDCODED RETURN FOR DIAGNOSTIC ===
+        logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
 
-        # The rest of the original method is now bypassed:
-        logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'") # This line won't be reached
+        # Remove hardcoded return
+        # print("DEBUG_answer_follow_up: === RETURNING HARDCODED DIAGNOSTIC STRING ===")
+        # return "DEBUG: This is a hardcoded test answer from answer_follow_up."
 
         context_text = ""
         if self.state.final_report and self.state.final_report.strip():
@@ -324,9 +322,28 @@ class ResearchLoop:
 
             print("DEBUG_answer_follow_up: About to call llm_client.generate_text...")
             answer = self.llm_client.generate_text(prompt=prompt)
-            print(f"DEBUG_answer_follow_up: llm_client.generate_text returned. Answer (first 100 chars): {str(answer)[:100]}")
+            # print(f"DEBUG_answer_follow_up: llm_client.generate_text returned. Answer (first 100 chars): {str(answer)[:100]}") # Old print
 
-            if not answer or answer.strip() == "":
+            print(f"DEBUG_answer_follow_up: LLM call returned. Raw answer type: {type(answer)}")
+
+            if isinstance(answer, str):
+                original_llm_answer_length = len(answer)
+                print(f"DEBUG_answer_follow_up: Original LLM answer length: {original_llm_answer_length}")
+
+                diagnostic_truncate_limit = 20000
+                if original_llm_answer_length > diagnostic_truncate_limit:
+                    answer = answer[:diagnostic_truncate_limit]
+                    print(f"DEBUG_answer_follow_up: TRUNCATED LLM answer for diagnostic test. New length: {len(answer)}")
+                else:
+                    print("DEBUG_answer_follow_up: LLM answer is within diagnostic truncation limit, not truncating here.")
+            elif answer is None:
+                 print("DEBUG_answer_follow_up: LLM call returned None.")
+            else:
+                print(f"DEBUG_answer_follow_up: LLM call returned non-string, non-None type: {type(answer)}. Will attempt str().")
+
+            print(f"DEBUG_answer_follow_up: llm_client.generate_text (potentially truncated) Answer (first 100 chars): {str(answer)[:100]}")
+
+            if not answer or str(answer).strip() == "": # Ensure we check str(answer) if it could be non-string initially
                 print("DEBUG_answer_follow_up: LLM returned empty answer.")
                 logger.warning(f"LLM returned empty answer for follow-up: '{follow_up_question[:100]}...'")
                 if self.progress_callback:
