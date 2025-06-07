@@ -178,13 +178,22 @@ class ResearchLoop:
                             self.state.fetched_content[link] = result.get('snippet', '')
                     content_to_use_for_chunking = self.state.fetched_content.get(link)
 
+                # Apply truncation before checking if content is empty/whitespace
+                limit = self.config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS
+                if content_to_use_for_chunking: # Ensure there's content before trying to get its length
+                    original_length = len(content_to_use_for_chunking)
+                    if limit > 0 and original_length > limit:
+                        logger.info(f"Content for source {result['link']} (original length: {original_length}) exceeds limit ({limit}). Truncating.")
+                        content_to_use_for_chunking = content_to_use_for_chunking[:limit]
+                        logger.debug(f"Truncated content length for {result['link']}: {len(content_to_use_for_chunking)}")
+
                 if not content_to_use_for_chunking or content_to_use_for_chunking.isspace():
-                    logger.warning(f"No content available for source: {link} (after considering snippet/full text mode). Skipping.")
+                    logger.warning(f"No content available for source: {link} (after considering snippet/full text mode and truncation). Skipping.")
                     continue
 
                 try:
                     chunks = split_text_into_chunks(content_to_use_for_chunking, chunk_size, chunk_overlap)
-                    logger.info(f"Split content from {link} (using {'snippet' if self.config.USE_SNIPPETS_ONLY_MODE else 'full text'}) into {len(chunks)} chunks.")
+                    logger.info(f"Split content from {link} (using {'snippet' if self.config.USE_SNIPPETS_ONLY_MODE else 'full text'}, length {len(content_to_use_for_chunking)}) into {len(chunks)} chunks.")
                 except ValueError as e:
                     logger.error(f"Error splitting text for source {link}: {e}. Skipping this source.")
                     continue

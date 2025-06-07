@@ -35,6 +35,8 @@ class Configuration:
         self.SUMMARIZATION_CHUNK_SIZE_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_SIZE_CHARS", 10000))
         self.SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_OVERLAP_CHARS", 500))
         self.USE_SNIPPETS_ONLY_MODE: bool = os.getenv("USE_SNIPPETS_ONLY_MODE", "False").lower() == 'true'
+        self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = int(os.getenv("MAX_TEXT_LENGTH_PER_SOURCE_CHARS", 0))
+
 
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
@@ -55,7 +57,8 @@ class Configuration:
             f"  Interactive Mode: {self.INTERACTIVE_MODE}\n"
             f"  Summarization Chunk Size Chars: {self.SUMMARIZATION_CHUNK_SIZE_CHARS}\n"
             f"  Summarization Chunk Overlap Chars: {self.SUMMARIZATION_CHUNK_OVERLAP_CHARS}\n"
-            f"  Use Snippets Only Mode: {self.USE_SNIPPETS_ONLY_MODE}"
+            f"  Use Snippets Only Mode: {self.USE_SNIPPETS_ONLY_MODE}\n"
+            f"  Max Text Length per Source (Chars): {self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS}"
         )
 
 # Example usage (optional, for testing)

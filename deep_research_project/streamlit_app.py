@@ -29,6 +29,8 @@ def main():
         st.session_state.run_interactive_in_streamlit = False # Default to OFF
     if "use_snippets_only_mode" not in st.session_state:
         st.session_state.use_snippets_only_mode = False # Default to OFF
+    if "max_text_length_chars" not in st.session_state:
+        st.session_state.max_text_length_chars = 0 # Default to 0 (unlimited)
 
     # Sidebar for controls
     with st.sidebar:
@@ -44,6 +46,14 @@ def main():
             value=st.session_state.use_snippets_only_mode,
             key="snippets_only_toggle",
             help="If ON, the system will only use search result snippets for summarization, skipping full web page downloads. This is faster but may be less comprehensive."
+        )
+        st.session_state.max_text_length_chars = st.number_input(
+            "Max Chars/Source (0 for unlimited):",
+            min_value=0,
+            value=st.session_state.max_text_length_chars,
+            step=1000,
+            key="max_text_length_input",
+            help="Maximum characters to process per web source. 0 means no limit. Truncation occurs before chunking."
         )
         st.markdown("---") # Add a separator
         research_topic_input = st.text_input(
@@ -64,6 +74,8 @@ def main():
                     config.INTERACTIVE_MODE = st.session_state.run_interactive_in_streamlit
                     # Set USE_SNIPPETS_ONLY_MODE based on Streamlit toggle
                     config.USE_SNIPPETS_ONLY_MODE = st.session_state.use_snippets_only_mode
+                    # Set MAX_TEXT_LENGTH_PER_SOURCE_CHARS based on Streamlit input
+                    config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = st.session_state.max_text_length_chars
 
                     st.session_state.research_state = ResearchState(research_topic=st.session_state.research_topic)
                     # Pass the modified config to ResearchLoop
@@ -76,6 +88,12 @@ def main():
                         st.session_state.messages.append({"role": "assistant", "content": "Snippet-only mode is ON: Full content download will be skipped."})
                     else:
                         st.session_state.messages.append({"role": "assistant", "content": "Snippet-only mode is OFF: Attempting to download full content."})
+
+                    if config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS > 0:
+                        st.session_state.messages.append({"role": "assistant", "content": f"Max text length per source set to: {config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS} chars."})
+                    else:
+                        st.session_state.messages.append({"role": "assistant", "content": "Max text length per source: Unlimited."})
+
 
                     if not config.INTERACTIVE_MODE:
                         st.session_state.messages.append({"role": "assistant", "content": "Research running automatically..."})
