@@ -284,14 +284,18 @@ class ResearchLoop:
         self._extract_entities_and_relations()
 
     def answer_follow_up(self, follow_up_question: str) -> str:
-        print("DEBUG_answer_follow_up: Method started.")
-        logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
+        # Remove all previous diagnostic prints from this method for this test, except one
+        print("DEBUG_answer_follow_up: Clean method. NO LLM call. Returning hardcoded.")
+        # DO NOT CALL self.llm_client.generate_text()
+        # DO NOT check context_text
+        # DO NOT construct a complex prompt
+        # DO NOT have internal try-except blocks for LLM calls
+        # DO NOT call self.progress_callback from here for this test
+        return "DEBUG_FROM_CLEAN_ANSWER_FOLLOW_UP"
+        # The original logic is bypassed below for this specific diagnostic test:
+        # logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
 
-        # Removed hardcoded return for this step.
-        # print("DEBUG_answer_follow_up: === RETURNING HARDCODED DIAGNOSTIC STRING ===")
-        # return "DEBUG: This is a hardcoded test answer from answer_follow_up."
-
-        context_text = ""
+        # context_text = ""
         if self.state.final_report and self.state.final_report.strip():
             context_text = self.state.final_report
             logger.debug("Using final_report as context for follow-up.")
@@ -321,51 +325,38 @@ class ResearchLoop:
                 self.progress_callback(f"Generating answer for follow-up: '{follow_up_question[:50]}...'")
 
             print("DEBUG_answer_follow_up: About to call llm_client.generate_text...")
-            answer = self.llm_client.generate_text(prompt=prompt)
-            print(f"DEBUG_answer_follow_up: LLM call returned. Raw answer type: {type(answer)}")
+            # --- LLM Call commented out for this test ---
+            # answer = self.llm_client.generate_text(prompt=prompt)
+            print("DEBUG_answer_follow_up: SKIPPING LLM CALL and returning hardcoded answer for this test.")
+            answer = "DEBUG: Hardcoded answer from a NO-LLM answer_follow_up."
+            # --- End of LLM Call modification ---
 
-            if isinstance(answer, str):
-                original_llm_answer_length = len(answer)
-                print(f"DEBUG_answer_follow_up: Original LLM answer length: {original_llm_answer_length}")
-
-                # TEMPORARY TRUNCATION FOR DIAGNOSTICS:
-                diagnostic_truncate_limit = 20000
-                if original_llm_answer_length > diagnostic_truncate_limit:
-                    answer = answer[:diagnostic_truncate_limit] # Truncate the original answer variable
-                    print(f"DEBUG_answer_follow_up: TRUNCATED LLM answer for diagnostic test. New length: {len(answer)}")
-                else:
-                    print("DEBUG_answer_follow_up: LLM answer is within diagnostic truncation limit, not truncating here.")
-            elif answer is None:
-                 print("DEBUG_answer_follow_up: LLM call returned None.")
-            else:
-                print(f"DEBUG_answer_follow_up: LLM call returned non-string, non-None type: {type(answer)}. Will attempt str().")
-
-            # This print will now reflect the potentially truncated answer.
-            print(f"DEBUG_answer_follow_up: llm_client.generate_text (potentially truncated) Answer (first 100 chars): {str(answer)[:100]}")
+            # The diagnostic prints about raw answer type, length, truncation will be skipped
+            # as 'answer' is now directly a hardcoded string.
+            # We can keep the final print showing the answer being processed.
+            print(f"DEBUG_answer_follow_up: Using answer (hardcoded for this test): {str(answer)[:100]}")
 
             if not answer or str(answer).strip() == "":
-                print("DEBUG_answer_follow_up: LLM returned empty answer.")
-                logger.warning(f"LLM returned empty answer for follow-up: '{follow_up_question[:100]}...'")
+                print("DEBUG_answer_follow_up: LLM (or hardcoded string) was empty.") # Adjusted message
+                logger.warning(f"LLM returned empty answer for follow-up: '{follow_up_question[:100]}...'") # This log might be misleading now
                 if self.progress_callback:
                     self.progress_callback("LLM provided no answer to the follow-up.")
-                return "The LLM did not provide an answer to your follow-up question."
+                return "The LLM did not provide an answer to your follow-up question." # Or a more specific debug message
 
-            # Before returning the (potentially modified) answer:
-            print(f"DEBUG_answer_follow_up: Original LLM answer was (first 100 chars): {str(answer)[:100]}") # Log original (or truncated)
-            answer = "DEBUG: Hardcoded string after real LLM call." # Replace with hardcoded string
-            print(f"DEBUG_answer_follow_up: Now returning hardcoded string: {answer}")
+            # The logic to replace answer with another hardcoded string is removed,
+            # as we are already setting 'answer' to a hardcoded string above.
 
-            logger.info(f"Follow-up answer generated (length: {len(answer)}).") # This will log length of hardcoded string
+            logger.info(f"Follow-up answer generated (length: {len(answer)}).")
             if self.progress_callback:
-                self.progress_callback("Follow-up answer generated.") # This implies the hardcoded one
-            print("DEBUG_answer_follow_up: Returning successful answer (actually the hardcoded one).")
+                self.progress_callback("Follow-up answer generated.")
+            print("DEBUG_answer_follow_up: Returning successful answer (hardcoded for NO-LLM test).")
             return answer
         except Exception as e:
-            print(f"DEBUG_answer_follow_up: Exception caught: {e}")
-            logger.error(f"Error generating answer for follow-up question '{follow_up_question[:100]}...': {e}", exc_info=True)
-            if self.progress_callback:
-                self.progress_callback(f"Error generating follow-up answer: {e}")
-            return f"An error occurred while generating an answer: {e}"
+            # print(f"DEBUG_answer_follow_up: Exception caught: {e}")
+            # logger.error(f"Error generating answer for follow-up question '{follow_up_question[:100]}...': {e}", exc_info=True)
+            # if self.progress_callback:
+            #    self.progress_callback(f"Error generating follow-up answer: {e}")
+            # return f"An error occurred while generating an answer: {e}"
 
     def _extract_entities_and_relations(self):
         logger.debug("Entering _extract_entities_and_relations.")
