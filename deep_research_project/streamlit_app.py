@@ -11,6 +11,7 @@ from deep_research_project.core.research_loop import ResearchLoop
 from streamlit_agraph import agraph, Node, Edge, Config
 from typing import Callable, Optional # Added for progress_callback type hint
 import logging # Added for logger
+import traceback # Added for global exception traceback
 
 logger = logging.getLogger(__name__) # Added logger
 
@@ -357,44 +358,62 @@ def main():
             )
 
             if st.button("Ask Follow-up", key="ask_follow_up_button"):
-                print('DEBUG: Ask Follow-up button was clicked!') # DEBUG PRINT
-                if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
-                    question = st.session_state.current_follow_up_question
-                    print(f"DEBUG: Follow-up question: {question}") # DEBUG PRINT
-                    # st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"}) # Log to sidebar - COMMENTED OUT
+                try:
+                    print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block.") # New top-level print
+                    if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
+                        question = st.session_state.current_follow_up_question
+                        print(f"DEBUG_streamlit_app: Follow-up question: {question}") # Adjusted prefix from previous DEBUG PRINT
 
-                    answer = ""
-                    # with st.spinner("Generating answer to your follow-up question..."): # Temporarily disable spinner for direct feedback if needed
-                    print("DEBUG: Calling answer_follow_up...") # DEBUG PRINT
-                    try:
-                        # Note: The ResearchLoop instance for interactive mode does not have the streamlit_progress_updater.
-                        # The progress_callback in answer_follow_up will only log to console if used by LLMClient.
-                        # For direct UI feedback here, we use st.spinner.
-                        answer = st.session_state.research_loop.answer_follow_up(question)
-                        print(f"DEBUG: Call to answer_follow_up completed. Answer: {str(answer)[:200]}...") # DEBUG PRINT
-                    except Exception as e:
-                        logger.error(f"Error answering follow-up question: {e}", exc_info=True)
-                        print(f"DEBUG: Exception during answer_follow_up: {e}") # DEBUG PRINT
-                        answer = f"Sorry, an error occurred while generating the answer: {e}"
-                        st.error(answer) # Show error in main UI as well
+                        answer = ""
+                        print("DEBUG_streamlit_app: Calling answer_follow_up...")
+                        try:
+                            answer = st.session_state.research_loop.answer_follow_up(question)
+                            print(f"DEBUG_streamlit_app: answer_follow_up returned. Answer snippet: {str(answer)[:100]}")
+                        except Exception as e:
+                            logger.error(f"Error answering follow-up question: {e}", exc_info=True)
+                            print(f"DEBUG_streamlit_app: Exception caught during answer_follow_up: {e}")
+                            answer = f"Sorry, an error occurred while generating the answer: {e}"
+                            st.error(answer)
 
-                    # st.write(f"DEBUG MODE - Answer received: {str(answer)}") # DEBUG WRITE - REMOVE/COMMENT OUT
+                        # st.write(f"DEBUG MODE - Answer received: {str(answer)}") # This was for a specific debug, keeping it commented
 
-                    # Log to sidebar and append to research_state's follow_up_log
-                    logger.debug(f"Before append, follow_up_log length: {len(st.session_state.research_state.follow_up_log) if st.session_state.research_state else 'N/A'}")
+                        print("DEBUG_streamlit_app: About to append user question to st.session_state.messages.")
+                        st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"})
+                        print(f"DEBUG_streamlit_app: Appended user question to messages. Message list length: {len(st.session_state.messages)}")
 
-                    st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"}) # RE-ENABLE
-                    st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" }) # RE-ENABLE
-                    if st.session_state.research_state: # Should always be true if we are in this part of UI
-                       st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)}) # RE-ENABLE
-                       logger.info(f"After append, follow_up_log length: {len(st.session_state.research_state.follow_up_log)}")
-                       logger.debug(f"Current follow_up_log content: {st.session_state.research_state.follow_up_log}")
+                        print("DEBUG_streamlit_app: About to append assistant answer to st.session_state.messages.")
+                        st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" })
+                        print(f"DEBUG_streamlit_app: Appended assistant answer to messages. Message list length: {len(st.session_state.messages)}")
 
-                    st.session_state.current_follow_up_question = "" # RE-ENABLE
-                    logger.info("About to st.rerun() for follow-up.")
-                    st.rerun() # RE-ENABLE
-                else:
-                    st.warning("Please enter a follow-up question.")
+                        print("DEBUG_streamlit_app: Checking if st.session_state.research_state exists.")
+                        if st.session_state.research_state:
+                            print("DEBUG_streamlit_app: st.session_state.research_state exists. About to append to follow_up_log.")
+                            if not isinstance(st.session_state.research_state.follow_up_log, list):
+                                print(f"DEBUG_streamlit_app: follow_up_log is NOT a list, it is: {type(st.session_state.research_state.follow_up_log)}. Initializing to empty list.")
+                                st.session_state.research_state.follow_up_log = []
+                            st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)})
+                            print(f"DEBUG_streamlit_app: Appended to follow_up_log. Log length: {len(st.session_state.research_state.follow_up_log)}")
+                        else:
+                            print("DEBUG_streamlit_app: st.session_state.research_state does NOT exist. Cannot append to follow_up_log.")
+
+                        print("DEBUG_streamlit_app: About to clear current_follow_up_question.")
+                        st.session_state.current_follow_up_question = ""
+                        print("DEBUG_streamlit_app: Cleared current_follow_up_question.")
+
+                        print("DEBUG_streamlit_app: About to call st.rerun().")
+                        st.rerun()
+                        print("DEBUG_streamlit_app: st.rerun() has been called.") # Will not be printed if rerun is successful
+                    else:
+                        st.warning("Please enter a follow-up question.")
+                        print("DEBUG_streamlit_app: Follow-up question was empty.")
+                    print("DEBUG_streamlit_app: End of 'if question not empty' block, before outer try's except/else.")
+
+                except Exception as e_global_handler:
+                    st.error(f"A critical error occurred in the follow-up button's operations: {e_global_handler}")
+                    st.text("Detailed Traceback:")
+                    st.text(traceback.format_exc()) # Make sure traceback is imported
+                    logger.error(f"Global handler in 'Ask Follow-up' caught exception: {e_global_handler}", exc_info=True)
+                    print(f"DEBUG_streamlit_app: Global exception handler caught: {e_global_handler}")
 
     else: # st.session_state.research_state is None
         st.info("Enter a research topic and click 'Start Research' to begin.")
