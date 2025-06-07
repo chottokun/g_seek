@@ -395,19 +395,7 @@ def main():
                         # ... (etc. all other state updates and st.rerun() remain commented) ...
                         print("DEBUG_streamlit_app: End of direct LLM client test logic. No state updates or rerun.")
 
-                    else: # if not (st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != ""):
-                        st.warning("Please enter a follow-up question.")
-                        print("DEBUG_streamlit_app: Follow-up question was empty.")
-                    print("DEBUG_streamlit_app: End of 'if question not empty' block, before outer try's except/else.")
-
-                except Exception as e_global_handler:
-                            st.rerun()
-                            # The print below won't be reached if rerun is successful
-                            # print("DEBUG_streamlit_app: st.rerun() has been called.")
-                        else:
-                            print(f"DEBUG_streamlit_app: Condition for st.rerun() NOT met. Answer was: {answer_str_for_check[:100]}...")
-
-                    else: # if not (st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != ""):
+                    else: # This is the 'else' for 'if st.session_state.current_follow_up_question and ...'
                         st.warning("Please enter a follow-up question.")
                         print("DEBUG_streamlit_app: Follow-up question was empty.")
                     print("DEBUG_streamlit_app: End of 'if question not empty' block, before outer try's except/else.")
