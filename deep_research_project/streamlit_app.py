@@ -364,33 +364,26 @@ def main():
                         question = st.session_state.current_follow_up_question
                         print(f"DEBUG_streamlit_app: Follow-up question: {question}")
 
-                        answer = "DEBUG_streamlit_app: Answer not set due to pre-call error or structure change."
-                        print("DEBUG_streamlit_app: About to call answer_follow_up (spinner removed for this test).")
-                        raw_answer_from_method = None
+                        answer_for_ui = "DEBUG: Hardcoded UI answer after attempting void call."
+                        print("DEBUG_streamlit_app: About to call answer_follow_up (result will not be assigned for this test).")
+
                         try:
-                            print("DEBUG_streamlit_app: research_loop exists, calling answer_follow_up.") # Assuming research_loop check passes or is handled by global try-except
-                            raw_answer_from_method = st.session_state.research_loop.answer_follow_up(question)
-                            print("DEBUG_streamlit_app: answer_follow_up call finished.")
-                        except Exception as e_direct_call:
-                            print(f"DEBUG_streamlit_app: EXCEPTION DURING DIRECT CALL to answer_follow_up: {e_direct_call}")
-                            st.error(f"Exception during answer_follow_up: {e_direct_call}")
-                            raw_answer_from_method = f"Error in answer_follow_up: {e_direct_call}"
+                            if st.session_state.research_loop:
+                                st.session_state.research_loop.answer_follow_up(question) # Call it, but don't use its direct return value yet
+                                print("DEBUG_streamlit_app: Called answer_follow_up (return value ignored for this test).")
+                            else:
+                                answer_for_ui = "Error: research_loop not found in session state (void call test)."
+                                print(f"DEBUG_streamlit_app: {answer_for_ui}")
+                                st.error(answer_for_ui) # Display this critical error
 
-                        if raw_answer_from_method is not None:
-                            print(f"DEBUG_streamlit_app: Type of raw_answer_from_method: {type(raw_answer_from_method)}")
-                            try:
-                                answer_str = str(raw_answer_from_method)
-                                print(f"DEBUG_streamlit_app: Successfully converted raw_answer_from_method to string. Snippet: {answer_str[:100]}")
-                                answer = answer_str
-                            except Exception as e_str_conversion:
-                                print(f"DEBUG_streamlit_app: EXCEPTION during str(raw_answer_from_method): {e_str_conversion}")
-                                st.error(f"Error converting answer_follow_up result to string: {e_str_conversion}")
-                                answer = f"Error converting result to string: {e_str_conversion}"
-                        else:
-                            print("DEBUG_streamlit_app: raw_answer_from_method is None (likely from earlier exception).")
-                            answer = "Error: Answer from method was None."
+                        except Exception as e_ans_followup_void_call:
+                            # This exception would be from answer_follow_up itself if it raised something
+                            print(f"DEBUG_streamlit_app: EXCEPTION DURING VOID CALL to answer_follow_up: {e_ans_followup_void_call}")
+                            logger.error(f"Exception during void call to answer_follow_up: {e_ans_followup_void_call}", exc_info=True)
+                            st.error(f"Error during answer_follow_up (void call test): {e_ans_followup_void_call}")
+                            answer_for_ui = f"Error from answer_follow_up (void call test): {e_ans_followup_void_call}"
 
-                        # The previous print "DEBUG_streamlit_app: answer_follow_up returned to main handler..." is now covered by the detailed prints above.
+                        print(f"DEBUG_streamlit_app: Using hardcoded/default answer for UI updates: {answer_for_ui[:100]}")
 
                         # st.write(f"DEBUG MODE - Answer received: {str(answer)}") # This was for a specific debug, keeping it commented
 
