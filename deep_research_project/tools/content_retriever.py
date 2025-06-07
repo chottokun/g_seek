@@ -5,13 +5,15 @@ import io
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from deep_research_project.config.config import Configuration # For type hinting
+from typing import Optional, Callable # Added for progress_callback
 
 logger = logging.getLogger(__name__)
 
 class ContentRetriever:
-    def __init__(self, config: Configuration, user_agent="DeepResearchBot/1.0"):
+    def __init__(self, config: Configuration, user_agent="DeepResearchBot/1.0", progress_callback: Optional[Callable[[str], None]] = None):
         self.config = config # Store config
         self.user_agent = user_agent
+        self.progress_callback = progress_callback
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": self.user_agent})
 
@@ -66,6 +68,8 @@ class ContentRetriever:
             # PDF Processing Path
             if (self.config.PROCESS_PDF_FILES and
                 ("application/pdf" in content_type or url.lower().endswith(".pdf"))):
+                if self.progress_callback:
+                    self.progress_callback(f"PDF detected. Attempting to process: {url}")
                 logger.info(f"Processing as PDF: {url}")
                 pdf_content_bytes = response.content
                 if not pdf_content_bytes:
@@ -85,13 +89,21 @@ class ContentRetriever:
                         text_content = "\n\n".join(extracted_pages)
                         if text_content:
                             logger.info(f"Successfully extracted text from PDF {url} (raw length: {len(text_content)} chars).")
+                            if self.progress_callback:
+                                self.progress_callback(f"Successfully extracted {len(text_content)} chars from PDF: {url}")
                         else:
                             logger.warning(f"No text extracted from PDF {url} after processing pages.")
+                            if self.progress_callback:
+                                self.progress_callback(f"No text could be extracted from PDF pages: {url}")
                 except PdfReadError as e_pdf_read:
                     logger.error(f"PyPDF PdfReadError processing PDF {url}: {e_pdf_read}. This might be an encrypted or corrupted PDF.")
+                    if self.progress_callback:
+                        self.progress_callback(f"Failed to read PDF {url} (likely encrypted or corrupted): {e_pdf_read}. Skipping.")
                     return "" # Return empty for PDF read errors
                 except Exception as e_pdf:
                     logger.error(f"Error processing PDF {url} with pypdf: {e_pdf}", exc_info=True)
+                    if self.progress_callback:
+                        self.progress_callback(f"Error processing PDF {url}: {e_pdf}. Skipping.")
                     return "" # Return empty for other PDF errors
 
             # HTML Processing Path
@@ -100,7 +112,9 @@ class ContentRetriever:
                 html_content = response.text
                 if html_content:
                     text_content = self.extract_text(html_content, url=url)
-                    # self.extract_text already logs success/failure and length.
+                    if text_content and self.progress_callback: # Check if text_content is not empty
+                        self.progress_callback(f"Successfully extracted {len(text_content)} chars from HTML: {url}")
+                    # self.extract_text already logs its success/failure and length.
                 else:
                     logger.warning(f"No HTML content in response from {url}")
                     return ""
@@ -109,6 +123,8 @@ class ContentRetriever:
             elif (not self.config.PROCESS_PDF_FILES and
                   ("application/pdf" in content_type or url.lower().endswith(".pdf"))):
                 logger.info(f"PDF processing is disabled. Skipping PDF: {url}")
+                if self.progress_callback:
+                    self.progress_callback(f"Skipping PDF (PDF processing disabled by user setting): {url}")
                 return "" # Return empty as PDF processing is off
 
             # Other content types
@@ -137,9 +153,11 @@ class ContentRetriever:
                 limit = self.config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS
                 if limit > 0 and len(text_content) > limit:
                     logger.info(f"Extracted content from {url} (original length: {len(text_content)}) exceeds limit ({limit}). Truncating.")
+                    original_len_for_callback = len(text_content) # Save before truncation for callback
                     text_content = text_content[:limit]
                     logger.debug(f"Truncated content length for {url}: {len(text_content)}")
-
+                    if self.progress_callback:
+                        self.progress_callback(f"Content from {url} (was {original_len_for_callback} chars) truncated to {len(text_content)} chars (limit: {limit}).")
             return text_content
 
         except requests.exceptions.RequestException as e:
