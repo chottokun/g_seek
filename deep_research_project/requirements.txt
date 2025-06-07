@@ -1,9 +1,10 @@
 python-dotenv
 langchain-community
+langchain-openai
+langchain-ollama
 duckduckgo-search
 streamlit
 pyvis
 beautifulsoup4
 requests
-langchain-openai
 streamlit-agraph

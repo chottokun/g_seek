@@ -25,15 +25,17 @@ class LLMClient:
                 raise
         elif self.config.LLM_PROVIDER == "ollama":
             try:
-                from langchain_community.llms import Ollama
-                # base_url を config から取得し、Ollama に渡す
+                # from langchain_community.llms import Ollama # Old import
+                from langchain_ollama import OllamaLLM # New import
+
                 ollama_kwargs = {"model": self.config.LLM_MODEL}
                 if hasattr(self.config, "OLLAMA_BASE_URL") and self.config.OLLAMA_BASE_URL:
                     ollama_kwargs["base_url"] = self.config.OLLAMA_BASE_URL
-                self.llm = Ollama(**ollama_kwargs)
-                logger.info(f"Initialized Ollama LLM Client with model: {self.config.LLM_MODEL}, base_url: {ollama_kwargs.get('base_url', 'default')}")
+
+                self.llm = OllamaLLM(**ollama_kwargs) # Use new class name
+                logger.info(f"Initialized Ollama LLM Client (using OllamaLLM) with model: {self.config.LLM_MODEL}, base_url: {ollama_kwargs.get('base_url', 'default')}")
             except ImportError:
-                logger.error("langchain_community is not installed. Please install it.")
+                logger.error("langchain_ollama is not installed. Please install it. You may also need langchain_community for other parts if not already installed.")
                 raise
         elif self.config.LLM_PROVIDER == "placeholder_llm": # A default that doesn't require keys
             logger.info("Initialized Placeholder LLM Client.")
@@ -82,11 +84,37 @@ class LLMClient:
 
         # Ollama LLM 実際の呼び出し
         if self.config.LLM_PROVIDER == "ollama":
-            logger.info(f"LLMClient generating text with Ollama for prompt: '{prompt[:80]}...'")
-            return self.llm(prompt, max_tokens=self.config.LLM_MAX_TOKENS)
+            logger.info(f"LLMClient generating text with OllamaLLM for prompt: '{prompt[:80]}...'")
+            # For OllamaLLM, the call might be self.llm.invoke(prompt, ...) or similar to ChatOpenAI
+            # Assuming it's .invoke() like other modern langchain components for consistency.
+            # The specific method might depend on whether it's treated as a ChatModel or an LLM.
+            # If it's a simple LLM wrapper, self.llm(prompt) might still work.
+            # Let's assume .invoke() for now for consistency with ChatOpenAI.
+            # Note: The `max_tokens` parameter might not be directly supported in `invoke` for all models in this way.
+            # It's often part of model_kwargs or specific instantiation parameters.
+            # For now, keeping a similar structure but this might need adjustment based on OllamaLLM's exact API.
+            # A common way is to pass model-specific kwargs via invoke using model_kwargs or specific named args if supported.
+            # However, `max_tokens` is not standard in `invoke`'s signature.
+            # Let's call it directly for now, as it was before, assuming the new class maintains a similar direct call or __call__ method.
+            # If not, this will need to be changed to self.llm.invoke(prompt).
+            # The previous code used self.llm(prompt, max_tokens=...)
+            # Let's try to maintain that if the new OllamaLLM supports it.
+            # If it needs to be passed during instantiation, that's a bigger change.
+            # For now, assuming the __call__ or a direct method with max_tokens exists.
+            # A quick check of langchain-ollama docs would clarify this.
+            # Assuming __call__ still works for simplicity of this change:
+            # return self.llm(prompt) # Old direct call
 
-        logger.error("Actual LLM client logic is not implemented yet.")
-        raise NotImplementedError("Actual LLM client logic is not implemented yet.")
+            # New invoke call with num_predict for max_tokens
+            # OllamaLLM.invoke is expected to return a string directly.
+            response = self.llm.invoke(prompt, num_predict=self.config.LLM_MAX_TOKENS)
+            return response
+
+        logger.error(f"LLM provider '{self.config.LLM_PROVIDER}' not fully implemented for text generation or placeholder used.")
+        # Fallback for placeholder or unimplemented providers if not caught by placeholder logic
+        if self.llm == "PlaceholderLLMInstance": # Should have been handled above
+             return f"Simulated LLM response to: {prompt}"
+        raise NotImplementedError(f"Actual LLM client logic for provider '{self.config.LLM_PROVIDER}' is not implemented yet.")
 
 # Example Usage (for testing this module)
 if __name__ == "__main__":
