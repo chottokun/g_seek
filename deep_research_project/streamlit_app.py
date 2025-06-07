@@ -378,50 +378,23 @@ def main():
                         answer = f"Sorry, an error occurred while generating the answer: {e}"
                         st.error(answer) # Show error in main UI as well
 
-                    st.write(f"DEBUG MODE - Answer received: {str(answer)}") # DEBUG WRITE
+                    # st.write(f"DEBUG MODE - Answer received: {str(answer)}") # DEBUG WRITE - REMOVE/COMMENT OUT
 
                     # Log to sidebar and append to research_state's follow_up_log
-                    # logger.debug(f"Before append, follow_up_log length: {len(st.session_state.research_state.follow_up_log) if st.session_state.research_state else 'N/A'}") # This was a line from a previous step, ensure it's correctly placed if used.
+                    logger.debug(f"Before append, follow_up_log length: {len(st.session_state.research_state.follow_up_log) if st.session_state.research_state else 'N/A'}")
 
-                    # st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" }) # Ensure answer is str for message - COMMENTED OUT
-                    # if st.session_state.research_state: # Should always be true if we are in this part of UI
-                    #    st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)}) # Ensure answer is str for log - COMMENTED OUT
-                    #    logger.info(f"After append, follow_up_log length: {len(st.session_state.research_state.follow_up_log)}")
-                    #    logger.debug(f"Current follow_up_log content: {st.session_state.research_state.follow_up_log}")
+                    st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"}) # RE-ENABLE
+                    st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" }) # RE-ENABLE
+                    if st.session_state.research_state: # Should always be true if we are in this part of UI
+                       st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)}) # RE-ENABLE
+                       logger.info(f"After append, follow_up_log length: {len(st.session_state.research_state.follow_up_log)}")
+                       logger.debug(f"Current follow_up_log content: {st.session_state.research_state.follow_up_log}")
 
-                    # st.session_state.current_follow_up_question = "" # Clear input box - COMMENTED OUT
-                    # logger.info("About to st.rerun() for follow-up.")
-                    # st.rerun() # COMMENTED OUT
+                    st.session_state.current_follow_up_question = "" # RE-ENABLE
+                    logger.info("About to st.rerun() for follow-up.")
+                    st.rerun() # RE-ENABLE
                 else:
                     st.warning("Please enter a follow-up question.")
-            # The following try-except block and its content seems to be a duplicated/misplaced snippet from a previous merge.
-            # It should be removed as it's not correctly structured here and likely the source of indentation issues
-            # or logical errors if it were ever reached.
-            # The correct try-except for answer_follow_up is already above.
-            #            try:
-            #                # Note: The ResearchLoop instance for interactive mode does not have the streamlit_progress_updater.
-            #                # The progress_callback in answer_follow_up will only log to console if used by LLMClient.
-            #                # For direct UI feedback here, we use st.spinner.
-            #                answer = st.session_state.research_loop.answer_follow_up(question)
-            #            except Exception as e:
-            #                logger.error(f"Error answering follow-up question: {e}", exc_info=True)
-            #                answer = f"Sorry, an error occurred while generating the answer: {e}"
-            #                st.error(answer) # Show error in main UI as well
-
-                    # Log to sidebar and append to research_state's follow_up_log
-            #        logger.debug(f"Before append, follow_up_log length: {len(st.session_state.research_state.follow_up_log) if st.session_state.research_state else 'N/A'}")
-
-            #        st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" }) # Ensure answer is str for message
-            #        if st.session_state.research_state: # Should always be true if we are in this part of UI
-            #            st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)}) # Ensure answer is str for log
-            #            logger.info(f"After append, follow_up_log length: {len(st.session_state.research_state.follow_up_log)}")
-            #            logger.debug(f"Current follow_up_log content: {st.session_state.research_state.follow_up_log}")
-
-            #        st.session_state.current_follow_up_question = "" # Clear input box
-            #        logger.info("About to st.rerun() for follow-up.")
-            #        st.rerun()
-            #    else:
-            #        st.warning("Please enter a follow-up question.")
 
     else: # st.session_state.research_state is None
         st.info("Enter a research topic and click 'Start Research' to begin.")
