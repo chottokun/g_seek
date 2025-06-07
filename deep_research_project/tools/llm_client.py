@@ -11,18 +11,60 @@ class LLMClient:
         if self.config.LLM_PROVIDER == "openai":
             try:
                 from langchain_openai import ChatOpenAI
-                if not self.config.OPENAI_API_KEY:
-                    logger.error("OpenAI API key not configured.")
-                    raise ValueError("OpenAI API key not configured.")
-                self.llm = ChatOpenAI(
-                    api_key=self.config.OPENAI_API_KEY,
-                    model_name=self.config.LLM_MODEL,
-                    temperature=0.7,
+                # Validation for OPENAI_API_KEY is in config.py (checks if base_url is also missing)
+
+                openai_kwargs = {
+                    "model_name": self.config.LLM_MODEL,
+                    "temperature": self.config.LLM_TEMPERATURE,
+                    "max_tokens": self.config.LLM_MAX_TOKENS
+                }
+                if self.config.OPENAI_API_KEY: # Only pass API key if it's set
+                    openai_kwargs["api_key"] = self.config.OPENAI_API_KEY
+
+                if self.config.OPENAI_API_BASE_URL:
+                    openai_kwargs["base_url"] = self.config.OPENAI_API_BASE_URL
+
+                self.llm = ChatOpenAI(**openai_kwargs)
+                log_msg = (
+                    f"Initialized OpenAI LLM Client with model: {self.config.LLM_MODEL}, "
+                    f"temp: {self.config.LLM_TEMPERATURE}, max_tokens: {self.config.LLM_MAX_TOKENS}"
                 )
-                logger.info(f"Initialized OpenAI LLM Client with model: {self.config.LLM_MODEL}")
+                if self.config.OPENAI_API_BASE_URL:
+                    log_msg += f", base_url: {self.config.OPENAI_API_BASE_URL}"
+                logger.info(log_msg)
+
             except ImportError:
                 logger.error("langchain_openai is not installed. Please install it.")
                 raise
+            except Exception as e:
+                logger.error(f"Error initializing ChatOpenAI: {e}", exc_info=True)
+                raise
+
+        elif self.config.LLM_PROVIDER == "azure_openai":
+            try:
+                from langchain_openai import AzureChatOpenAI # Import for Azure
+                # Validation for Azure keys/config is in config.py
+                azure_kwargs = {
+                    "azure_endpoint": self.config.AZURE_OPENAI_ENDPOINT,
+                    "api_key": self.config.AZURE_OPENAI_API_KEY,
+                    "api_version": self.config.AZURE_OPENAI_API_VERSION,
+                    "azure_deployment": self.config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                    "temperature": self.config.LLM_TEMPERATURE,
+                    "max_tokens": self.config.LLM_MAX_TOKENS
+                }
+                self.llm = AzureChatOpenAI(**azure_kwargs)
+                logger.info(
+                    f"Initialized Azure OpenAI Client with deployment: {self.config.AZURE_OPENAI_DEPLOYMENT_NAME}, "
+                    f"endpoint: {self.config.AZURE_OPENAI_ENDPOINT}, temp: {self.config.LLM_TEMPERATURE}, "
+                    f"max_tokens: {self.config.LLM_MAX_TOKENS}"
+                )
+            except ImportError:
+                logger.error("langchain_openai is not installed for Azure. Please install it.")
+                raise
+            except Exception as e: # Catch any other potential errors during init
+                logger.error(f"Error initializing AzureChatOpenAI: {e}", exc_info=True)
+                raise
+
         elif self.config.LLM_PROVIDER == "ollama":
             try:
                 # from langchain_community.llms import Ollama # Old import
@@ -83,14 +125,36 @@ class LLMClient:
             logger.debug(f"Placeholder LLM generated default response: {default_response}")
             return default_response
 
-        # OpenAI LLM 実際の呼び出し
-        if self.config.LLM_PROVIDER == "openai":
-            logger.info(f"LLMClient generating text with OpenAI for prompt: '{prompt[:80]}...'")
-            response = self.llm.invoke(prompt, temperature=temperature, max_tokens=self.config.LLM_MAX_TOKENS)
-            return response.content if hasattr(response, 'content') else str(response)
+        # OpenAI / Azure OpenAI LLM Call (uses .invoke and expects AIMessage with .content)
+        if self.config.LLM_PROVIDER == "openai" or self.config.LLM_PROVIDER == "azure_openai":
+            provider_name = "OpenAI" if self.config.LLM_PROVIDER == "openai" else "Azure OpenAI"
+            model_identifier = self.config.LLM_MODEL if self.config.LLM_PROVIDER == "openai" else self.config.AZURE_OPENAI_DEPLOYMENT_NAME
 
-        # Ollama LLM 実際の呼び出し
-        if self.config.LLM_PROVIDER == "ollama":
+            # The 'temperature' parameter passed to generate_text is currently ignored for OpenAI/Azure,
+            # as it's set during __init__. If per-call temperature is needed, this logic would need adjustment.
+            # However, the original generate_text signature had a temperature arg, so we log if it's different from config.
+            if temperature != self.config.LLM_TEMPERATURE: # Log if per-call temp differs from init temp
+                 logger.warning(f"Call-time temperature {temperature} differs from init temperature {self.config.LLM_TEMPERATURE} for {provider_name}. Using init temperature.")
+
+            logger.info(f"LLMClient generating text with {provider_name} (model/deployment: {model_identifier}) for prompt: '{prompt[:80]}...'")
+            try:
+                # Temperature and max_tokens are set at initialization
+                response = self.llm.invoke(prompt)
+                if hasattr(response, 'content'):
+                    if response.content is None or response.content.strip() == "":
+                        logger.warning(f"{provider_name} LLM returned None or empty content for prompt: '{prompt[:80]}...'")
+                        return ""
+                    logger.debug(f"{provider_name} LLM response content: {response.content[:200]}...")
+                    return response.content
+                else:
+                    logger.warning(f"{provider_name} response object does not have 'content' attribute. Response: {str(response)[:200]}")
+                    return str(response)
+            except Exception as e:
+                logger.error(f"Error during {provider_name} LLM invoke: {e}", exc_info=True)
+                raise
+
+        # Ollama LLM Call (uses .invoke and returns string directly)
+        elif self.config.LLM_PROVIDER == "ollama":
             logger.info(f"LLMClient generating text with OllamaLLM for prompt: '{prompt[:80]}...'")
             # For OllamaLLM, the call might be self.llm.invoke(prompt, ...) or similar to ChatOpenAI
             # Assuming it's .invoke() like other modern langchain components for consistency.
