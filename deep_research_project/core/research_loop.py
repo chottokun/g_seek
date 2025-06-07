@@ -285,7 +285,13 @@ class ResearchLoop:
 
     def answer_follow_up(self, follow_up_question: str) -> str:
         print("DEBUG_answer_follow_up: Method started.")
-        logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
+        # === START HARDCODED RETURN FOR DIAGNOSTIC ===
+        print("DEBUG_answer_follow_up: === RETURNING HARDCODED DIAGNOSTIC STRING ===")
+        return "DEBUG: This is a hardcoded test answer from answer_follow_up."
+        # === END HARDCODED RETURN FOR DIAGNOSTIC ===
+
+        # The rest of the original method is now bypassed:
+        logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'") # This line won't be reached
 
         context_text = ""
         if self.state.final_report and self.state.final_report.strip():
