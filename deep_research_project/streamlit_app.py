@@ -7,8 +7,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import ResearchState
-from deep_research_project.core.research_loop import ResearchLoop # Will be used later
-from streamlit_agraph import agraph, Node, Edge, Config # Corrected import
+from deep_research_project.core.research_loop import ResearchLoop
+from streamlit_agraph import agraph, Node, Edge, Config
+from typing import Callable, Optional # Added for progress_callback type hint
+import logging # Added for logger
+
+logger = logging.getLogger(__name__) # Added logger
 
 def main():
     st.set_page_config(layout="wide", page_title="Deep Research Assistant")
@@ -94,19 +98,43 @@ def main():
                     else:
                         st.session_state.messages.append({"role": "assistant", "content": "Max text length per source: Unlimited."})
 
-
                     if not config.INTERACTIVE_MODE:
-                        st.session_state.messages.append({"role": "assistant", "content": "Research running automatically..."})
-                        with st.spinner("Automated research in progress... Please wait."): # Show spinner during run_loop
-                            st.session_state.research_loop.run_loop()
-                        st.session_state.messages.append({"role": "assistant", "content": "Automated research complete."})
-                        st.rerun() # Refresh UI to show final results
+                        st.session_state.messages.append({"role": "assistant", "content": "Research running automatically..."}) # For sidebar
+
+                        with st.status("Automated research processing...", expanded=True) as status_ui:
+                            def streamlit_progress_updater(message: str):
+                                status_ui.write(message) # Update the st.status box content
+
+                            # Re-initialize ResearchLoop with the callback
+                            st.session_state.research_loop = ResearchLoop(
+                                config,
+                                st.session_state.research_state,
+                                progress_callback=streamlit_progress_updater
+                            )
+
+                            try:
+                                st.session_state.research_loop.run_loop()
+                                status_ui.update(label="Automated research complete!", state="complete", expanded=False)
+                                st.session_state.messages.append({"role": "assistant", "content": "Automated research complete."}) # For sidebar
+                            except Exception as e:
+                                logger.error(f"Error during automated research run: {e}", exc_info=True)
+                                st.error(f"An error occurred during the automated research: {e}")
+                                status_ui.update(label="Research failed!", state="error", expanded=True)
+                                st.session_state.messages.append({"role": "assistant", "content": f"Automated research failed: {e}"})
+
+                        st.rerun() # Refresh UI to show final results/state
                     else:
-                        # Interactive mode: Trigger initial query generation
+                        # Interactive mode: Initialize ResearchLoop without progress_callback or it's handled differently
+                        # For now, ensure it's initialized as it was before, if not already covered by the main init
+                        if not st.session_state.research_loop or \
+                           (st.session_state.research_loop and st.session_state.research_loop.progress_callback is not None):
+                            # This re-init is to ensure no callback if it was set by a previous non-interactive run
+                            st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state, progress_callback=None)
+
                         st.session_state.messages.append({"role": "assistant", "content": "Generating initial query..."})
-                        st.session_state.research_loop._generate_initial_query()
+                        st.session_state.research_loop._generate_initial_query() # This will use the loop instance correctly set above
                         st.session_state.messages.append({"role": "assistant", "content": f"Initial query proposed: {st.session_state.research_state.proposed_query}"})
-                        st.rerun() # Rerun to update UI for interactive steps
+                        st.rerun()
 
                 except Exception as e:
                     st.error(f"Error during research process: {e}")

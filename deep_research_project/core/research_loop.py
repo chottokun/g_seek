@@ -7,7 +7,7 @@ from deep_research_project.tools.search_client import SearchClient # Example
 from deep_research_project.tools.content_retriever import ContentRetriever # Added import
 import logging
 import json # Added for knowledge graph extraction
-from typing import List
+from typing import List, Optional, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +64,11 @@ def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> Li
 
 
 class ResearchLoop:
-    def __init__(self, config: Configuration, state: ResearchState):
+    def __init__(self, config: Configuration, state: ResearchState, progress_callback: Optional[Callable[[str], None]] = None):
         self.config = config
         self.state = state
         self.interactive_mode = config.INTERACTIVE_MODE  # Store interactive_mode
+        self.progress_callback = progress_callback
         logger.info(f"Initializing LLM and Search clients for ResearchLoop. Interactive mode: {self.interactive_mode}")
         try:
             self.llm_client = LLMClient(config)
@@ -135,6 +136,8 @@ class ResearchLoop:
 
     def _summarize_sources(self, selected_results: List[SearchResult]):
         logger.debug("Entering _summarize_sources.")
+        if self.progress_callback:
+            self.progress_callback(f"Processing {len(selected_results)} sources for summarization...")
         final_summary = "" # Initialize final_summary to ensure it has a value
 
         try:
@@ -156,10 +159,14 @@ class ResearchLoop:
 
             for result in selected_results:
                 link = result['link']
+                if self.progress_callback:
+                    self.progress_callback(f"Processing source: {result['link']}")
                 logger.info(f"Processing source: {link}")
                 content_to_use_for_chunking = None
 
                 if self.config.USE_SNIPPETS_ONLY_MODE:
+                    if self.progress_callback:
+                        self.progress_callback(f"Using snippet directly for {result['link']} (Snippet-Only Mode).")
                     logger.info(f"Snippet-only mode is ON. Using snippet directly for {link}.")
                     content_to_use_for_chunking = result.get('snippet', '')
                     # Store the snippet in fetched_content for consistency,
@@ -194,6 +201,8 @@ class ResearchLoop:
                 try:
                     chunks = split_text_into_chunks(content_to_use_for_chunking, chunk_size, chunk_overlap)
                     logger.info(f"Split content from {link} (using {'snippet' if self.config.USE_SNIPPETS_ONLY_MODE else 'full text'}, length {len(content_to_use_for_chunking)}) into {len(chunks)} chunks.")
+                    if self.progress_callback and chunks:
+                        self.progress_callback(f"Summarizing {len(chunks)} chunks for source {result['link']}...")
                 except ValueError as e:
                     logger.error(f"Error splitting text for source {link}: {e}. Skipping this source.")
                     continue
@@ -227,6 +236,8 @@ class ResearchLoop:
                 return
 
             logger.info(f"Generated {len(all_chunk_summaries)} chunk summaries in total.")
+            if self.progress_callback and all_chunk_summaries:
+                self.progress_callback(f"Consolidating {len(all_chunk_summaries)} chunk summaries...")
             combined_chunk_summaries = "\n\n---\n\n".join(all_chunk_summaries)
 
             # Optional: Check length of combined_chunk_summaries if it could be an issue for the consolidation prompt
@@ -243,6 +254,8 @@ class ResearchLoop:
             try:
                 final_summary = self.llm_client.generate_text(prompt=consolidation_prompt)
                 self.state.new_information = final_summary
+                if self.progress_callback and self.state.new_information and "Error" not in self.state.new_information: # Check error in string is a bit weak
+                    self.progress_callback("Final summary for current query generated.")
                 logger.info(f"Final summary generated (length: {len(final_summary)}).")
             except Exception as e:
                 logger.error(f"Error consolidating chunk summaries for query '{self.state.current_query}': {e}", exc_info=True)
@@ -499,9 +512,16 @@ class ResearchLoop:
 
 
     def run_loop(self):
+        if self.progress_callback:
+            self.progress_callback(f"Starting research loop for topic: '{self.state.research_topic}'")
         logger.info(f"Starting research loop for topic: '{self.state.research_topic}'")
 
+        if self.progress_callback:
+            self.progress_callback("Generating initial query...")
         self._generate_initial_query()
+        if self.progress_callback and self.state.proposed_query:
+            self.progress_callback(f"Initial query proposed: {self.state.proposed_query[:50]}...")
+
 
         # Auto-approve initial query if not in interactive mode
         if not self.interactive_mode and self.state.proposed_query:
@@ -521,19 +541,30 @@ class ResearchLoop:
                     logger.info("No current or auto-approved proposed query. Terminating loop.")
                     break # Exit loop if no query can be set
 
+            if self.progress_callback:
+                self.progress_callback(f"--- Starting Loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS} for query: '{self.state.current_query[:50]}...' ---")
             logger.info(f"--- Starting Loop {self.state.completed_loops + 1} of {self.config.MAX_RESEARCH_LOOPS} for query: '{self.state.current_query}' ---")
 
             if not self.state.pending_source_selection:
+                if self.progress_callback:
+                    self.progress_callback(f"Performing web search for: '{self.state.current_query[:50]}...'")
                 self._web_search()
+                if self.progress_callback:
+                    self.progress_callback(f"Web search complete. Found {len(self.state.search_results) if self.state.search_results else 0} results.")
+
 
             if self.state.pending_source_selection:
                 if not self.interactive_mode:
                     if self.state.search_results:
                         logger.info(f"Non-interactive mode: Auto-selecting all {len(self.state.search_results)} sources for summarization.")
                         selected_results = self.state.search_results # Select all
+                        if self.progress_callback:
+                             self.progress_callback(f"Auto-selecting {len(selected_results)} sources for summarization...")
                     else:
                         logger.info("Non-interactive mode: No search results to auto-select.")
                         selected_results = []
+                        if self.progress_callback:
+                            self.progress_callback("No search results to auto-select for summarization.")
                     self._summarize_sources(selected_results=selected_results)
                     # pending_source_selection is set to False in _summarize_sources
                 else:
@@ -562,7 +593,14 @@ class ResearchLoop:
             if not self.state.pending_source_selection:
                 self.state.completed_loops += 1
                 if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
+                    if self.progress_callback:
+                        self.progress_callback("Reflecting on summary and planning next steps...")
                     self._reflect_on_summary() # Generates proposed_query, clears current_query
+                    if self.progress_callback and self.state.proposed_query:
+                        self.progress_callback(f"Next query proposed after reflection: {self.state.proposed_query[:50]}...")
+                    elif self.progress_callback and not self.state.current_query: # CONCLUDE case from reflection
+                        self.progress_callback("Reflection led to CONCLUDE. Finalizing research.")
+
                     # In non-interactive mode, the next iteration will auto-approve proposed_query if it exists
                     if not self.interactive_mode and self.state.proposed_query:
                         logger.info(f"Non-interactive mode: Auto-approving next query from reflection: {self.state.proposed_query}")
@@ -587,8 +625,12 @@ class ResearchLoop:
                     break
 
 
+        if self.progress_callback:
+            self.progress_callback("Finalizing research summary...")
         self._finalize_summary()
         logger.info("Research loop finished.")
+        if self.progress_callback:
+            self.progress_callback("Research loop finished.")
         return self.state.final_report
 
 
