@@ -364,59 +364,43 @@ def main():
                         question = st.session_state.current_follow_up_question
                         print(f"DEBUG_streamlit_app: Follow-up question: {question}")
 
-                        answer_for_ui = "DEBUG: Hardcoded UI answer after attempting void call."
-                        print("DEBUG_streamlit_app: About to call answer_follow_up (result will not be assigned for this test).")
+                        # --- Direct LLMClient Test ---
+                        llm_answer_direct = "DEBUG: LLM direct call not attempted or failed."
+                        if st.session_state.research_loop and hasattr(st.session_state.research_loop, 'llm_client'):
+                            llm_client = st.session_state.research_loop.llm_client
+                            hardcoded_prompt = "Translate 'hello' to French."
 
-                        try:
-                            if st.session_state.research_loop:
-                                st.session_state.research_loop.answer_follow_up(question) # Call it, but don't use its direct return value yet
-                                print("DEBUG_streamlit_app: Called answer_follow_up (return value ignored for this test).")
-                            else:
-                                answer_for_ui = "Error: research_loop not found in session state (void call test)."
-                                print(f"DEBUG_streamlit_app: {answer_for_ui}")
-                                st.error(answer_for_ui) # Display this critical error
-
-                        except Exception as e_ans_followup_void_call:
-                            # This exception would be from answer_follow_up itself if it raised something
-                            print(f"DEBUG_streamlit_app: EXCEPTION DURING VOID CALL to answer_follow_up: {e_ans_followup_void_call}")
-                            logger.error(f"Exception during void call to answer_follow_up: {e_ans_followup_void_call}", exc_info=True)
-                            st.error(f"Error during answer_follow_up (void call test): {e_ans_followup_void_call}")
-                            answer_for_ui = f"Error from answer_follow_up (void call test): {e_ans_followup_void_call}"
-
-                        print(f"DEBUG_streamlit_app: Using hardcoded/default answer for UI updates: {answer_for_ui[:100]}")
-
-                        # st.write(f"DEBUG MODE - Answer received: {str(answer)}") # This was for a specific debug, keeping it commented
-
-                        print("DEBUG_streamlit_app: About to append user question to st.session_state.messages.")
-                        st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"})
-                        print(f"DEBUG_streamlit_app: Appended user question to messages. Message list length: {len(st.session_state.messages)}")
-
-                        print("DEBUG_streamlit_app: About to append assistant answer to st.session_state.messages.")
-                        st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" })
-                        print(f"DEBUG_streamlit_app: Appended assistant answer to messages. Message list length: {len(st.session_state.messages)}")
-
-                        print("DEBUG_streamlit_app: Checking if st.session_state.research_state exists.")
-                        if st.session_state.research_state:
-                            print("DEBUG_streamlit_app: st.session_state.research_state exists. About to append to follow_up_log.")
-                            if not isinstance(st.session_state.research_state.follow_up_log, list):
-                                print(f"DEBUG_streamlit_app: follow_up_log is NOT a list, it is: {type(st.session_state.research_state.follow_up_log)}. Initializing to empty list.")
-                                st.session_state.research_state.follow_up_log = []
-                            st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)})
-                            print(f"DEBUG_streamlit_app: Appended to follow_up_log. Log length: {len(st.session_state.research_state.follow_up_log)}")
+                            print(f"DEBUG_streamlit_app: About to call llm_client.generate_text directly with prompt: '{hardcoded_prompt}'")
+                            try:
+                                llm_answer_direct = llm_client.generate_text(prompt=hardcoded_prompt)
+                                print(f"DEBUG_streamlit_app: Direct call to llm_client.generate_text completed. Answer: {str(llm_answer_direct)[:200]}")
+                            except Exception as e_llm_direct:
+                                print(f"DEBUG_streamlit_app: EXCEPTION during direct llm_client.generate_text call: {e_llm_direct}")
+                                st.error(f"Error during direct LLM call: {e_llm_direct}")
+                                llm_answer_direct = f"Error from direct LLM call: {e_llm_direct}"
                         else:
-                            print("DEBUG_streamlit_app: st.session_state.research_state does NOT exist. Cannot append to follow_up_log.")
+                            print("DEBUG_streamlit_app: research_loop or llm_client not found in session state for direct test.")
+                            st.error("DEBUG: research_loop or llm_client not found.")
+                            llm_answer_direct = "DEBUG: research_loop or llm_client not found."
 
-                        print("DEBUG_streamlit_app: About to clear current_follow_up_question.")
-                        st.session_state.current_follow_up_question = ""
-                        print("DEBUG_streamlit_app: Cleared current_follow_up_question.")
+                        # Use this llm_answer_direct for the rest of the (temporarily simplified) UI update for this test
+                        print(f"DEBUG_streamlit_app: Using result from direct LLM call (or debug string): {llm_answer_direct[:100]}")
 
-                        # Conditional rerun
-                        print("DEBUG_streamlit_app: Checking condition for st.rerun().")
-                        answer_str_for_check = str(answer)
-                        if not (answer_str_for_check.startswith("Sorry, an error occurred") or \
-                                answer_str_for_check.startswith("The LLM did not provide an answer") or \
-                                answer_str_for_check.startswith("I don't have enough context")):
-                            print("DEBUG_streamlit_app: Condition met, calling st.rerun().")
+                        st.write(f"DEBUG MODE - Direct LLM Test Answer: {str(llm_answer_direct)}")
+
+                        # Keep other state updates and st.rerun() commented out for now to isolate this
+                        # print("DEBUG_streamlit_app: About to append user question to st.session_state.messages.")
+                        # st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"})
+                        # print("DEBUG_streamlit_app: Appended user question to messages.")
+                        # ... (etc. all other state updates and st.rerun() remain commented) ...
+                        print("DEBUG_streamlit_app: End of direct LLM client test logic. No state updates or rerun.")
+
+                    else: # if not (st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != ""):
+                        st.warning("Please enter a follow-up question.")
+                        print("DEBUG_streamlit_app: Follow-up question was empty.")
+                    print("DEBUG_streamlit_app: End of 'if question not empty' block, before outer try's except/else.")
+
+                except Exception as e_global_handler:
                             st.rerun()
                             # The print below won't be reached if rerun is successful
                             # print("DEBUG_streamlit_app: st.rerun() has been called.")
