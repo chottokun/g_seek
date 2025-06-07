@@ -284,82 +284,8 @@ class ResearchLoop:
         self._extract_entities_and_relations()
 
     def answer_follow_up(self, follow_up_question: str) -> str:
-        print("DEBUG_answer_follow_up: Method started.")
-        logger.info(f"Answering follow-up question: '{follow_up_question[:100]}...'")
-
-        context_text = ""
-        if self.state.final_report and self.state.final_report.strip():
-            context_text = self.state.final_report
-            logger.debug("Using final_report as context for follow-up.")
-            print(f"DEBUG_answer_follow_up: Context text (first 100 chars): {context_text[:100]}")
-        elif self.state.accumulated_summary and self.state.accumulated_summary.strip():
-            context_text = self.state.accumulated_summary
-            logger.debug("Using accumulated_summary as context for follow-up (final_report was empty).")
-            print(f"DEBUG_answer_follow_up: Context text (first 100 chars): {context_text[:100]}")
-        else:
-            logger.warning("No context (final_report or accumulated_summary) available to answer follow-up question.")
-            print("DEBUG_answer_follow_up: No context found, returning message.")
-            return "I don't have enough context from the previous research to answer that follow-up question."
-
-        prompt = (
-            f"Based on the provided research report context below, please answer the user's follow-up question.\n\n"
-            f"Research Report Context:\n"
-            f"---\n"
-            f"{context_text}\n"
-            f"---\n\n"
-            f"User's Follow-up Question: {follow_up_question}\n\n"
-            f"Answer:"
-        )
-        print(f"DEBUG_answer_follow_up: Prompt constructed (first 100 chars of prompt): {prompt[:100]}")
-
-        try:
-            if self.progress_callback:
-                self.progress_callback(f"Generating answer for follow-up: '{follow_up_question[:50]}...'")
-
-            print("DEBUG_answer_follow_up: About to call llm_client.generate_text...")
-            answer = self.llm_client.generate_text(prompt=prompt)
-            print(f"DEBUG_answer_follow_up: LLM call returned. Raw answer type: {type(answer)}")
-
-            if isinstance(answer, str):
-                original_llm_answer_length = len(answer)
-                print(f"DEBUG_answer_follow_up: Original LLM answer length: {original_llm_answer_length}")
-
-                # TEMPORARY TRUNCATION FOR DIAGNOSTICS:
-                diagnostic_truncate_limit = 20000
-                if original_llm_answer_length > diagnostic_truncate_limit:
-                    answer = answer[:diagnostic_truncate_limit] # Truncate the original answer variable
-                    print(f"DEBUG_answer_follow_up: TRUNCATED LLM answer for diagnostic test. New length: {len(answer)}")
-                else:
-                    print("DEBUG_answer_follow_up: LLM answer is within diagnostic truncation limit, not truncating here.")
-            elif answer is None:
-                 print("DEBUG_answer_follow_up: LLM call returned None.")
-            else:
-                print(f"DEBUG_answer_follow_up: LLM call returned non-string, non-None type: {type(answer)}. Will attempt str().")
-
-            print(f"DEBUG_answer_follow_up: llm_client.generate_text (potentially truncated) Answer (first 100 chars): {str(answer)[:100]}")
-
-            if not answer or str(answer).strip() == "":
-                print("DEBUG_answer_follow_up: LLM returned empty answer.")
-                logger.warning(f"LLM returned empty answer for follow-up: '{follow_up_question[:100]}...'")
-                if self.progress_callback:
-                    self.progress_callback("LLM provided no answer to the follow-up.")
-                return "The LLM did not provide an answer to your follow-up question."
-
-            print(f"DEBUG_answer_follow_up: Original LLM answer was (first 100 chars): {str(answer)[:100]}")
-            answer = "DEBUG: Hardcoded string after real LLM call."
-            print(f"DEBUG_answer_follow_up: Now returning hardcoded string: {answer}")
-
-            logger.info(f"Follow-up answer generated (length: {len(answer)}).")
-            if self.progress_callback:
-                self.progress_callback("Follow-up answer generated.")
-            print("DEBUG_answer_follow_up: Returning successful answer (actually the hardcoded one).")
-            return answer
-        except Exception as e:
-            print(f"DEBUG_answer_follow_up: Exception caught: {e}")
-            logger.error(f"Error generating answer for follow-up question '{follow_up_question[:100]}...': {e}", exc_info=True)
-            if self.progress_callback:
-                self.progress_callback(f"Error generating follow-up answer: {e}")
-            return f"An error occurred while generating an answer: {e}"
+        print("DEBUG_answer_follow_up: In CLEAN (NO LLM) version. Follow-up question received (but not used): " + str(follow_up_question)[:50] + "...")
+        return "DEBUG_FROM_CLEAN_NO_LLM_ANSWER_FOLLOW_UP"
 
     def _extract_entities_and_relations(self):
         logger.debug("Entering _extract_entities_and_relations.")
