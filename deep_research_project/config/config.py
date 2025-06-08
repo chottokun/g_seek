@@ -33,6 +33,10 @@ class Configuration:
 
         # Ollama Specific Configuration
         self.OLLAMA_BASE_URL: Optional[str] = os.getenv("OLLAMA_BASE_URL", None)
+        # Number of retries for Ollama connection errors, 0 means one attempt only.
+        self.OLLAMA_NUM_RETRIES: int = int(os.getenv("OLLAMA_NUM_RETRIES", 1))
+        # Delay in seconds between retries for Ollama.
+        self.OLLAMA_RETRY_DELAY_SECONDS: float = float(os.getenv("OLLAMA_RETRY_DELAY_SECONDS", 2.0))
 
 
         # Search Configuration
@@ -99,6 +103,8 @@ class Configuration:
 
         if self.LLM_PROVIDER == "ollama": # Show relevant Ollama details
              config_details.append(f"  Ollama Base URL: {self.OLLAMA_BASE_URL if self.OLLAMA_BASE_URL else 'Default'}")
+             config_details.append(f"  Ollama Num Retries: {self.OLLAMA_NUM_RETRIES}")
+             config_details.append(f"  Ollama Retry Delay Seconds: {self.OLLAMA_RETRY_DELAY_SECONDS}")
 
         config_details.extend([
             f"  Search API: {self.SEARCH_API}",

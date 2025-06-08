@@ -155,46 +155,59 @@ class LLMClient:
 
         # Ollama LLM Call (uses .invoke and returns string directly)
         elif self.config.LLM_PROVIDER == "ollama":
-            logger.info(f"LLMClient generating text with OllamaLLM for prompt: '{prompt[:80]}...'")
-            # For OllamaLLM, the call might be self.llm.invoke(prompt, ...) or similar to ChatOpenAI
-            # Assuming it's .invoke() like other modern langchain components for consistency.
-            # The specific method might depend on whether it's treated as a ChatModel or an LLM.
-            # If it's a simple LLM wrapper, self.llm(prompt) might still work.
-            # Let's assume .invoke() for now for consistency with ChatOpenAI.
-            # Note: The `max_tokens` parameter might not be directly supported in `invoke` for all models in this way.
-            # It's often part of model_kwargs or specific instantiation parameters.
-            # For now, keeping a similar structure but this might need adjustment based on OllamaLLM's exact API.
-            # A common way is to pass model-specific kwargs via invoke using model_kwargs or specific named args if supported.
-            # However, `max_tokens` is not standard in `invoke`'s signature.
-            # Let's call it directly for now, as it was before, assuming the new class maintains a similar direct call or __call__ method.
-            # If not, this will need to be changed to self.llm.invoke(prompt).
-            # The previous code used self.llm(prompt, max_tokens=...)
-            # Let's try to maintain that if the new OllamaLLM supports it.
-            # If it needs to be passed during instantiation, that's a bigger change.
-            # For now, assuming the __call__ or a direct method with max_tokens exists.
-            # A quick check of langchain-ollama docs would clarify this.
-            # Assuming __call__ still works for simplicity of this change:
-            # return self.llm(prompt) # Old direct call
-
-            # New invoke call - num_predict is now set at initialization
-            # OllamaLLM.invoke is expected to return a string directly.
             logger.info(f"LLMClient generating text with Ollama (model: {self.config.LLM_MODEL}, max_tokens via num_predict at init) for prompt: '{prompt[:80]}...'")
-            try:
-                response = self.llm.invoke(prompt)
-                if response is None or response.strip() == "":
-                    logger.warning(f"Ollama LLM returned None or empty string for prompt: '{prompt[:80]}...'")
-                    return ""
-                logger.debug(f"Ollama LLM response: {response[:200]}...")
-                return response
-            except Exception as e:
-                logger.error(f"Error during Ollama LLM invoke: {e}", exc_info=True)
-                raise # Re-raise the exception to be handled by the caller
+
+            num_retries = self.config.OLLAMA_NUM_RETRIES
+            retry_delay = self.config.OLLAMA_RETRY_DELAY_SECONDS
+            last_exception = None # To store the exception from the last attempt
+
+            for attempt in range(num_retries + 1): # Initial attempt + num_retries
+                try:
+                    logger.info(f"Ollama attempt {attempt + 1}/{num_retries + 1} for prompt: '{prompt[:80]}...'")
+                    response = self.llm.invoke(prompt) # self.llm is OllamaLLM instance
+
+                    if response is None or response.strip() == "":
+                        logger.warning(f"Ollama LLM returned None or empty string on attempt {attempt + 1} for prompt: '{prompt[:80]}...'")
+                        # For empty/None responses, we might not want to retry unless it's a sign of a recoverable issue.
+                        # For now, let's treat it as a valid (but empty) response and return, not retry.
+                        # If retrying on empty is desired, this logic would change.
+                        return ""
+
+                    logger.debug(f"Ollama LLM response on attempt {attempt + 1}: {response[:200]}...")
+                    return response # Success, exit loop and method
+
+                except ResponseError as e: # Catch specific Ollama client errors (like EOF, connection refused)
+                    last_exception = e
+                    logger.warning(f"Ollama API ResponseError on attempt {attempt + 1}/{num_retries + 1}: {e}. Retrying in {retry_delay}s...")
+                    if attempt < num_retries:
+                        time.sleep(retry_delay)
+                    else: # Last attempt
+                        logger.error(f"Ollama API error after {num_retries + 1} attempts: {e}", exc_info=True)
+                        raise # Re-raise the last caught ResponseError
+                except Exception as e: # Catch other potential exceptions from invoke or within the try
+                    last_exception = e
+                    logger.warning(f"Generic exception on Ollama attempt {attempt + 1}/{num_retries + 1}: {e}. Retrying in {retry_delay}s...")
+                    if attempt < num_retries:
+                        time.sleep(retry_delay)
+                    else: # Last attempt
+                        logger.error(f"Failed after {num_retries + 1} attempts with generic exception: {e}", exc_info=True)
+                        raise # Re-raise the last caught generic exception
+
+            # This part should ideally not be reached if exceptions are re-raised on the last attempt.
+            # But as a fallback, if the loop completes without returning or raising:
+            logger.error("Ollama generation failed after all retries without specific exception re-raised.")
+            if last_exception: # Should have been set if retries occurred
+                 raise last_exception # Re-raise the very last exception encountered
+            return "Error: Ollama failed to generate text after multiple retries." # Fallback error message
 
         logger.error(f"LLM provider '{self.config.LLM_PROVIDER}' not fully implemented for text generation or placeholder used.")
         # Fallback for placeholder or unimplemented providers if not caught by placeholder logic
         if self.llm == "PlaceholderLLMInstance": # Should have been handled above
              return f"Simulated LLM response to: {prompt}"
         raise NotImplementedError(f"Actual LLM client logic for provider '{self.config.LLM_PROVIDER}' is not implemented yet.")
+
+import time
+from ollama import ResponseError
 
 # Example Usage (for testing this module)
 if __name__ == "__main__":
