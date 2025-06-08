@@ -16,8 +16,8 @@ import traceback # Added for global exception traceback
 logger = logging.getLogger(__name__) # Added logger
 
 def main():
-    st.set_page_config(layout="wide", page_title="Deep Research Assistant")
-    st.title("Deep Research Assistant")
+    st.set_page_config(layout="wide", page_title="Research Assistant")
+    st.title("Research Assistant")
 
     # Initialize session state variables if they don't exist
     if "research_topic" not in st.session_state:

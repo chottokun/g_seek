@@ -1,10 +1,10 @@
-# Deep Research っぽいもの
+# Research Assistant
 
 AIを活用したリサーチ自動化ツールにチャレンジします。。  
-LLM（大規模言語モデル）とWeb検索API（DuckDuckGo, SearxNG等）を組み合わせて、指定トピックの調査・レポート生成を行います。特にUIは準備していません。
+LLM（大規模言語モデル）とWeb検索API（DuckDuckGo, SearxNG等）を組み合わせて、指定トピックの調査・レポート生成を行います。基本的な操作を行うためのStreamlit UIも含まれています。
 
 ## 狙い
-Google社のAIコーディングアシスタント[Jules](https://jules.google.com/)を利用した実装の勉強
+AIを活用したリサーチ自動化ツール「Research Assistant」の開発を通じて、Google社のAIコーディングアシスタント[Jules](https://jules.google.com/)の活用の勉強が目的です。
 
 ## 参考
 以下の実装を参考にしました。
@@ -40,20 +40,22 @@ OUTPUT_FILENAME=final_report.txt
 
 DuckDuckGoを使う場合は `SEARCH_API=duckduckgo` にしてください。
 
-### 3. SearxNGの利用について
-
-- 自前でSearxNGサーバーを立てる場合は、`settings.yml` でAPIアクセスが許可されていることを確認してください。
-- パブリックSearxNGインスタンスの多くはAPI/botアクセスを制限しています。403 Forbiddenエラーが出る場合はサーバー設定を見直すか、自前サーバーを推奨します。
 
 ## 実行方法
 
 ```bash
+# streamlit UI
+uv run streamlit run deep_research_project/streamlit_app.py
+# CLI(テスト用)
 uv run -m deep_research_project.main
 ```
 
+- **Streamlit UIを利用する場合は、`.env`の設定内容が反映されます。設定を変更した場合は、再起動してください。**
+- **StreamlitのWeb UIはデフォルトで http://localhost:8501 でアクセスできます。**
+
 ## カスタマイズ
 
-- 調査トピックは `deep_research_project/main.py` の `research_topic` 変数で指定できます。
+- CLIの調査トピックは `deep_research_project/main.py` の `research_topic` 変数で指定できます。
 - ループ回数や出力ファイル名は `.env` で調整可能です。
 
 ## ログ・レポート
@@ -64,4 +66,4 @@ uv run -m deep_research_project.main
 ---
 
 **注意:**  
-SearxNGのAPI利用にはサーバー側の設定が必要です。403エラー等が出る場合はREADME内の「SearxNGの利用について」を参照してください。
+- **Streamlit UI利用時は、複数タブや複数ユーザーで同時アクセスすると挙動が不安定になる場合があります。**
