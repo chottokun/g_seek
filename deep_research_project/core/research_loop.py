@@ -283,9 +283,24 @@ class ResearchLoop:
         # This call was already here and should be fine as _extract_entities_and_relations checks new_information validity.
         self._extract_entities_and_relations()
 
-    def answer_follow_up(self, follow_up_question: str) -> str:
-        print("DEBUG_answer_follow_up: In CLEAN (NO LLM) version. Follow-up question received (but not used): " + str(follow_up_question)[:50] + "...")
-        return "DEBUG_FROM_CLEAN_NO_LLM_ANSWER_FOLLOW_UP"
+    def format_follow_up_prompt(self, context_text: str, follow_up_question: str) -> str:
+        # Keep the debug print to know it's called
+        print("DEBUG_research_loop: format_follow_up_prompt called.")
+        if not context_text: # Should not happen if called correctly from streamlit_app
+            logger.warning("No context text provided for formatting follow-up prompt.")
+            # Or raise an error, but streamlit_app should check context first
+            return f"Please answer the following question: {follow_up_question}\n\nAnswer:"
+
+        prompt = (
+            f"Based on the provided research report context below, please answer the user's follow-up question.\n\n"
+            f"Research Report Context:\n"
+            f"---\n"
+            f"{context_text}\n"
+            f"---\n\n"
+            f"User's Follow-up Question: {follow_up_question}\n\n"
+            f"Answer:"
+        )
+        return prompt
 
     def _extract_entities_and_relations(self):
         logger.debug("Entering _extract_entities_and_relations.")

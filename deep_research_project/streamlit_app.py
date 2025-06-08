@@ -360,44 +360,75 @@ def main():
 
             if st.button("Ask Follow-up", key="ask_follow_up_button"):
                 try:
-                    # print("DEBUG_streamlit_app: 'Ask Follow-up' button clicked (stripped_down_test_v1).") # Can be updated or removed
-                    print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block (test_v2_call_clean_answer_follow_up).")
+                    print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block (new_strategy_direct_llm_call).")
 
                     if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
                         question = st.session_state.current_follow_up_question
                         print(f"DEBUG_streamlit_app: Follow-up question: {question}")
 
-                        answer_from_loop = "DEBUG: answer_from_loop not set." # Default
-                        try:
-                            print("DEBUG_streamlit_app: About to call (clean) answer_follow_up.")
-                            if st.session_state.research_loop: # Ensure research_loop exists
-                                answer_from_loop = st.session_state.research_loop.answer_follow_up(question)
-                                print(f"DEBUG_streamlit_app: Back from (clean) answer_follow_up. Received: {str(answer_from_loop)}")
-                            else:
-                                answer_from_loop = "DEBUG_ERROR: research_loop not in session_state."
-                                print(answer_from_loop)
-                                st.error(answer_from_loop)
+                        # Get context from research_state
+                        context_text = ""
+                        if st.session_state.research_state:
+                            if st.session_state.research_state.final_report and st.session_state.research_state.final_report.strip():
+                                context_text = st.session_state.research_state.final_report
+                            elif st.session_state.research_state.accumulated_summary and st.session_state.research_state.accumulated_summary.strip():
+                                context_text = st.session_state.research_state.accumulated_summary
 
-                        except Exception as e_ans_followup_call: # Catch errors from the (clean) answer_follow_up call
-                            print(f"DEBUG_streamlit_app: EXCEPTION calling (clean) answer_follow_up: {e_ans_followup_call}")
-                            logger.error(f"Error calling (clean) answer_follow_up: {e_ans_followup_call}", exc_info=True)
-                            answer_from_loop = f"Error from (clean) answer_follow_up call: {e_ans_followup_call}"
-                            st.error(answer_from_loop) # Display error in UI
+                        answer = "Error: Answer not set." # Initialize answer
 
-                        st.write(f"DEBUG MODE - Answer from (clean) answer_follow_up: {str(answer_from_loop)}")
+                        if not context_text:
+                            st.warning("No research context available to answer follow-up.")
+                            answer = "I don't have enough context from the previous research to answer that."
+                        elif not st.session_state.research_loop or not hasattr(st.session_state.research_loop, 'llm_client'):
+                            st.error("LLM client not available in research_loop.")
+                            answer = "LLM client not available to answer follow-up."
+                        else:
+                            # Format prompt using the (new/modified) method from ResearchLoop
+                            follow_up_prompt = st.session_state.research_loop.format_follow_up_prompt(context_text, question)
+                            print(f"DEBUG_streamlit_app: Follow-up prompt constructed (first 100 chars): {follow_up_prompt[:100]}")
 
-                        # State updates and st.rerun() remain COMMENTED OUT for this test:
-                        # print("DEBUG_streamlit_app: About to append user question to st.session_state.messages.")
-                        # st.session_state.messages.append(...)
-                        # ... etc. ...
-                        # st.rerun()
-                        print("DEBUG_streamlit_app: End of follow-up logic for this test. State updates and rerun are still disabled.")
+                            answer = "Error: LLM call for follow-up did not execute." # Default before try
+                            try:
+                                print("DEBUG_streamlit_app: About to call llm_client.generate_text directly for follow-up.")
+                                llm_client = st.session_state.research_loop.llm_client
+                                answer = llm_client.generate_text(prompt=follow_up_prompt)
+                                print(f"DEBUG_streamlit_app: Direct call to llm_client.generate_text for follow-up completed. Answer snippet: {str(answer)[:100]}")
+                                if not answer or str(answer).strip() == "":
+                                    answer = "The LLM did not provide an answer to your follow-up question."
+                                    st.info(answer) # Display in UI if LLM returns empty
+                            except Exception as e_llm_call:
+                                logger.error(f"Error during direct llm_client.generate_text for follow-up: {e_llm_call}", exc_info=True)
+                                answer = f"Sorry, an error occurred while generating the answer: {e_llm_call}"
+                                st.error(answer) # Display this error in UI
 
+                        # All state updates and st.rerun() should be active now:
+                        st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"})
+                        st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" })
+                        if st.session_state.research_state:
+                            if not hasattr(st.session_state.research_state, "follow_up_log") or \
+                               st.session_state.research_state.follow_up_log is None or \
+                               not isinstance(st.session_state.research_state.follow_up_log, list):
+                                st.session_state.research_state.follow_up_log = []
+                            st.session_state.research_state.follow_up_log.append({"question": question, "answer": str(answer)})
+
+                        st.session_state.current_follow_up_question = ""
+
+                        # Conditional rerun based on whether an error string was set for 'answer'
+                        answer_str_for_check = str(answer)
+                        if not (answer_str_for_check.startswith("Sorry, an error occurred") or \
+                                answer_str_for_check.startswith("The LLM did not provide an answer") or \
+                                answer_str_for_check.startswith("I don't have enough context") or \
+                                answer_str_for_check.startswith("LLM client not available") or \
+                                answer_str_for_check.startswith("Error:")) :
+                            print("DEBUG_streamlit_app: Follow-up successful, calling st.rerun().")
+                            st.rerun()
+                        else:
+                            print(f"DEBUG_streamlit_app: Follow-up had an issue or no answer, st.rerun() was skipped. Answer: {answer_str_for_check[:100]}")
                     else:
                         st.warning("Please enter a follow-up question.")
                         print("DEBUG_streamlit_app: Follow-up question was empty.")
 
-                    print("DEBUG_streamlit_app: End of button handler (test_v2).")
+                    print("DEBUG_streamlit_app: End of button handler (new_strategy_direct_llm_call).")
 
                 except Exception as e_global_handler:
                     st.error(f"A critical error occurred in the follow-up button's operations: {e_global_handler}")
