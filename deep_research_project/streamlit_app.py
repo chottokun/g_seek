@@ -1,6 +1,7 @@
 import streamlit as st
 import sys
 import os
+import datetime # Add this import at the top of the file
 
 # Adjust path to import from sibling directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,6 +15,32 @@ import logging # Added for logger
 import traceback # Added for global exception traceback
 
 logger = logging.getLogger(__name__) # Added logger
+
+
+# Helper function to format follow-up log
+def format_follow_up_log_for_download(follow_up_log: list) -> str:
+    if not follow_up_log:
+        return "No follow-up questions and answers recorded."
+
+    formatted_log = ["# Follow-up Q&A Log\n"]
+    for i, qa_pair in enumerate(follow_up_log):
+        question = qa_pair.get('question', 'N/A')
+        answer = qa_pair.get('answer', 'N/A')
+        formatted_log.append(f"## Question {i+1}: {question}\n")
+        formatted_log.append(f"**Answer:**\n{answer}\n")
+        formatted_log.append("---\n")
+    return "\n".join(formatted_log)
+
+# New helper function to combine report and follow-up log
+def format_combined_download_data(final_report: Optional[str], follow_up_log: list) -> str:
+    report_content = final_report if final_report else "No research report generated."
+
+    formatted_follow_up_content = format_follow_up_log_for_download(follow_up_log)
+
+    # Combine report and follow-up log
+    combined_data = f"{report_content}\n\n---\n\n{formatted_follow_up_content}"
+
+    return combined_data
 
 def main():
     st.set_page_config(layout="wide", page_title="Research Assistant")
@@ -436,6 +463,31 @@ def main():
                     st.text(traceback.format_exc()) # Make sure traceback is imported
                     logger.error(f"Global handler in 'Ask Follow-up' caught exception: {e_global_handler}", exc_info=True)
                     # print(f"DEBUG_streamlit_app: Global exception handler caught: {e_global_handler}") # Removed
+
+        # --- Download Section ---
+        if research_state and research_state.final_report: # Use research_state alias
+            st.markdown("---")
+            st.subheader("Download All Research Data")
+
+            # Ensure follow_up_log attribute exists, even if it's empty
+            follow_up_log_data = research_state.follow_up_log if hasattr(research_state, 'follow_up_log') and research_state.follow_up_log is not None else []
+
+            combined_data_str = format_combined_download_data(
+                research_state.final_report,
+                follow_up_log_data
+            )
+
+            topic_slug = "".join(c if c.isalnum() else "_" for c in research_state.research_topic[:50])
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            download_filename = f"research_{topic_slug}_{timestamp}.md"
+
+            st.download_button(
+                label="Download Combined Report & Follow-ups (.md)",
+                data=combined_data_str,
+                file_name=download_filename,
+                mime="text/markdown",
+                key="download_combined_button"
+            )
 
     else: # st.session_state.research_state is None
         st.info("Enter a research topic and click 'Start Research' to begin.")
