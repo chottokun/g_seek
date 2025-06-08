@@ -403,7 +403,7 @@ def main():
 
                         # All state updates and st.rerun() should be active now:
                         st.session_state.messages.append({"role": "user", "content": f"Follow-up Question: {question}"})
-                        st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" })
+                        # st.session_state.messages.append({"role": "assistant", "content": f"Follow-up Answer: {str(answer)}" }) # Remove or comment out this line
                         if st.session_state.research_state:
                             if not hasattr(st.session_state.research_state, "follow_up_log") or \
                                st.session_state.research_state.follow_up_log is None or \
