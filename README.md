@@ -1,10 +1,10 @@
-# Deep Research っぽいもの
+# Research Assistant
 
 AIを活用したリサーチ自動化ツールにチャレンジします。。  
-LLM（大規模言語モデル）とWeb検索API（DuckDuckGo, SearxNG等）を組み合わせて、指定トピックの調査・レポート生成を行います。特にUIは準備していません。
+LLM（大規模言語モデル）とWeb検索API（DuckDuckGo, SearxNG等）を組み合わせて、指定トピックの調査・レポート生成を行います。基本的な操作を行うためのStreamlit UIも含まれています。
 
 ## 狙い
-Google社のAIコーディングアシスタント[Jules](https://jules.google.com/)を利用した実装の勉強
+AIを活用したリサーチ自動化ツール「Research Assistant」の開発を通じて、LLMとWeb検索API連携の実装を学びます。Google社のAIコーディングアシスタント[Jules](https://jules.google.com/)の活用もその一環です。
 
 ## 参考
 以下の実装を参考にしました。

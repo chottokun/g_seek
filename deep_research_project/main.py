@@ -38,7 +38,7 @@ def main():
 
     logger = logging.getLogger(__name__) # Get logger for this module (main)
 
-    logger.info("Starting Deep Research Application...")
+    logger.info("Starting Research Application...")
     logger.info("Configuration loaded:")
     logger.info(f"  LLM Provider: {config.LLM_PROVIDER}")
     logger.info(f"  Search API: {config.SEARCH_API}")
@@ -91,7 +91,7 @@ def main():
     else:
         logger.warning("No final report was generated.")
 
-    logger.info("Deep Research Application Finished.")
+    logger.info("Research Application Finished.")
 
 if __name__ == "__main__":
     main()
