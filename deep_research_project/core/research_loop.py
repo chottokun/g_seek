@@ -284,11 +284,10 @@ class ResearchLoop:
         self._extract_entities_and_relations()
 
     def format_follow_up_prompt(self, context_text: str, follow_up_question: str) -> str:
-        # Keep the debug print to know it's called
-        print("DEBUG_research_loop: format_follow_up_prompt called.")
+        logger.debug(f"Formatting prompt for follow-up: {follow_up_question[:50]}...")
         if not context_text: # Should not happen if called correctly from streamlit_app
-            logger.warning("No context text provided for formatting follow-up prompt.")
-            # Or raise an error, but streamlit_app should check context first
+            logger.warning("No context text provided for formatting follow-up prompt. Using a generic prompt.")
+            # Fallback prompt if context is missing, though streamlit_app.py should check context first.
             return f"Please answer the following question: {follow_up_question}\n\nAnswer:"
 
         prompt = (

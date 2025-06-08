@@ -180,8 +180,8 @@ def main():
 
     if st.session_state.research_state:
         research_state = st.session_state.research_state # Alias for convenience
-        logger.debug(f"Re-rendering. Current follow_up_log length: {len(research_state.follow_up_log) if research_state and hasattr(research_state, 'follow_up_log') else 'N/A'}")
-        logger.debug(f"Full research_state on rerender: {research_state}") # Might be verbose
+        # logger.debug(f"Re-rendering. Current follow_up_log length: {len(research_state.follow_up_log) if research_state and hasattr(research_state, 'follow_up_log') else 'N/A'}") # Removed as per cleanup
+        # logger.debug(f"Full research_state on rerender: {research_state}") # Removed as per cleanup / too verbose
 
         # Display current topic
         st.subheader("Current State:")
@@ -360,11 +360,11 @@ def main():
 
             if st.button("Ask Follow-up", key="ask_follow_up_button"):
                 try:
-                    print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block (new_strategy_direct_llm_call).")
+                    # print("DEBUG_streamlit_app: Top of 'Ask Follow-up' button try block (new_strategy_direct_llm_call).") # Removed
 
                     if st.session_state.current_follow_up_question and st.session_state.current_follow_up_question.strip() != "":
                         question = st.session_state.current_follow_up_question
-                        print(f"DEBUG_streamlit_app: Follow-up question: {question}")
+                        # print(f"DEBUG_streamlit_app: Follow-up question: {question}") # Removed
 
                         # Get context from research_state
                         context_text = ""
@@ -385,14 +385,14 @@ def main():
                         else:
                             # Format prompt using the (new/modified) method from ResearchLoop
                             follow_up_prompt = st.session_state.research_loop.format_follow_up_prompt(context_text, question)
-                            print(f"DEBUG_streamlit_app: Follow-up prompt constructed (first 100 chars): {follow_up_prompt[:100]}")
+                            # print(f"DEBUG_streamlit_app: Follow-up prompt constructed (first 100 chars): {follow_up_prompt[:100]}") # Removed
 
                             answer = "Error: LLM call for follow-up did not execute." # Default before try
                             try:
-                                print("DEBUG_streamlit_app: About to call llm_client.generate_text directly for follow-up.")
+                                # print("DEBUG_streamlit_app: About to call llm_client.generate_text directly for follow-up.") # Removed
                                 llm_client = st.session_state.research_loop.llm_client
                                 answer = llm_client.generate_text(prompt=follow_up_prompt)
-                                print(f"DEBUG_streamlit_app: Direct call to llm_client.generate_text for follow-up completed. Answer snippet: {str(answer)[:100]}")
+                                # print(f"DEBUG_streamlit_app: Direct call to llm_client.generate_text for follow-up completed. Answer snippet: {str(answer)[:100]}") # Removed
                                 if not answer or str(answer).strip() == "":
                                     answer = "The LLM did not provide an answer to your follow-up question."
                                     st.info(answer) # Display in UI if LLM returns empty
@@ -420,22 +420,22 @@ def main():
                                 answer_str_for_check.startswith("I don't have enough context") or \
                                 answer_str_for_check.startswith("LLM client not available") or \
                                 answer_str_for_check.startswith("Error:")) :
-                            print("DEBUG_streamlit_app: Follow-up successful, calling st.rerun().")
+                            # print("DEBUG_streamlit_app: Follow-up successful, calling st.rerun().") # Removed
                             st.rerun()
-                        else:
-                            print(f"DEBUG_streamlit_app: Follow-up had an issue or no answer, st.rerun() was skipped. Answer: {answer_str_for_check[:100]}")
+                        # else: # No need to print if rerun is skipped, UI should show the error/warning
+                            # print(f"DEBUG_streamlit_app: Follow-up had an issue or no answer, st.rerun() was skipped. Answer: {answer_str_for_check[:100]}") # Removed
                     else:
                         st.warning("Please enter a follow-up question.")
-                        print("DEBUG_streamlit_app: Follow-up question was empty.")
+                        # print("DEBUG_streamlit_app: Follow-up question was empty.") # Removed
 
-                    print("DEBUG_streamlit_app: End of button handler (new_strategy_direct_llm_call).")
+                    # print("DEBUG_streamlit_app: End of button handler (new_strategy_direct_llm_call).") # Removed
 
                 except Exception as e_global_handler:
                     st.error(f"A critical error occurred in the follow-up button's operations: {e_global_handler}")
                     st.text("Detailed Traceback:")
                     st.text(traceback.format_exc()) # Make sure traceback is imported
                     logger.error(f"Global handler in 'Ask Follow-up' caught exception: {e_global_handler}", exc_info=True)
-                    print(f"DEBUG_streamlit_app: Global exception handler caught: {e_global_handler}")
+                    # print(f"DEBUG_streamlit_app: Global exception handler caught: {e_global_handler}") # Removed
 
     else: # st.session_state.research_state is None
         st.info("Enter a research topic and click 'Start Research' to begin.")
