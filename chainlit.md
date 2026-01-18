@@ -1,14 +1,30 @@
-# Welcome to Chainlit! 🚀🤖
+# Deep Research Assistant 🚀
 
-Hi there, Developer! 👋 We're excited to have you on board. Chainlit is a powerful tool designed to help you prototype, debug and share applications built on top of LLMs.
+AIを活用した高度なリサーチを自動で行うエージェントです。
+LLMとWeb検索を組み合わせ、指定されたトピックについて深層調査を行い、構造化されたレポートを生成します。
 
-## Useful Links 🔗
+## 🛠 主な機能
 
-- **Documentation:** Get started with our comprehensive [Chainlit Documentation](https://docs.chainlit.io) 📚
-- **Discord Community:** Join our friendly [Chainlit Discord](https://discord.gg/k73SQ3FyUh) to ask questions, share your projects, and connect with other developers! 💬
+### 1. 二つのリサーチモード
+左側の **Chat Settings** から切り替えが可能です。
+- **自動モード (Default)**: 調査計画の立案からレポート生成まで、すべてAIが自動で行います。
+- **対話モード (Interactive)**: 調査計画、検索クエリ、ソースの選択などを人間が確認・修正しながら進めることができます。
 
-We can't wait to see what you create with Chainlit! Happy coding! 💻😊
+### 2. ⚡ 途中からの自動切り替え
+対話モードで実行中であっても、途中で「⚡ Switch to Automatic」ボタンを押すことで、その後のプロセスを自動モードに切り替えて高速に進めることができます。
 
-## Welcome screen
+### 3. ⏹️ 調査の中断と部分レポート
+調査の途中で「⏹️ Stop Research」ボタンを押すと、その時点までの調査結果をまとめて、**部分的なレポート**を生成します。急いでいる場合や、十分な情報が得られたと判断した時に便利です。
 
-To modify the welcome screen, edit the `chainlit.md` file at the root of your project. If you do not want a welcome screen, just leave this file empty.
+### 4. 🌐 多言語対応 (日本語/英語)
+設定から言語を切り替えることができます。
+- **Japanese**: 日本語のプロンプトを使用し、日本語のレポートを生成します。日本語でリサーチする場合も、必要に応じて英語のソースを探索します。
+- **English**: 全て英語でプロセスを進行し、英語のレポートを生成します。
+
+### 5. 💬 フォローアップ Q&A
+レポート生成後、チャット入力欄からレポート内容に関する質問を投げることができます。AIが生成したレポートの内容に基づき、追加の解説を行います。
+
+---
+
+## 🚀 はじめかた
+チャット入力欄に、リサーチしたい**トピック**（例：「最新のAIコーディングアシスタントの動向」）を入力して送信してください。

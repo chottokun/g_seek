@@ -52,7 +52,7 @@ OpenAI以外のサービス（例: vLLM, OllamaのOpenAI互換API, LiteLLM）を
 ## 実行方法
 
 ### Chainlit UI (推奨)
-新しく追加されたモダンなUIです。リサーチの中断や、設定画面（Chat Settings）からのモード切り替えが可能です。
+新しく追加されたモダンなUIです。リサーチの中断、設定画面（Chat Settings）からのモード切り替え、および実行中の対話モードから自動モードへの切り替え（⚡ Switch to Automatic）が可能です。
 
 ```bash
 uv run chainlit run deep_research_project/chainlit_app.py

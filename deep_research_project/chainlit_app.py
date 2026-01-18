@@ -30,9 +30,10 @@ async def start():
         ]).send()
 
         await cl.Message(content="""# Deep Research Assistant
-AIを活用した高度なリサーチを自動で行います。
+AIを活用したリサーチを開始します。
 リサーチしたいトピックを入力してください。
-左側の設定（Chat Settings）から、自動・対話モードの切り替えが可能です。""").send()
+
+※ 左側の設定（Chat Settings）から、**言語**や**自動・対話モード**の切り替えが可能です。""").send()
     except Exception as e:
         await cl.Message(content=f"Error initializing configuration: {e}").send()
 
@@ -58,6 +59,8 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
             return res
 
         # Check what kind of interaction is needed
+        auto_action = cl.Action(name="switch_to_auto", payload={"value": "auto"}, label="⚡ Switch to Automatic", description="Continue automatically from here")
+
         if not state.plan_approved and state.research_plan:
             # Plan Approval
             plan_text = "### Proposed Research Plan\n"
@@ -65,7 +68,8 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
                 plan_text += f"{i+1}. **{sec['title']}**: {sec['description']}\n"
 
             actions = [
-                cl.Action(name="approve_plan", payload={"value": "approve"}, label="✅ Approve & Start")
+                cl.Action(name="approve_plan", payload={"value": "approve"}, label="✅ Approve & Start"),
+                auto_action
             ]
             await cl.Message(content=plan_text, actions=actions).send()
             return # Wait for action callback
@@ -73,7 +77,8 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
         if state.proposed_query and not state.current_query:
             # Query Approval
             actions = [
-                cl.Action(name="approve_query", payload={"value": "approve"}, label=f"🔍 Search: {state.proposed_query}")
+                cl.Action(name="approve_query", payload={"value": "approve"}, label=f"🔍 Search: {state.proposed_query}"),
+                auto_action
             ]
             await cl.Message(content=f"Next research step: **{state.proposed_query}**", actions=actions).send()
             return
@@ -88,6 +93,7 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
 
             actions.append(cl.Action(name="summarize_all", payload={"value": "all"}, label="All Sources"))
             actions.append(cl.Action(name="summarize_selected", payload={"value": "done"}, label="Done Selecting"))
+            actions.append(auto_action)
 
             cl.user_session.set("selected_indices", [])
             await cl.Message(content=content, actions=actions).send()
@@ -127,8 +133,33 @@ async def main(message: cl.Message):
 
     async def progress_callback(info: str):
         nonlocal current_step
-        if "Starting" in info or "Generating" in info or "Synthesizing" in info or "Searching" in info:
-            current_step = cl.Step(name="Research Task", parent_id=root_msg.id)
+        step_name = "Research Task"
+        is_major = False
+
+        if "Starting research for section" in info:
+            step_name = f"🔄 {info.split('\'')[1]}" if "'" in info else "Section Research"
+            is_major = True
+        elif "Searching web" in info:
+            step_name = "🔍 Web Search"
+            is_major = True
+        elif "Summarizing" in info:
+            step_name = "📝 Summarization"
+            is_major = True
+        elif "Generating structured research plan" in info:
+            step_name = "📋 Planning"
+            is_major = True
+        elif "Synthesizing final research report" in info:
+            step_name = "🎓 Synthesis"
+            is_major = True
+        elif "Extracting entities" in info:
+            step_name = "🕸️ Knowledge Extraction"
+            is_major = True
+        elif "Reflecting on findings" in info:
+            step_name = "🤔 Reflection"
+            is_major = True
+
+        if is_major:
+            current_step = cl.Step(name=step_name, parent_id=root_msg.id)
             await current_step.send()
 
         if current_step:
@@ -161,6 +192,37 @@ async def display_final_report(final_report: str, state: ResearchState):
     elements = [cl.File(name="research_report.md", path=report_path, display="inline")]
     await cl.Message(content="You can download the report below:", elements=elements).send()
     await cl.Message(content="You can ask follow-up questions about the report above.").send()
+
+@cl.action_callback("switch_to_auto")
+async def on_switch_to_auto(action: cl.Action):
+    state = cl.user_session.get("state")
+    loop = cl.user_session.get("loop")
+
+    if not state or not loop: return
+
+    await cl.Message(content="⚡ Switching to automatic mode...").send()
+
+    # Update loop and config
+    loop.interactive_mode = False
+    loop.config.INTERACTIVE_MODE = False
+
+    # Automatically handle current interactive state
+    if not state.plan_approved:
+        state.plan_approved = True
+
+    if state.proposed_query and not state.current_query:
+        state.current_query = state.proposed_query
+        state.proposed_query = None
+
+    if state.pending_source_selection:
+        await loop._summarize_sources(state.search_results or [])
+
+    await action.remove()
+
+    # Resume research
+    final_report = await handle_interactive_steps(loop, state)
+    if final_report:
+        await display_final_report(final_report, state)
 
 @cl.action_callback("stop_research")
 async def on_stop(action: cl.Action):
