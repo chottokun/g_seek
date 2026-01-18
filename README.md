@@ -44,7 +44,7 @@ cp .env.example .env
 ## 実行方法
 
 ### Chainlit UI (推奨)
-新しく追加されたモダンなUIです。リサーチの中断も可能です。
+新しく追加されたモダンなUIです。リサーチの中断や、設定画面（Chat Settings）からのモード切り替えが可能です。
 
 ```bash
 uv run chainlit run deep_research_project/chainlit_app.py
@@ -60,11 +60,22 @@ uv run streamlit run deep_research_project/streamlit_app.py
 デフォルトで http://localhost:8501 でアクセス可能です。
 
 ### CLI (テスト用)
-コマンドラインから素早くプログラムをテストできます。
+コマンドラインから素早くプログラムをテストできます。引数でトピックやループ回数を指定可能です。
 
 ```bash
-uv run -m deep_research_project.main
+# 基本実行（自動モード）
+uv run -m deep_research_project.main "Your Topic"
+
+# 詳細オプション指定
+uv run -m deep_research_project.main "Your Topic" --loops 5 --results 5 --snippets
 ```
+
+オプション一覧:
+- `-i`, `--interactive`: 対話モードで実行（UI推奨）
+- `-l`, `--loops`: 最大リサーチループ回数
+- `-r`, `--results`: 1クエリあたりの最大検索結果数
+- `-s`, `--snippets`: スニペットのみを使用（高速）
+- `--lang`: プロンプトの言語 (`Japanese` または `English`)
 
 ### Docker Compose
 SearxNG等を含めたフルスタック環境をワンコマンドで起動できます。

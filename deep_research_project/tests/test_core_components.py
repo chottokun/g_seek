@@ -94,7 +94,8 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         # Check if citations were requested in prompt
         call_args = self.mock_llm_client.generate_text.call_args
         prompt = call_args.kwargs['prompt']
-        self.assertIn("numbered in-text citations", prompt.lower())
+        # Since default language is Japanese now
+        self.assertTrue("numbered in-text citations" in prompt.lower() or "番号付きのインライン引用" in prompt)
         self.assertIn("[1]", prompt)
 
 class TestSplitTextIntoChunks(unittest.TestCase):

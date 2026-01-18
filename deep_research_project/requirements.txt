@@ -3,6 +3,7 @@ langchain-community
 langchain-openai
 langchain-ollama
 duckduckgo-search
+ddgs>=9.10.0
 streamlit
 pyvis
 beautifulsoup4

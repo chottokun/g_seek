@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import ResearchState, SearchResult
 from deep_research_project.core.research_loop import ResearchLoop
+from chainlit.input_widget import Switch, Slider, Select
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +21,31 @@ async def start():
         config = Configuration()
         cl.user_session.set("config", config)
 
+        await cl.ChatSettings([
+            Select(id="language", label="Language", values=["Japanese", "English"], initial_value="Japanese"),
+            Switch(id="interactive_mode", label="Interactive Mode", initial=config.INTERACTIVE_MODE),
+            Slider(id="max_loops", label="Max Research Loops", initial=config.MAX_RESEARCH_LOOPS, min=1, max=10, step=1),
+            Switch(id="snippets_only", label="Use Snippets Only", initial=config.USE_SNIPPETS_ONLY_MODE),
+            Slider(id="max_search_results", label="Max Search Results", initial=config.MAX_SEARCH_RESULTS_PER_QUERY, min=1, max=10, step=1),
+        ]).send()
+
         await cl.Message(content="""# Deep Research Assistant
 AIを活用した高度なリサーチを自動で行います。
-リサーチしたいトピックを入力してください。""").send()
+リサーチしたいトピックを入力してください。
+左側の設定（Chat Settings）から、自動・対話モードの切り替えが可能です。""").send()
     except Exception as e:
         await cl.Message(content=f"Error initializing configuration: {e}").send()
+
+@cl.on_settings_update
+async def setup_agent(settings):
+    config = cl.user_session.get("config")
+    if config:
+        cl.user_session.set("language", settings["language"])
+        config.INTERACTIVE_MODE = settings["interactive_mode"]
+        config.MAX_RESEARCH_LOOPS = int(settings["max_loops"])
+        config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
+        config.MAX_SEARCH_RESULTS_PER_QUERY = int(settings["max_search_results"])
+        logger.info(f"Settings updated: {settings}")
 
 async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
     """Handles interactive steps if enabled."""
@@ -44,8 +65,7 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
                 plan_text += f"{i+1}. **{sec['title']}**: {sec['description']}\n"
 
             actions = [
-                cl.Action(name="approve_plan", payload={"value": "approve"}, label="✅ Approve & Start"),
-                cl.Action(name="edit_plan", payload={"value": "edit"}, label="📝 Edit Plan (In Sidebar)")
+                cl.Action(name="approve_plan", payload={"value": "approve"}, label="✅ Approve & Start")
             ]
             await cl.Message(content=plan_text, actions=actions).send()
             return # Wait for action callback
@@ -53,8 +73,7 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
         if state.proposed_query and not state.current_query:
             # Query Approval
             actions = [
-                cl.Action(name="approve_query", payload={"value": "approve"}, label=f"🔍 Search: {state.proposed_query}"),
-                cl.Action(name="edit_query", payload={"value": "edit"}, label="✏️ Edit Query")
+                cl.Action(name="approve_query", payload={"value": "approve"}, label=f"🔍 Search: {state.proposed_query}")
             ]
             await cl.Message(content=f"Next research step: **{state.proposed_query}**", actions=actions).send()
             return
@@ -94,7 +113,8 @@ async def main(message: cl.Message):
 
     # Start new research
     topic = message.content
-    state = ResearchState(research_topic=topic)
+    language = cl.user_session.get("language") or "Japanese"
+    state = ResearchState(research_topic=topic, language=language)
     cl.user_session.set("state", state)
 
     actions = [

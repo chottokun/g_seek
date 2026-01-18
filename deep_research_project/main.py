@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 
 # Adjust path to import from sibling directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,9 +15,30 @@ import logging
 import asyncio
 
 async def main():
-    os.environ["INTERACTIVE_MODE"] = "False"
+    parser = argparse.ArgumentParser(description="AI Research Assistant CLI")
+    parser.add_argument("topic", nargs="?", default="Modern AI Research Agents", help="Research topic")
+    parser.add_argument("-i", "--interactive", action="store_true", help="Run in interactive mode")
+    parser.add_argument("-l", "--loops", type=int, help="Max research loops")
+    parser.add_argument("-r", "--results", type=int, help="Max search results per query")
+    parser.add_argument("-s", "--snippets", action="store_true", help="Use snippets only mode")
+    parser.add_argument("--lang", choices=["Japanese", "English"], default="Japanese", help="Prompt language")
+    args = parser.parse_args()
+
     try:
         config = Configuration()
+        # Override config with CLI arguments
+        if args.interactive:
+            config.INTERACTIVE_MODE = True
+        else:
+            config.INTERACTIVE_MODE = False # Default to False for CLI unless specified
+
+        if args.loops is not None:
+            config.MAX_RESEARCH_LOOPS = args.loops
+        if args.results is not None:
+            config.MAX_SEARCH_RESULTS_PER_QUERY = args.results
+        if args.snippets:
+            config.USE_SNIPPETS_ONLY_MODE = True
+
     except Exception as e:
         print(f"CRITICAL: Error initializing configuration: {e}")
         return
@@ -25,11 +47,11 @@ async def main():
     logging.basicConfig(level=config.LOG_LEVEL, format=log_format)
     logger = logging.getLogger(__name__)
 
-    research_topic = "Modern AI Research Agents"
-    state = ResearchState(research_topic=research_topic)
+    research_topic = args.topic
+    state = ResearchState(research_topic=research_topic, language=args.lang)
     research_runner = ResearchLoop(config=config, state=state)
 
-    logger.info("Starting the research process (Async)...")
+    logger.info(f"Starting the research process for: {research_topic} (Interactive: {config.INTERACTIVE_MODE})")
     try:
         final_report = await research_runner.run_loop()
         if final_report:
@@ -39,6 +61,9 @@ async def main():
             with open(output_filename, "w", encoding="utf-8") as f:
                 f.write(final_report)
             logger.info(f"Report saved to: {output_filename}")
+        else:
+            if config.INTERACTIVE_MODE:
+                print("\nResearch paused for user input. Please use a UI for interactive mode or run in automated mode.")
     except Exception as e:
         logger.error(f"An error occurred: {e}", exc_info=True)
 

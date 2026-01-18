@@ -40,8 +40,9 @@ class SectionPlan(TypedDict):
     sources: List[Source]
 
 class ResearchState:
-    def __init__(self, research_topic: str):
+    def __init__(self, research_topic: str, language: str = "Japanese"):
         self.research_topic: str = research_topic
+        self.language: str = language
         self.initial_query: Optional[str] = None
         self.proposed_query: Optional[str] = None
         self.current_query: Optional[str] = None

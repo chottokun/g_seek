@@ -38,6 +38,7 @@ def main():
 
     with st.sidebar:
         st.header("Controls")
+        language = st.selectbox("Prompt Language", ["Japanese", "English"], index=0)
         interactive = st.toggle("Run Interactively?", value=False)
         snippets_only = st.toggle("Use Snippets Only?", value=False)
         max_chars = st.number_input("Max Chars/Source (0=unlim)", min_value=0, value=10000, step=1000)
@@ -58,7 +59,7 @@ def main():
                 config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = max_chars
                 config.PROCESS_PDF_FILES = process_pdf
 
-                st.session_state.research_state = ResearchState(research_topic=topic)
+                st.session_state.research_state = ResearchState(research_topic=topic, language=language)
                 st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state)
 
                 if not config.INTERACTIVE_MODE:
