@@ -4,4 +4,22 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "python-dotenv",
+    "langchain-community",
+    "langchain-openai",
+    "langchain-ollama",
+    "duckduckgo-search",
+    "streamlit",
+    "pyvis",
+    "beautifulsoup4",
+    "requests",
+    "pypdf",
+    "streamlit-agraph",
+    "ddgs>=9.10.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

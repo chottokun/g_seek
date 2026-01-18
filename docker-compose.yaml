@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: streamlit run deep_research_project/streamlit_app.py --server.address=0.0.0.0
+  # Example of how to add other services like Ollama if needed
+  # ollama:
+  #   image: ollama/ollama
+  #   volumes:
+  #     - ./ollama_data:/root/.ollama
