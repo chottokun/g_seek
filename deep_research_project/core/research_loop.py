@@ -146,10 +146,13 @@ class ResearchLoop:
             chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
 
             for i, chunk in enumerate(chunks):
+                if self.state.is_interrupted: break
                 if self.progress_callback: self.progress_callback(f"Summarizing chunk {i+1}/{len(chunks)} from {url}...")
                 prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
                 summary = await self.llm_client.generate_text(prompt=prompt)
                 if summary: all_chunk_summaries.append(summary)
+
+            if self.state.is_interrupted: break
 
         if not all_chunk_summaries:
             self.state.new_information = "Could not summarize any content."
@@ -246,6 +249,57 @@ class ResearchLoop:
         self.state.final_report = f"{report}\n\n## Sources\n{source_list_str}"
         if self.progress_callback: self.progress_callback("Final report generation complete.")
 
+    async def _process_section(self, section):
+        """Processes a single research section."""
+        section['status'] = 'researching'
+        if self.progress_callback: self.progress_callback(f"Starting research for section: '{section['title']}'")
+
+        if not self.state.current_query and not self.state.proposed_query and self.state.completed_loops == 0:
+            await self._generate_initial_query()
+
+        while self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
+            if self.state.is_interrupted: break
+
+            if not self.state.current_query:
+                if not self.interactive_mode and self.state.proposed_query:
+                    self.state.current_query = self.state.proposed_query
+                    self.state.proposed_query = None
+                elif self.interactive_mode and self.state.proposed_query:
+                    return False # Need interactive input
+                else: break
+
+            if not self.state.pending_source_selection:
+                await self._web_search()
+
+            if self.state.pending_source_selection:
+                if not self.interactive_mode:
+                    await self._summarize_sources(self.state.search_results or [])
+                else: return False # Need interactive input
+
+            if not self.state.pending_source_selection:
+                self.state.completed_loops += 1
+                if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
+                    await self._reflect_on_summary()
+                    if not self.state.proposed_query: break
+                    if not self.interactive_mode:
+                        self.state.current_query = self.state.proposed_query
+                        self.state.proposed_query = None
+                    else: return False # Need interactive input
+
+        section['status'] = 'completed'
+        section['summary'] = self.state.accumulated_summary
+        section['sources'] = self.state.sources_gathered.copy()
+
+        # Reset section-specific state
+        self.state.accumulated_summary = ""
+        self.state.sources_gathered = []
+        self.state.completed_loops = 0
+        self.state.current_query = None
+        self.state.proposed_query = None
+        self.state.search_results = None
+        self.state.fetched_content = {}
+        return True
+
     async def run_loop(self):
         if not self.state.research_plan: await self._generate_research_plan()
         if self.interactive_mode and not self.state.plan_approved: return
@@ -253,54 +307,20 @@ class ResearchLoop:
         if self.state.current_section_index == -1: self.state.current_section_index = 0
 
         while self.state.current_section_index < len(self.state.research_plan):
+            if self.state.is_interrupted:
+                logger.info("Research interrupted by user.")
+                if self.progress_callback: self.progress_callback("Research interrupted by user. Finalizing report with current findings...")
+                break
+
             section = self.state.research_plan[self.state.current_section_index]
             if section['status'] == 'completed':
                 self.state.current_section_index += 1
                 continue
 
-            section['status'] = 'researching'
-            if self.progress_callback: self.progress_callback(f"Starting research for section: '{section['title']}'")
-            if not self.state.current_query and not self.state.proposed_query and self.state.completed_loops == 0:
-                await self._generate_initial_query()
+            success = await self._process_section(section)
+            if not success and self.interactive_mode:
+                return None # Wait for interactive input
 
-            while self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
-                if not self.state.current_query:
-                    if not self.interactive_mode and self.state.proposed_query:
-                        self.state.current_query = self.state.proposed_query
-                        self.state.proposed_query = None
-                    elif self.interactive_mode and self.state.proposed_query:
-                        return
-                    else: break
-
-                if not self.state.pending_source_selection:
-                    await self._web_search()
-
-                if self.state.pending_source_selection:
-                    if not self.interactive_mode:
-                        await self._summarize_sources(self.state.search_results or [])
-                    else: return
-
-                if not self.state.pending_source_selection:
-                    self.state.completed_loops += 1
-                    if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
-                        await self._reflect_on_summary()
-                        if not self.state.proposed_query: break
-                        if not self.interactive_mode:
-                            self.state.current_query = self.state.proposed_query
-                            self.state.proposed_query = None
-                        else: return
-
-            section['status'] = 'completed'
-            section['summary'] = self.state.accumulated_summary
-            section['sources'] = self.state.sources_gathered.copy()
-
-            self.state.accumulated_summary = ""
-            self.state.sources_gathered = []
-            self.state.completed_loops = 0
-            self.state.current_query = None
-            self.state.proposed_query = None
-            self.state.search_results = None
-            self.state.fetched_content = {}
             self.state.current_section_index += 1
 
         await self._finalize_summary()

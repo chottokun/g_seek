@@ -61,6 +61,7 @@ class ResearchState:
         self.research_plan: List[SectionPlan] = []
         self.current_section_index: int = -1 # -1 means plan not yet generated
         self.plan_approved: bool = False
+        self.is_interrupted: bool = False
 
     def __str__(self):
         plan_status = f"{len(self.research_plan)} sections" if self.research_plan else "Not generated"
@@ -84,5 +85,6 @@ class ResearchState:
             f"  Knowledge Graph Nodes: {len(self.knowledge_graph_nodes)}\n"
             f"  Knowledge Graph Edges: {len(self.knowledge_graph_edges)}\n"
             f"  Follow-up Q&A Count: {len(self.follow_up_log)}\n"
-            f"  Final Report: {'Generated' if self.final_report else 'Not yet generated'}"
+            f"  Final Report: {'Generated' if self.final_report else 'Not yet generated'}\n"
+            f"  Interrupted: {self.is_interrupted}"
         )

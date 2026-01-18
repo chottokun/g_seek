@@ -43,7 +43,15 @@ cp .env.example .env
 
 ## 実行方法
 
-### Streamlit UI (推奨)
+### Chainlit UI (推奨)
+新しく追加されたモダンなUIです。リサーチの中断も可能です。
+
+```bash
+uv run chainlit run deep_research_project/chainlit_app.py
+```
+デフォルトで http://localhost:8000 でアクセス可能です。
+
+### Streamlit UI
 ブラウザから直感的にリサーチを指示・確認できます。
 
 ```bash

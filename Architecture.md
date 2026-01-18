@@ -28,7 +28,7 @@ The Research Assistant has been modernized to follow a multi-stage, asynchronous
 - **Async Runtime**: Python `asyncio` for non-blocking I/O (searches, retrievals, LLM calls).
 - **LLM Clients**: Support for OpenAI, Azure OpenAI, and Ollama (via `ChatOllama`).
 - **Search**: DuckDuckGo and SearxNG support.
-- **Frontend**: Streamlit for a responsive and interactive UI.
+- **Frontend**: Chainlit (Modern UI with interruption support) and Streamlit.
 - **Parsing**: Pydantic v2 for data validation and schema definition.
 - **Package Management**: `uv` for lightning-fast, reproducible dependency management.
 - **Containerization**: Docker & Docker Compose for orchestrated environments (including SearxNG).
