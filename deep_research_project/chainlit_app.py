@@ -40,12 +40,21 @@ AIを活用したリサーチを開始します。
 @cl.on_settings_update
 async def setup_agent(settings):
     config = cl.user_session.get("config")
+    state = cl.user_session.get("state")
+    loop = cl.user_session.get("loop")
+
     if config:
         cl.user_session.set("language", settings["language"])
         config.INTERACTIVE_MODE = settings["interactive_mode"]
         config.MAX_RESEARCH_LOOPS = int(settings["max_loops"])
         config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
         config.MAX_SEARCH_RESULTS_PER_QUERY = int(settings["max_search_results"])
+
+        if state:
+            state.language = settings["language"]
+        if loop:
+            loop.interactive_mode = settings["interactive_mode"]
+
         logger.info(f"Settings updated: {settings}")
 
 async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
