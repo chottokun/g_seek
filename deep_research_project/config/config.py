@@ -21,7 +21,7 @@ class Configuration:
         # OpenAI Specific Configuration (also used for LiteLLM proxies)
         self.OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
         # OPENAI_API_BASE_URL: Optional. Use for OpenAI-compatible APIs (e.g., LiteLLM, local LLMs). If None, uses default OpenAI.
-        self.OPENAI_API_BASE_URL: Optional[str] = os.getenv("OPENAI_API_BASE_URL", None)
+        self.OPENAI_API_BASE_URL: Optional[str] = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_BASE_URL")
 
         # Azure OpenAI Specific Configuration: Required settings for using Azure OpenAI directly.
         self.AZURE_OPENAI_API_KEY: Optional[str] = os.getenv("AZURE_OPENAI_API_KEY", None)

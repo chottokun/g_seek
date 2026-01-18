@@ -38,8 +38,16 @@ cp .env.example .env
 
 主な設定項目:
 - `LLM_PROVIDER`: `ollama`, `openai`, `azure` 等
+- `OPENAI_BASE_URL`: OpenAI互換サービス（LiteLLM, Local LLMs等）を使用する場合のベースURL
 - `SEARCH_API`: `searxng`, `duckduckgo` 等
 - `MAX_RESEARCH_LOOPS`: 最大ループ回数（デフォルト 3）
+
+### OpenAI互換サービスの使用
+OpenAI以外のサービス（例: vLLM, OllamaのOpenAI互換API, LiteLLM）を使用する場合は、以下の設定を行ってください。
+
+1. `.env` ファイルで `LLM_PROVIDER="openai"` を指定。
+2. `OPENAI_BASE_URL` にサービスのURL（例: `http://localhost:8000/v1`）を設定。
+3. 必要に応じて `LLM_MODEL` をサービスのモデル名に合わせて設定。
 
 ## 実行方法
 
