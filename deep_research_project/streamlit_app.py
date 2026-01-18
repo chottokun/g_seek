@@ -57,7 +57,11 @@ def main():
                 st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state)
 
                 if not config.INTERACTIVE_MODE:
-                    with st.status("Automated research processing...") as status:
+                    with st.status("Automated research processing...", expanded=True) as status:
+                        def progress_update(msg: str):
+                            status.write(msg)
+                        
+                        st.session_state.research_loop.progress_callback = progress_update
                         asyncio.run(st.session_state.research_loop.run_loop())
                         status.update(label="Complete!", state="complete")
                     st.rerun()
@@ -91,7 +95,11 @@ def main():
                     state.research_plan[i]['description'] = st.text_area(f"Desc {i}", value=sec['description'], key=f"d_{i}")
             if st.button("Approve & Start"):
                 state.plan_approved = True
-                asyncio.run(loop.run_loop())
+                with st.status("Processing research based on approved plan...", expanded=True) as status:
+                    def progress_update(msg: str):
+                        status.write(msg)
+                    loop.progress_callback = progress_update
+                    asyncio.run(loop.run_loop())
                 st.rerun()
             return
 
@@ -103,7 +111,11 @@ def main():
             if st.button("Search with this Query"):
                 state.current_query = q
                 state.proposed_query = None
-                asyncio.run(loop.run_loop())
+                with st.status(f"Searching for '{q}'...", expanded=True) as status:
+                    def progress_update(msg: str):
+                        status.write(msg)
+                    loop.progress_callback = progress_update
+                    asyncio.run(loop.run_loop())
                 st.rerun()
 
         # Interactive Source Selection
@@ -115,8 +127,12 @@ def main():
                 if st.checkbox(res['title'], key=f"src_{res['link']}"):
                     selected.append(res)
             if st.button("Summarize Selected"):
-                asyncio.run(loop._summarize_sources(selected))
-                asyncio.run(loop.run_loop())
+                with st.status("Summarizing selected sources and continuing research...", expanded=True) as status:
+                    def progress_update(msg: str):
+                        status.write(msg)
+                    loop.progress_callback = progress_update
+                    asyncio.run(loop._summarize_sources(selected))
+                    asyncio.run(loop.run_loop())
                 st.rerun()
 
         # Results Display

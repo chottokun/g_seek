@@ -30,6 +30,18 @@ The Research Assistant has been modernized to follow a multi-stage, asynchronous
 - **Search**: DuckDuckGo and SearxNG support.
 - **Frontend**: Streamlit for a responsive and interactive UI.
 - **Parsing**: Pydantic v2 for data validation and schema definition.
+- **Package Management**: `uv` for lightning-fast, reproducible dependency management.
+- **Containerization**: Docker & Docker Compose for orchestrated environments (including SearxNG).
+
+## Infrastructure & Environment
+
+### Package Management with `uv`
+The project leverages `uv` to ensure consistency across development environments. `uv.lock` guarantees that all contributors and production environments use the exact same versions of libraries.
+
+### Dockerized Workflow
+The `docker-compose.yaml` provides a ready-to-use environment that includes:
+- **Research Assistant**: The main Python application (Streamlit UI).
+- **SearxNG**: A privacy-respecting metasearch engine configured for the assistant's use.
 
 ## Data Structures
 

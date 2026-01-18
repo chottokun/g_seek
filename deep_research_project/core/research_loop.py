@@ -105,14 +105,21 @@ class ResearchLoop:
     async def _web_search(self):
         if not self.state.current_query: return
         logger.info(f"Performing web search for: {self.state.current_query}")
+        if self.progress_callback: self.progress_callback(f"Searching web for: '{self.state.current_query}'...")
         try:
             results = await self.search_client.search(self.state.current_query, num_results=self.config.MAX_SEARCH_RESULTS_PER_QUERY)
             self.state.search_results = results
             self.state.pending_source_selection = bool(results)
+            if self.progress_callback:
+                if results:
+                    self.progress_callback(f"Found {len(results)} potential sources.")
+                else:
+                    self.progress_callback("No search results found.")
         except Exception as e:
             logger.error(f"Error during search: {e}")
             self.state.search_results = []
             self.state.pending_source_selection = False
+            if self.progress_callback: self.progress_callback(f"Search failed: {e}")
 
     async def _summarize_sources(self, selected_results: List[SearchResult]):
         if not selected_results:
@@ -138,18 +145,22 @@ class ResearchLoop:
             content = self.state.fetched_content[url]
             chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
 
-            for chunk in chunks:
+            for i, chunk in enumerate(chunks):
+                if self.progress_callback: self.progress_callback(f"Summarizing chunk {i+1}/{len(chunks)} from {url}...")
                 prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
                 summary = await self.llm_client.generate_text(prompt=prompt)
                 if summary: all_chunk_summaries.append(summary)
 
         if not all_chunk_summaries:
             self.state.new_information = "Could not summarize any content."
+            if self.progress_callback: self.progress_callback("No content could be summarized.")
         else:
+            if self.progress_callback: self.progress_callback("Synthesizing final summary for the query...")
             combined = "\n\n---\n\n".join(all_chunk_summaries)
             prompt = f"Combine these summaries into one coherent summary for query: '{self.state.current_query}'.\n\nSummaries:\n{combined}"
             self.state.new_information = await self.llm_client.generate_text(prompt=prompt)
             self.state.accumulated_summary += f"\n\n## {self.state.current_query}\n{self.state.new_information}"
+            if self.progress_callback: self.progress_callback("Summary update complete.")
 
         for res in selected_results:
             if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
@@ -162,19 +173,23 @@ class ResearchLoop:
         if not self.state.new_information or len(self.state.new_information) < 20: return
 
         logger.info("Extracting entities and relations (structured).")
+        if self.progress_callback: self.progress_callback("Extracting entities and relations for knowledge graph...")
         prompt = f"Identify key entities and relationships from this text:\n\n{self.state.new_information}"
 
         try:
             kg_model = await self.llm_client.generate_structured(prompt=prompt, response_model=KnowledgeGraphModel)
             self.state.knowledge_graph_nodes = [n.model_dump() for n in kg_model.nodes]
             self.state.knowledge_graph_edges = [e.model_dump() for e in kg_model.edges]
+            if self.progress_callback: self.progress_callback(f"Extracted {len(self.state.knowledge_graph_nodes)} nodes and {len(self.state.knowledge_graph_edges)} edges.")
         except Exception as e:
             logger.error(f"KG extraction failed: {e}")
+            if self.progress_callback: self.progress_callback("Knowledge graph extraction skipped or failed.")
 
     async def _reflect_on_summary(self):
         section = self._get_current_section()
         title = section['title'] if section else "General"
 
+        if self.progress_callback: self.progress_callback(f"Reflecting on findings for section: '{title}'...")
         prompt = (
             f"Topic: {self.state.research_topic}\n"
             f"Section: {title}\n"
@@ -226,8 +241,10 @@ class ResearchLoop:
             f"5. End with a summary of the findings."
         )
 
+        if self.progress_callback: self.progress_callback("Synthesizing final research report with all findings...")
         report = await self.llm_client.generate_text(prompt=prompt)
         self.state.final_report = f"{report}\n\n## Sources\n{source_list_str}"
+        if self.progress_callback: self.progress_callback("Final report generation complete.")
 
     async def run_loop(self):
         if not self.state.research_plan: await self._generate_research_plan()
@@ -242,6 +259,7 @@ class ResearchLoop:
                 continue
 
             section['status'] = 'researching'
+            if self.progress_callback: self.progress_callback(f"Starting research for section: '{section['title']}'")
             if not self.state.current_query and not self.state.proposed_query and self.state.completed_loops == 0:
                 await self._generate_initial_query()
 

@@ -47,7 +47,15 @@ The system was refactored from a simple, single-topic iterative loop into a stru
 ### UI Verification
 - **Improvement**: Implemented Playwright scripts to automatically verify both "Automated" and "Interactive" research modes in Streamlit, capturing screenshots for visual confirmation.
 
-## 5. Summary of Refactored Files
+## 5. Deployment and Environment Management
+- **Modernized Toolchain**: Migrated from `pip` and `requirements.txt` to `uv`. This provides reproducible builds, faster installation times, and better dependency resolution.
+- **Containerization**: Added `Dockerfile` and `docker-compose.yaml` to orchestrate the Streamlit app and a local SearxNG instance, simplifying the setup for end users.
+
+## 6. UI/UX Enhancements
+- **Real-time Feedback**: Implemented a callback system to feed logs from the asynchronous research loop into Streamlit's `st.status` component.
+- **Visual Progress Tracking**: Added a section-by-section progress bar/icons in the UI to give users a clear overview of the multi-stage research process.
+
+## 7. Summary of Refactored Files
 
 | File | Key Refactoring Points |
 | :--- | :--- |
@@ -59,3 +67,5 @@ The system was refactored from a simple, single-topic iterative loop into a stru
 | `streamlit_app.py` | Updated to handle async backend and plan approval UI. |
 | `main.py` | Updated for `asyncio.run()`. |
 | `tests/` | Modernized for async testing. |
+| `pyproject.toml` | Added as part of the `uv` migration. |
+| `docker-compose.yaml` | Initialized for full-stack orchestration. |

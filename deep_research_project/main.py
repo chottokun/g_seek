@@ -1,4 +1,9 @@
 import os
+import sys
+
+# Adjust path to import from sibling directories
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 load_dotenv()
 

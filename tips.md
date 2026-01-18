@@ -60,4 +60,31 @@ This suggests that complex operations (especially those involving I/O, C-extensi
     *   Move the call more directly into the main script body if it proves more stable there.
     *   Consider if the object whose method is being called needs to be re-fetched or re-instantiated from session state more carefully.
 
+## Real-time Progress Updates in Streamlit
+
+When performing long-running background tasks (like a research loop), providing feedback to the user is essential.
+
+### Implementation Pattern: `st.status` + Callback
+
+1.  **Define a Callback**: Create a function that writes to an `st.status` object.
+2.  **Pass to Backend**: Pass this callback to your core logic / agent.
+3.  **Use `asyncio.run` cautiously**: In a Streamlit environment, ensure async tasks that update the UI are handled within the script execution flow.
+
+```python
+# In streamlit_app.py
+with st.status("Processing...") as status:
+    def update_ui(msg):
+        status.write(msg)
+    
+    # backend_loop expects a callable
+    loop.progress_callback = update_ui
+    asyncio.run(loop.run())
+    status.update(label="Done!", state="complete")
+```
+
+### Key Learnings:
+- `st.status` provides a clean, collapsible container for logs.
+- Passing a simple `write` wrapper as a callback allows the backend to be agnostic of Streamlit while still providing real-time feedback.
+- Ensure the callback is thread-safe or called from the main Streamlit thread if using complex threading (though `asyncio.run` in the main script is generally safe for simple `status.write`).
+
 By being mindful of these points, development and debugging of Streamlit applications can be made more manageable.
