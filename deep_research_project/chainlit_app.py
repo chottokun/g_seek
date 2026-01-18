@@ -44,8 +44,8 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
                 plan_text += f"{i+1}. **{sec['title']}**: {sec['description']}\n"
 
             actions = [
-                cl.Action(name="approve_plan", value="approve", label="✅ Approve & Start"),
-                cl.Action(name="edit_plan", value="edit", label="📝 Edit Plan (In Sidebar)")
+                cl.Action(name="approve_plan", payload={"value": "approve"}, label="✅ Approve & Start"),
+                cl.Action(name="edit_plan", payload={"value": "edit"}, label="📝 Edit Plan (In Sidebar)")
             ]
             await cl.Message(content=plan_text, actions=actions).send()
             return # Wait for action callback
@@ -53,8 +53,8 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
         if state.proposed_query and not state.current_query:
             # Query Approval
             actions = [
-                cl.Action(name="approve_query", value="approve", label=f"🔍 Search: {state.proposed_query}"),
-                cl.Action(name="edit_query", value="edit", label="✏️ Edit Query")
+                cl.Action(name="approve_query", payload={"value": "approve"}, label=f"🔍 Search: {state.proposed_query}"),
+                cl.Action(name="edit_query", payload={"value": "edit"}, label="✏️ Edit Query")
             ]
             await cl.Message(content=f"Next research step: **{state.proposed_query}**", actions=actions).send()
             return
@@ -65,10 +65,10 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
             actions = []
             for i, res in enumerate(state.search_results):
                 content += f"{i+1}. [{res['title']}]({res['link']})\n"
-                actions.append(cl.Action(name="select_source", value=str(i), label=f"Source {i+1}"))
+                actions.append(cl.Action(name="select_source", payload={"value": str(i)}, label=f"Source {i+1}"))
 
-            actions.append(cl.Action(name="summarize_all", value="all", label="All Sources"))
-            actions.append(cl.Action(name="summarize_selected", value="done", label="Done Selecting"))
+            actions.append(cl.Action(name="summarize_all", payload={"value": "all"}, label="All Sources"))
+            actions.append(cl.Action(name="summarize_selected", payload={"value": "done"}, label="Done Selecting"))
 
             cl.user_session.set("selected_indices", [])
             await cl.Message(content=content, actions=actions).send()
@@ -98,7 +98,7 @@ async def main(message: cl.Message):
     cl.user_session.set("state", state)
 
     actions = [
-        cl.Action(name="stop_research", value="stop", label="⏹️ Stop Research")
+        cl.Action(name="stop_research", payload={"value": "stop"}, label="⏹️ Stop Research")
     ]
     root_msg = cl.Message(content=f"## Researching: {topic}", actions=actions)
     await root_msg.send()
@@ -174,7 +174,7 @@ async def on_approve_query(action: cl.Action):
 @cl.action_callback("select_source")
 async def on_select_source(action: cl.Action):
     selected = cl.user_session.get("selected_indices")
-    idx = int(action.value)
+    idx = int(action.payload.get("value", 0))
     if idx not in selected:
         selected.append(idx)
         await cl.Message(content=f"Source {idx+1} selected.").send()
