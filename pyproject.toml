@@ -17,6 +17,7 @@ dependencies = [
     "pypdf",
     "streamlit-agraph",
     "ddgs>=9.10.0",
+    "chainlit",
 ]
 
 [dependency-groups]
