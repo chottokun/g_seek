@@ -181,9 +181,23 @@ class ResearchLoop:
 
         try:
             kg_model = await self.llm_client.generate_structured(prompt=prompt, response_model=KnowledgeGraphModel)
-            self.state.knowledge_graph_nodes = [n.model_dump() for n in kg_model.nodes]
-            self.state.knowledge_graph_edges = [e.model_dump() for e in kg_model.edges]
-            if self.progress_callback: self.progress_callback(f"Extracted {len(self.state.knowledge_graph_nodes)} nodes and {len(self.state.knowledge_graph_edges)} edges.")
+
+            # Merge nodes
+            existing_node_ids = {n['id'] for n in self.state.knowledge_graph_nodes}
+            for n in kg_model.nodes:
+                if n.id not in existing_node_ids:
+                    self.state.knowledge_graph_nodes.append(n.model_dump())
+                    existing_node_ids.add(n.id)
+
+            # Merge edges (simplified deduplication based on source/target/label)
+            existing_edge_keys = {(e['source'], e['target'], e.get('label')) for e in self.state.knowledge_graph_edges}
+            for e in kg_model.edges:
+                edge_key = (e.source, e.target, e.label)
+                if edge_key not in existing_edge_keys:
+                    self.state.knowledge_graph_edges.append(e.model_dump())
+                    existing_edge_keys.add(edge_key)
+
+            if self.progress_callback: self.progress_callback(f"Knowledge graph now has {len(self.state.knowledge_graph_nodes)} nodes and {len(self.state.knowledge_graph_edges)} edges.")
         except Exception as e:
             logger.error(f"KG extraction failed: {e}")
             if self.progress_callback: self.progress_callback("Knowledge graph extraction skipped or failed.")
@@ -232,22 +246,40 @@ class ResearchLoop:
 
         source_list_str = "\n".join([f"[{i+1}] {s['title']} ({s['link']})" for i, s in enumerate(all_sources)])
 
+        if not source_list_str:
+            source_info = "No specific web sources were found or selected for this research."
+            citation_instruction = "Since no sources are available, do not use in-text citations."
+        else:
+            source_info = f"Reference Sources:\n{source_list_str}"
+            citation_instruction = "You MUST use numbered in-text citations such as [1] or [2, 3] to attribute information to the sources listed above."
+
         prompt = (
             f"Synthesize a final research report for the topic: {self.state.research_topic}\n\n"
             f"Research Context (Summaries from various sections):\n{full_context}\n\n"
-            f"Reference Sources:\n{source_list_str}\n\n"
+            f"{source_info}\n\n"
             f"STRICT INSTRUCTIONS:\n"
             f"1. The report must be comprehensive, professional, and well-structured with clear headings.\n"
-            f"2. You MUST use numbered in-text citations such as [1] or [2, 3] to attribute information to the sources listed above.\n"
-            f"3. Every major claim or data point should ideally be cited.\n"
+            f"2. {citation_instruction}\n"
+            f"3. Every major claim or data point should ideally be cited if sources are available.\n"
             f"4. Do not mention sources that are not in the provided list.\n"
             f"5. End with a summary of the findings."
         )
 
         if self.progress_callback: self.progress_callback("Synthesizing final research report with all findings...")
         report = await self.llm_client.generate_text(prompt=prompt)
-        self.state.final_report = f"{report}\n\n## Sources\n{source_list_str}"
+
+        sources_section = f"\n\n## Sources\n{source_list_str}" if source_list_str else ""
+        self.state.final_report = f"{report}{sources_section}"
         if self.progress_callback: self.progress_callback("Final report generation complete.")
+
+    def format_follow_up_prompt(self, final_report: str, question: str) -> str:
+        """Formats the prompt for a follow-up question based on the final report."""
+        return (
+            f"Based on the following research report, answer the user's follow-up question.\n\n"
+            f"Report:\n{final_report}\n\n"
+            f"User Question: {question}\n\n"
+            f"Provide a clear and concise answer based only on the report content."
+        )
 
     async def _process_section(self, section):
         """Processes a single research section."""
