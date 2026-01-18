@@ -260,6 +260,7 @@ class ResearchLoop:
         while self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
             if self.state.is_interrupted: break
 
+            # Step 1: Ensure we have a current query if needed
             if not self.state.current_query:
                 if not self.interactive_mode and self.state.proposed_query:
                     self.state.current_query = self.state.proposed_query
@@ -268,16 +269,22 @@ class ResearchLoop:
                     return False # Need interactive input
                 else: break
 
-            if not self.state.pending_source_selection:
+            # Step 2: Search if needed
+            if not self.state.pending_source_selection and self.state.search_results is None:
                 await self._web_search()
 
+            # Step 3: Summarize if needed
             if self.state.pending_source_selection:
                 if not self.interactive_mode:
                     await self._summarize_sources(self.state.search_results or [])
                 else: return False # Need interactive input
 
+            # Step 4: After summarization, increment and reflect
             if not self.state.pending_source_selection:
                 self.state.completed_loops += 1
+                self.state.current_query = None # Clear current query as it's finished
+                self.state.search_results = None # Clear results for this query
+
                 if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
                     await self._reflect_on_summary()
                     if not self.state.proposed_query: break

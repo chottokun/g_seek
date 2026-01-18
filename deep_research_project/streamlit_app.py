@@ -45,6 +45,11 @@ def main():
 
         topic = st.text_input("Research Topic:")
 
+        if "research_state" in st.session_state and not st.session_state.research_state.final_report:
+            if st.button("🛑 Stop Research"):
+                st.session_state.research_state.is_interrupted = True
+                st.warning("Stop signal sent. Finishing current task...")
+
         if st.button("Start Research"):
             if topic:
                 config = Configuration()
@@ -60,7 +65,7 @@ def main():
                     with st.status("Automated research processing...", expanded=True) as status:
                         def progress_update(msg: str):
                             status.write(msg)
-                        
+
                         st.session_state.research_loop.progress_callback = progress_update
                         asyncio.run(st.session_state.research_loop.run_loop())
                         status.update(label="Complete!", state="complete")
@@ -138,6 +143,8 @@ def main():
         # Results Display
         if state.final_report:
             st.success("Final Report Generated")
+            if state.is_interrupted:
+                st.warning("Note: This report is partial as research was interrupted.")
             with st.expander("View Report", expanded=True):
                 st.markdown(state.final_report)
 
