@@ -101,7 +101,7 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
                 actions.append(cl.Action(name="select_source", payload={"value": str(i)}, label=f"Source {i+1}"))
 
             actions.append(cl.Action(name="summarize_all", payload={"value": "all"}, label="All Sources"))
-            actions.append(cl.Action(name="summarize_selected", payload={"value": "done"}, label="Done Selecting"))
+            actions.append(cl.Action(name="summarize_selected", payload={"value": "done"}, label="完了 (Done Selecting)"))
             actions.append(auto_action)
 
             cl.user_session.set("selected_indices", [])
@@ -138,42 +138,12 @@ async def main(message: cl.Message):
     root_msg = cl.Message(content=f"## Researching: {topic}", actions=actions)
     await root_msg.send()
 
-    current_step = None
+    progress_messages = []  # Track progress as messages
 
     async def progress_callback(info: str):
-        nonlocal current_step
-        step_name = "Research Task"
-        is_major = False
-
-        if "Starting research for section" in info:
-            step_name = f"🔄 {info.split('\'')[1]}" if "'" in info else "Section Research"
-            is_major = True
-        elif "Searching web" in info:
-            step_name = "🔍 Web Search"
-            is_major = True
-        elif "Summarizing" in info:
-            step_name = "📝 Summarization"
-            is_major = True
-        elif "Generating structured research plan" in info:
-            step_name = "📋 Planning"
-            is_major = True
-        elif "Synthesizing final research report" in info:
-            step_name = "🎓 Synthesis"
-            is_major = True
-        elif "Extracting entities" in info:
-            step_name = "🕸️ Knowledge Extraction"
-            is_major = True
-        elif "Reflecting on findings" in info:
-            step_name = "🤔 Reflection"
-            is_major = True
-
-        if is_major:
-            current_step = cl.Step(name=step_name, parent_id=root_msg.id)
-            await current_step.send()
-
-        if current_step:
-            current_step.content = info
-            await current_step.update()
+        """Simple message-based progress display"""
+        # Send each progress update as a visible message
+        await cl.Message(content=f"📍 {info}", author="Progress").send()
 
     loop = ResearchLoop(config, state, progress_callback=progress_callback)
     cl.user_session.set("loop", loop)

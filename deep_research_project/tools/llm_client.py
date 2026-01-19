@@ -107,7 +107,7 @@ class LLMClient:
             return await self._generate_structured_fallback(prompt, response_model)
 
     async def _generate_structured_fallback(self, prompt: str, response_model: Type[T]) -> T:
-        from langchain.output_parsers import PydanticOutputParser
+        from langchain_core.output_parsers import PydanticOutputParser
         parser = PydanticOutputParser(pydantic_object=response_model)
 
         format_instructions = parser.get_format_instructions()

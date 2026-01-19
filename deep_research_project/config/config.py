@@ -55,7 +55,7 @@ class Configuration:
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
         # Interactive Mode Configuration
-        self.INTERACTIVE_MODE = os.getenv("INTERACTIVE_MODE", "True").lower() == "true"
+        self.INTERACTIVE_MODE = os.getenv("INTERACTIVE_MODE", "False").lower() == "true"
 
         # Summarization Configuration
         self.SUMMARIZATION_CHUNK_SIZE_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_SIZE_CHARS", 10000))

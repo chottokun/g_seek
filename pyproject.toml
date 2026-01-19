@@ -18,6 +18,8 @@ dependencies = [
     "streamlit-agraph",
     "ddgs>=9.10.0",
     "chainlit",
+    "langchain>=1.2.6",
+    "langchain-core>=1.2.7",
 ]
 
 [dependency-groups]
