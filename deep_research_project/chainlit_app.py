@@ -3,6 +3,10 @@ import os
 import sys
 import asyncio
 import logging
+import uuid
+import time
+import shutil
+import pathlib
 from typing import List
 
 # Adjust path to import from sibling directories
@@ -15,9 +19,38 @@ from chainlit.input_widget import Switch, Slider, Select
 
 logger = logging.getLogger(__name__)
 
+REPORT_DIR = pathlib.Path("temp_reports")
+CLEANUP_AGE_SECONDS = 3600 # 1 hour
+
+def cleanup_old_reports():
+    """Deletes files in REPORT_DIR older than CLEANUP_AGE_SECONDS."""
+    if not REPORT_DIR.exists():
+        return
+    
+    now = time.time()
+    count = 0
+    try:
+        for item in REPORT_DIR.iterdir():
+            if item.is_file():
+                if now - item.stat().st_mtime > CLEANUP_AGE_SECONDS:
+                    item.unlink()
+                    count += 1
+            elif item.is_dir():
+                # If we used unique subdirs, clean them too
+                if now - item.stat().st_mtime > CLEANUP_AGE_SECONDS:
+                    shutil.rmtree(item)
+                    count += 1
+        if count > 0:
+            logger.info(f"Cleaned up {count} old report files/directories.")
+    except Exception as e:
+        logger.error(f"Error during report cleanup: {e}")
+
 @cl.on_chat_start
 async def start():
     try:
+        # Run cleanup occasionally on startup
+        cleanup_old_reports()
+        
         config = Configuration()
         cl.user_session.set("config", config)
 
@@ -164,12 +197,22 @@ async def display_final_report(final_report: str, state: ResearchState):
 
     await cl.Message(content=final_report).send()
 
-    report_path = "research_report.md"
-    with open(report_path, "w", encoding="utf-8") as f:
-        f.write(final_report)
+    # Thread-safe unique report path
+    try:
+        REPORT_DIR.mkdir(exist_ok=True)
+        unique_id = uuid.uuid4().hex
+        report_filename = f"research_report_{unique_id}.md"
+        report_path = REPORT_DIR / report_filename
+        
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(final_report)
 
-    elements = [cl.File(name="research_report.md", path=report_path, display="inline")]
-    await cl.Message(content="You can download the report below:", elements=elements).send()
+        elements = [cl.File(name="research_report.md", path=str(report_path), display="inline")]
+        await cl.Message(content="You can download the report below:", elements=elements).send()
+    except Exception as e:
+        logger.error(f"Failed to save unique report: {e}")
+        await cl.Message(content="Failed to save the report file locally, but you can see it above.").send()
+
     await cl.Message(content="You can ask follow-up questions about the report above.").send()
 
 @cl.action_callback("switch_to_auto")

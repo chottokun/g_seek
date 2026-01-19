@@ -194,3 +194,7 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 .files
+research_report.md
+
+# Deep Research Reports
+temp_reports/
