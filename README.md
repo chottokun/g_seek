@@ -67,6 +67,32 @@ uv run streamlit run deep_research_project/streamlit_app.py
 ```
 デフォルトで http://localhost:8501 でアクセス可能です。
 
+### ポート番号の変更
+
+各UIの起動ポートを変更したい場合は、以下のオプションまたは環境変数を指定してください。
+
+#### Chainlit
+- **コマンドライン引数**: `--port` オプションを使用
+  ```bash
+  uv run chainlit run deep_research_project/chainlit_app.py --port 8080
+  ```
+- **環境変数**: `CHAINLIT_PORT` を指定
+  ```bash
+  export CHAINLIT_PORT=8080
+  uv run chainlit run deep_research_project/chainlit_app.py
+  ```
+
+#### Streamlit
+- **コマンドライン引数**: `--server.port` オプションを使用
+  ```bash
+  uv run streamlit run deep_research_project/streamlit_app.py --server.port 8502
+  ```
+- **環境変数**: `STREAMLIT_SERVER_PORT` を指定
+  ```bash
+  export STREAMLIT_SERVER_PORT=8502
+  uv run streamlit run deep_research_project/streamlit_app.py
+  ```
+
 ### CLI (テスト用)
 コマンドラインから素早くプログラムをテストできます。引数でトピックやループ回数を指定可能です。
 
