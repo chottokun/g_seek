@@ -1,5 +1,7 @@
 from deep_research_project.config.config import Configuration
 import logging
+import asyncio
+import time
 from typing import Type, TypeVar, Any, Optional
 from pydantic import BaseModel
 
@@ -11,6 +13,11 @@ class LLMClient:
     def __init__(self, config: Configuration):
         self.config = config
         self.llm = None
+        
+        # Concurrency and Rate Limiting
+        self.semaphore = asyncio.Semaphore(self.config.LLM_MAX_PARALLEL_REQUESTS)
+        self.request_times = []
+        self.max_rpm = self.config.LLM_MAX_RPM
 
         if self.config.LLM_PROVIDER == "openai":
             try:
@@ -77,34 +84,59 @@ class LLMClient:
             logger.info(f"LLM Provider is '{self.config.LLM_PROVIDER}'. Using placeholder.")
             self.llm = "PlaceholderLLMInstance"
 
+    async def _wait_for_rate_limit(self):
+        """Simple sliding window rate limiter."""
+        if self.max_rpm <= 0:
+            return
+
+        async with asyncio.Lock(): # Protect shared request_times
+            while True:
+                now = time.time()
+                # Remove requests older than 60 seconds
+                self.request_times = [t for t in self.request_times if now - t < 60]
+                
+                if len(self.request_times) < self.max_rpm:
+                    self.request_times.append(now)
+                    return
+                
+                # Wait for the oldest entry to expire
+                sleep_time = 60 - (now - self.request_times[0])
+                if sleep_time > 0:
+                    logger.debug(f"Rate limit reached. Waiting for {sleep_time:.2f}s")
+                    await asyncio.sleep(sleep_time)
+
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt."""
         if self.llm == "PlaceholderLLMInstance":
             return self._simulate_placeholder(prompt)
 
-        try:
-            # Note: temperature override if provided
-            # However, most LangChain ChatModels are immutable once created with with_structured_output or similar.
-            # For direct calls, we'll use the default temperature set in __init__.
-            response = await self.llm.ainvoke(prompt)
-            if hasattr(response, 'content'):
-                return response.content
-            return str(response)
-        except Exception as e:
-            logger.error(f"Error during LLM ainvoke: {e}", exc_info=True)
-            raise
+        async with self.semaphore:
+            await self._wait_for_rate_limit()
+            try:
+                # Note: temperature override if provided
+                # However, most LangChain ChatModels are immutable once created with with_structured_output or similar.
+                # For direct calls, we'll use the default temperature set in __init__.
+                response = await self.llm.ainvoke(prompt)
+                if hasattr(response, 'content'):
+                    return response.content
+                return str(response)
+            except Exception as e:
+                logger.error(f"Error during LLM ainvoke: {e}", exc_info=True)
+                raise
 
     async def generate_structured(self, prompt: str, response_model: Type[T]) -> T:
         """Asynchronously generates structured output using LangChain's with_structured_output."""
         if self.llm == "PlaceholderLLMInstance":
             return self._simulate_placeholder_structured(prompt, response_model)
 
-        try:
-            structured_llm = self.llm.with_structured_output(response_model)
-            return await structured_llm.ainvoke(prompt)
-        except Exception as e:
-            logger.warning(f"Native structured output failed, falling back to PydanticOutputParser: {e}")
-            return await self._generate_structured_fallback(prompt, response_model)
+        async with self.semaphore:
+            await self._wait_for_rate_limit()
+            try:
+                structured_llm = self.llm.with_structured_output(response_model)
+                return await structured_llm.ainvoke(prompt)
+            except Exception as e:
+                logger.warning(f"Native structured output failed, falling back to PydanticOutputParser: {e}")
+                return await self._generate_structured_fallback(prompt, response_model)
 
     async def _generate_structured_fallback(self, prompt: str, response_model: Type[T]) -> T:
         from langchain_core.output_parsers import PydanticOutputParser

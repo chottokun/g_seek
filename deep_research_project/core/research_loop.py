@@ -156,9 +156,22 @@ class ResearchLoop:
              sources_titles = ", ".join([r['title'] for r in selected_results])
              await self.progress_callback(f"Summarizing {len(selected_results)} sources: {sources_titles}...")
 
-        all_chunk_summaries = []
-        if self.state.fetched_content is None: self.state.fetched_content = {}
+        async def summarize_chunk(url, chunk, chunk_index, total_chunks):
+            if self.state.is_interrupted: return None
+            if self.progress_callback: 
+                await self.progress_callback(f"Summarizing chunk {chunk_index+1}/{total_chunks} from {url}...")
+            
+            if self.state.language == "Japanese":
+                prompt = f"リサーチクエリ: '{self.state.current_query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
+            else:
+                prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
+            
+            return await self.llm_client.generate_text(prompt=prompt)
 
+        if self.state.fetched_content is None: 
+            self.state.fetched_content = {}
+
+        tasks = []
         for result in selected_results:
             url = result['link']
             if url not in self.state.fetched_content:
@@ -173,16 +186,11 @@ class ResearchLoop:
             chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
 
             for i, chunk in enumerate(chunks):
-                if self.state.is_interrupted: break
-                if self.progress_callback: await self.progress_callback(f"Summarizing chunk {i+1}/{len(chunks)} from {url}...")
-                if self.state.language == "Japanese":
-                    prompt = f"リサーチクエリ: '{self.state.current_query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
-                else:
-                    prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
-                summary = await self.llm_client.generate_text(prompt=prompt)
-                if summary: all_chunk_summaries.append(summary)
+                tasks.append(summarize_chunk(url, chunk, i, len(chunks)))
 
-            if self.state.is_interrupted: break
+        if tasks:
+            summaries = await asyncio.gather(*tasks)
+            all_chunk_summaries = [s for s in summaries if s]
 
         if not all_chunk_summaries:
             self.state.new_information = "Could not summarize any content."

@@ -17,6 +17,10 @@ class Configuration:
         self.LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
         # LLM_MAX_TOKENS: Maximum number of tokens to generate.
         self.LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", 1024)) # Default was 256, increased to 1024
+        # LLM_MAX_RPM: Maximum requests per minute for LLM provider.
+        self.LLM_MAX_RPM: int = int(os.getenv("LLM_MAX_RPM", 60))
+        # LLM_MAX_PARALLEL_REQUESTS: Maximum concurrent LLM requests.
+        self.LLM_MAX_PARALLEL_REQUESTS: int = int(os.getenv("LLM_MAX_PARALLEL_REQUESTS", 5))
 
         # OpenAI Specific Configuration (also used for LiteLLM proxies)
         self.OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
@@ -88,6 +92,8 @@ class Configuration:
             f"  LLM Model: {self.LLM_MODEL}",
             f"  LLM Temperature: {self.LLM_TEMPERATURE}",
             f"  LLM Max Tokens: {self.LLM_MAX_TOKENS}",
+            f"  LLM Max RPM: {self.LLM_MAX_RPM}",
+            f"  LLM Max Parallel: {self.LLM_MAX_PARALLEL_REQUESTS}",
         ]
         if self.LLM_PROVIDER == "openai" or self.OPENAI_API_BASE_URL: # Show relevant OpenAI details
             config_details.append(f"  OpenAI API Key: {'********' if self.OPENAI_API_KEY else 'Not Set'}")

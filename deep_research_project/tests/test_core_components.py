@@ -21,6 +21,8 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.mock_config.SUMMARIZATION_CHUNK_SIZE_CHARS = 1000
         self.mock_config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = 100
         self.mock_config.LOG_LEVEL = "INFO"
+        self.mock_config.LLM_MAX_RPM = 60
+        self.mock_config.LLM_MAX_PARALLEL_REQUESTS = 5
 
         self.state = ResearchState(research_topic="AI in Healthcare")
 

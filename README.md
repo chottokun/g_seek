@@ -12,6 +12,7 @@ Google社のAIコーディングアシスタント[Jules](https://jules.google.c
 - **インタラクティブ・モード**: リサーチ計画の修正や、検索結果の取捨選択を人間が介在して調整可能
 - **マルチプロバイダー対応**: Ollama, OpenAI, Azure OpenAI 等のLLM、SearxNG, DuckDuckGo 等の検索エンジンを切り替え可能
 - **高速な環境構築**: `uv` による決定論的で高速なパッケージ管理
+- **LLM呼び出しの最適化**: 処理の並列化（asyncio）による調査時間の短縮と、RPM制限・同時実行数制御によるレート制限への対応
 - **コンテナ化**: Docker / Docker Compose ですぐに開発・実行環境を立ち上げ可能
 
 ## セットアップ
@@ -41,6 +42,8 @@ cp .env.example .env
 - `OPENAI_BASE_URL`: OpenAI互換サービス（LiteLLM, Local LLMs等）を使用する場合のベースURL
 - `SEARCH_API`: `searxng`, `duckduckgo` 等
 - `MAX_RESEARCH_LOOPS`: 最大ループ回数（デフォルト 3）
+- `LLM_MAX_RPM`: 1分あたりの最大リクエスト数 (RPM)
+- `LLM_MAX_PARALLEL_REQUESTS`: LLMへの最大同時並列リクエスト数
 
 ### OpenAI互換サービスの使用
 OpenAI以外のサービス（例: vLLM, OllamaのOpenAI互換API, LiteLLM）を使用する場合は、以下の設定を行ってください。
