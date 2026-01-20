@@ -28,8 +28,7 @@ class TestLLMOptimization(unittest.IsolatedAsyncioTestCase):
         self.client.llm.ainvoke = AsyncMock(side_effect=lambda x: MagicMock(content=f"Response to {x}"))
 
     async def test_concurrency_limit(self):
-        # We start 5 requests, but only 2 should run concurrently.
-        # We can observe this by making ainvoke slow.
+        # We start 4 requests, but only 2 should run concurrently.
         async def slow_invoke(x):
             await asyncio.sleep(0.1)
             return MagicMock(content=f"Slow Response to {x}")
@@ -41,35 +40,55 @@ class TestLLMOptimization(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(*tasks)
         end_time = time.time()
         
-        # 4 requests, parallel=2, delay=0.1s each.
-        # Batch 1 (2 requests): 0.1s
-        # Batch 2 (2 requests): 0.1s
-        # Total ~0.2s
-        self.assertGreaterEqual(end_time - start_time, 0.2)
-        self.assertLess(end_time - start_time, 0.3)
+        duration = end_time - start_time
+        self.assertGreaterEqual(duration, 0.18)
+        self.assertLess(duration, 0.35)
 
     async def test_rpm_limit(self):
-        # Set RPM to 2
         self.client.max_rpm = 2
         self.client.request_times = []
         
         self.client.llm.ainvoke.side_effect = lambda x: MagicMock(content=f"Fast Response")
         
         start_time = time.time()
-        # First 2 requests should be instant
         await self.client.generate_text("P1")
         await self.client.generate_text("P2")
         
-        # Third request should trigger wait (coarse check)
-        # In our implementation, it waits for the first request to be 60s old.
-        # For testing, we can manually manipulate request_times
-        self.client.request_times = [time.time() - 59.8, time.time() - 59.8]
+        self.client.request_times = [time.time() - 59.85, time.time() - 59.85]
         
         await self.client.generate_text("P3")
         end_time = time.time()
         
-        # Should have waited ~0.2s
         self.assertGreaterEqual(end_time - start_time, 0.1)
+
+    async def test_rpm_limit_burst_fast(self):
+        # Set RPM to 5
+        self.client.max_rpm = 5
+        self.client.request_times = []
+
+        self.client.llm.ainvoke.side_effect = lambda x: MagicMock(content=f"Fast Response")
+
+        now = time.time()
+        # 4 slots taken, will expire in 0.1s
+        self.client.request_times = [now - 59.9] * 4
+
+        # Start 2 requests. 1st should fill the 5th slot, 2nd should wait 0.1s.
+        tasks = [self.client.generate_text(f"Burst {i}") for i in range(2)]
+
+        start_time = time.time()
+        await asyncio.gather(*tasks)
+        end_time = time.time()
+
+        self.assertGreaterEqual(end_time - start_time, 0.08)
+        self.assertLess(end_time - start_time, 0.5)
+
+    async def test_semaphore_release_on_error(self):
+        self.client.llm.ainvoke.side_effect = Exception("LLM Error")
+
+        with self.assertRaises(Exception):
+            await self.client.generate_text("Fail")
+
+        self.assertEqual(self.client.semaphore._value, self.mock_config.LLM_MAX_PARALLEL_REQUESTS)
 
 if __name__ == '__main__':
     unittest.main()

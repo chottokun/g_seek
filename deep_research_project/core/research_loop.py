@@ -156,6 +156,29 @@ class ResearchLoop:
              sources_titles = ", ".join([r['title'] for r in selected_results])
              await self.progress_callback(f"Summarizing {len(selected_results)} sources: {sources_titles}...")
 
+        if self.state.fetched_content is None:
+            self.state.fetched_content = {}
+
+        # 1. Fetch content in parallel
+        async def fetch_one(result):
+            url = result['link']
+            if url in self.state.fetched_content:
+                return url, self.state.fetched_content[url]
+
+            if self.config.USE_SNIPPETS_ONLY_MODE:
+                content = result.get('snippet', '')
+            else:
+                content = await self.content_retriever.retrieve_and_extract(url)
+                if not content: content = result.get('snippet', '')
+            return url, content
+
+        fetch_tasks = [fetch_one(r) for r in selected_results]
+        fetched_results = await asyncio.gather(*fetch_tasks)
+
+        for url, content in fetched_results:
+            self.state.fetched_content[url] = content
+
+        # 2. Summarize chunks in parallel
         async def summarize_chunk(url, chunk, chunk_index, total_chunks):
             if self.state.is_interrupted: return None
             if self.progress_callback: 
@@ -168,26 +191,16 @@ class ResearchLoop:
             
             return await self.llm_client.generate_text(prompt=prompt)
 
-        if self.state.fetched_content is None: 
-            self.state.fetched_content = {}
-
         tasks = []
         for result in selected_results:
             url = result['link']
-            if url not in self.state.fetched_content:
-                if self.config.USE_SNIPPETS_ONLY_MODE:
-                    content = result.get('snippet', '')
-                else:
-                    content = await self.content_retriever.retrieve_and_extract(url)
-                    if not content: content = result.get('snippet', '')
-                self.state.fetched_content[url] = content
-
             content = self.state.fetched_content[url]
             chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
 
             for i, chunk in enumerate(chunks):
                 tasks.append(summarize_chunk(url, chunk, i, len(chunks)))
 
+        all_chunk_summaries = []
         if tasks:
             summaries = await asyncio.gather(*tasks)
             all_chunk_summaries = [s for s in summaries if s]

@@ -13,9 +13,10 @@ class LLMClient:
     def __init__(self, config: Configuration):
         self.config = config
         self.llm = None
-        
+
         # Concurrency and Rate Limiting
         self.semaphore = asyncio.Semaphore(self.config.LLM_MAX_PARALLEL_REQUESTS)
+        self.rate_limit_lock = asyncio.Lock()
         self.request_times = []
         self.max_rpm = self.config.LLM_MAX_RPM
 
@@ -89,21 +90,22 @@ class LLMClient:
         if self.max_rpm <= 0:
             return
 
-        async with asyncio.Lock(): # Protect shared request_times
-            while True:
+        while True:
+            async with self.rate_limit_lock:
                 now = time.time()
                 # Remove requests older than 60 seconds
                 self.request_times = [t for t in self.request_times if now - t < 60]
-                
+
                 if len(self.request_times) < self.max_rpm:
                     self.request_times.append(now)
                     return
-                
+
                 # Wait for the oldest entry to expire
                 sleep_time = 60 - (now - self.request_times[0])
-                if sleep_time > 0:
-                    logger.debug(f"Rate limit reached. Waiting for {sleep_time:.2f}s")
-                    await asyncio.sleep(sleep_time)
+
+            if sleep_time > 0:
+                logger.debug(f"Rate limit reached. Waiting for {sleep_time:.2f}s")
+                await asyncio.sleep(sleep_time)
 
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt."""
