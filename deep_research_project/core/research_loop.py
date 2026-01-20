@@ -246,6 +246,78 @@ class ResearchLoop:
             logger.error(f"KG extraction failed: {e}")
             if self.progress_callback: await self.progress_callback("Knowledge graph extraction skipped or failed.")
 
+    async def _refine_plan(self):
+        """Evaluates the research progress and refines the remaining plan."""
+        completed_sections = [s for s in self.state.research_plan if s['status'] == 'completed']
+        pending_sections = [s for s in self.state.research_plan if s['status'] == 'pending']
+
+        if not pending_sections:
+            return
+
+        logger.info("Refining research plan based on current findings.")
+        if self.progress_callback: await self.progress_callback("Reviewing research progress to refine the plan...")
+
+        findings_summary = ""
+        for s in completed_sections:
+            findings_summary += f"\n### {s['title']}\n{s['summary'][:500]}...\n" # Use snippet of summary
+
+        remaining_plan_str = ""
+        for i, s in enumerate(pending_sections):
+            remaining_plan_str += f"{i+1}. {s['title']}: {s['description']}\n"
+
+        if self.state.language == "Japanese":
+            prompt = (
+                f"トピック: {self.state.research_topic}\n"
+                f"これまでの調査結果（抜粋）:\n{findings_summary}\n"
+                f"現在の残りの計画:\n{remaining_plan_str}\n"
+                f"これまでの調査結果に基づき、残りのリサーチ計画を最適化してください。"
+                f"必要に応じて、セクションの追加、削除、または内容の変更を行ってください。"
+                f"すでに完了した調査内容と重複しないように注意してください。"
+            )
+        else:
+            prompt = (
+                f"Topic: {self.state.research_topic}\n"
+                f"Current Findings (Excerpts):\n{findings_summary}\n"
+                f"Current Remaining Plan:\n{remaining_plan_str}\n"
+                f"Based on the findings so far, optimize the remaining research plan. "
+                f"Add, remove, or modify the remaining sections as necessary to ensure a comprehensive report. "
+                f"Avoid duplicating what has already been researched."
+            )
+
+        try:
+            refined_plan_model = await self.llm_client.generate_structured(prompt=prompt, response_model=ResearchPlanModel)
+
+            # Reconstruct the plan: completed + refined remaining
+            new_plan = completed_sections.copy()
+            for sec in refined_plan_model.sections:
+                new_plan.append({
+                    "title": sec.title,
+                    "description": sec.description,
+                    "status": "pending",
+                    "summary": "",
+                    "sources": []
+                })
+
+            # Check if there's an actual change (basic check on titles)
+            old_titles = [s['title'] for s in pending_sections]
+            new_titles = [sec.title for sec in refined_plan_model.sections]
+
+            if old_titles != new_titles:
+                self.state.research_plan = new_plan
+                logger.info("Research plan has been refined.")
+                if self.progress_callback:
+                    plan_msg = "## 🔄 Refined Research Plan\n\n"
+                    for i, sec in enumerate(self.state.research_plan):
+                        status = "✅" if sec['status'] == 'completed' else "⏳"
+                        plan_msg += f"{i+1}. {status} **{sec['title']}**\n"
+                    await self.progress_callback(plan_msg)
+            else:
+                logger.info("No changes needed to the research plan.")
+
+        except Exception as e:
+            logger.error(f"Error refining research plan: {e}")
+            if self.progress_callback: await self.progress_callback("Plan refinement skipped due to an error.")
+
     async def _reflect_on_summary(self):
         section = self._get_current_section()
         title = section['title'] if section else "General"
@@ -436,6 +508,9 @@ class ResearchLoop:
             success = await self._process_section(section)
             if not success and self.interactive_mode:
                 return None # Wait for interactive input
+
+            # After a section is completed, refine the remaining plan
+            await self._refine_plan()
 
             self.state.current_section_index += 1
 
