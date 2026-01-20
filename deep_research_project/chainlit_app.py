@@ -56,6 +56,7 @@ async def start():
 
         await cl.ChatSettings([
             Select(id="language", label="Language", values=["Japanese", "English"], initial_value="Japanese"),
+            Select(id="search_api", label="Search Engine", values=["duckduckgo", "searxng", "tavily"], initial_value=config.SEARCH_API),
             Switch(id="interactive_mode", label="Interactive Mode", initial=config.INTERACTIVE_MODE),
             Slider(id="max_loops", label="Max Research Loops", initial=config.MAX_RESEARCH_LOOPS, min=1, max=10, step=1),
             Switch(id="snippets_only", label="Use Snippets Only", initial=config.USE_SNIPPETS_ONLY_MODE),
@@ -78,6 +79,7 @@ async def setup_agent(settings):
 
     if config:
         cl.user_session.set("language", settings["language"])
+        config.SEARCH_API = settings["search_api"]
         config.INTERACTIVE_MODE = settings["interactive_mode"]
         config.MAX_RESEARCH_LOOPS = int(settings["max_loops"])
         config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
