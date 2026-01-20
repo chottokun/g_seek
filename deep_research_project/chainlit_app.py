@@ -7,7 +7,9 @@ import uuid
 import time
 import shutil
 import pathlib
+import json
 from typing import List
+from pyvis.network import Network
 
 # Adjust path to import from sibling directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -203,17 +205,47 @@ async def display_final_report(final_report: str, state: ResearchState):
     try:
         REPORT_DIR.mkdir(exist_ok=True)
         unique_id = uuid.uuid4().hex
+
+        elements = []
+
+        # Report file
         report_filename = f"research_report_{unique_id}.md"
         report_path = REPORT_DIR / report_filename
-        
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(final_report)
+        elements.append(cl.File(name="research_report.md", path=str(report_path), display="inline"))
 
-        elements = [cl.File(name="research_report.md", path=str(report_path), display="inline")]
-        await cl.Message(content="You can download the report below:", elements=elements).send()
+        # Knowledge Graph files
+        if state.knowledge_graph_nodes:
+            # JSON
+            kg_json_filename = f"knowledge_graph_{unique_id}.json"
+            kg_json_path = REPORT_DIR / kg_json_filename
+            kg_data = {
+                "nodes": state.knowledge_graph_nodes,
+                "edges": state.knowledge_graph_edges
+            }
+            with open(kg_json_path, "w", encoding="utf-8") as f:
+                json.dump(kg_data, f, indent=2, ensure_ascii=False)
+            elements.append(cl.File(name="knowledge_graph.json", path=str(kg_json_path), display="inline"))
+
+            # HTML (Visual)
+            try:
+                kg_html_filename = f"knowledge_graph_{unique_id}.html"
+                kg_html_path = REPORT_DIR / kg_html_filename
+                net = Network(height="600px", width="100%", notebook=False, directed=True)
+                for node in state.knowledge_graph_nodes:
+                    net.add_node(node['id'], label=node['label'], title=node['type'], group=node['type'])
+                for edge in state.knowledge_graph_edges:
+                    net.add_edge(edge['source'], edge['target'], label=edge['label'])
+                net.save_graph(str(kg_html_path))
+                elements.append(cl.File(name="knowledge_graph_visual.html", path=str(kg_html_path), display="inline"))
+            except Exception as e:
+                logger.error(f"Failed to generate KG visual: {e}")
+
+        await cl.Message(content="You can download the results below:", elements=elements).send()
     except Exception as e:
-        logger.error(f"Failed to save unique report: {e}")
-        await cl.Message(content="Failed to save the report file locally, but you can see it above.").send()
+        logger.error(f"Failed to save results: {e}")
+        await cl.Message(content="Failed to save the result files locally, but you can see the report above.").send()
 
     await cl.Message(content="You can ask follow-up questions about the report above.").send()
 

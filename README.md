@@ -72,9 +72,13 @@ uv run streamlit run deep_research_project/streamlit_app.py
 各UIの起動ポートを変更したい場合は、以下のオプションまたは環境変数を指定してください。
 
 #### Chainlit
-- **コマンドライン引数**: `--port` オプションを使用
+- **コマンドライン引数**: `--port` および `--host` オプションを使用
   ```bash
+  # ポートを8080に変更
   uv run chainlit run deep_research_project/chainlit_app.py --port 8080
+
+  # 全てのネットワークインターフェースで待機（Docker環境などで必要）
+  uv run chainlit run deep_research_project/chainlit_app.py --host 0.0.0.0
   ```
 - **環境変数**: `CHAINLIT_PORT` を指定
   ```bash

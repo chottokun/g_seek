@@ -5,6 +5,8 @@ import datetime
 import asyncio
 import logging
 import traceback
+import json
+import tempfile
 
 # Adjust path to import from sibling directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -13,6 +15,7 @@ from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import ResearchState
 from deep_research_project.core.research_loop import ResearchLoop
 from streamlit_agraph import agraph, Node, Edge, Config
+from pyvis.network import Network
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -148,6 +151,43 @@ def main():
                 st.warning("Note: This report is partial as research was interrupted.")
             with st.expander("View Report", expanded=True):
                 st.markdown(state.final_report)
+
+            # Knowledge Graph
+            if state.knowledge_graph_nodes:
+                st.divider()
+                st.subheader("Knowledge Graph")
+                try:
+                    nodes = [Node(id=n['id'], label=n['label'], size=25, group=n['type']) for n in state.knowledge_graph_nodes]
+                    edges = [Edge(source=e['source'], target=e['target'], label=e['label']) for e in state.knowledge_graph_edges]
+                    config = Config(width=900, height=600, directed=True, nodeHighlightBehavior=True, highlightColor="#F7A7A6", staticGraph=False)
+                    agraph(nodes=nodes, edges=edges, config=config)
+                except Exception as e:
+                    st.error(f"Error rendering graph: {e}")
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    kg_json = json.dumps({"nodes": state.knowledge_graph_nodes, "edges": state.knowledge_graph_edges}, indent=2, ensure_ascii=False)
+                    st.download_button("Download KG (JSON)", data=kg_json, file_name="knowledge_graph.json", mime="application/json")
+                with col2:
+                    try:
+                        net = Network(height="600px", width="100%", notebook=False, directed=True)
+                        for node in state.knowledge_graph_nodes:
+                            net.add_node(node['id'], label=node['label'], title=node['type'], group=node['type'])
+                        for edge in state.knowledge_graph_edges:
+                            net.add_edge(edge['source'], edge['target'], label=edge['label'])
+
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp:
+                            tmp_path = tmp.name
+                        try:
+                            net.save_graph(tmp_path)
+                            with open(tmp_path, "r", encoding="utf-8") as f:
+                                html_content = f.read()
+                            st.download_button("Download KG (Visual HTML)", data=html_content, file_name="knowledge_graph_visual.html", mime="text/html")
+                        finally:
+                            if os.path.exists(tmp_path):
+                                os.remove(tmp_path)
+                    except Exception as e:
+                        st.error(f"Error generating visual KG: {e}")
 
             # Follow-up
             st.divider()
