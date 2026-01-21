@@ -1,8 +1,10 @@
+import pytest
 import asyncio
 import httpx
 import sys
 import os
 
+@pytest.mark.anyio
 async def test_ollama():
     url = "http://localhost:11434/api/tags"
     print(f"Connecting to Ollama at: {url}")

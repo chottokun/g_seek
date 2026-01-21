@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 import logging
 from deep_research_project.config.config import Configuration
@@ -7,6 +8,7 @@ from deep_research_project.core.state import ResearchPlanModel
 # Configure logging to see what's happening
 logging.basicConfig(level=logging.INFO)
 
+@pytest.mark.anyio
 async def test_structured_output():
     config = Configuration()
     # Ensure it's using the ollama provider as in .env
