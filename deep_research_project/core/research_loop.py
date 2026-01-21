@@ -36,11 +36,12 @@ def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> Li
 
 
 class ResearchLoop:
-    def __init__(self, config: Configuration, state: ResearchState, progress_callback: Optional[Callable[[str], None]] = None):
+    def __init__(self, config: Configuration, state: ResearchState, progress_callback: Optional[Callable[[str], None]] = None, save_state_callback: Optional[Callable[[ResearchState], None]] = None):
         self.config = config
         self.state = state
         self.interactive_mode = config.INTERACTIVE_MODE
         self.progress_callback = progress_callback
+        self.save_state_callback = save_state_callback
 
         self.llm_client = LLMClient(config)
         self.search_client = SearchClient(config)
@@ -448,9 +449,12 @@ class ResearchLoop:
 
             success = await self._process_section(section)
             if not success and self.interactive_mode:
+                if self.save_state_callback: await self.save_state_callback(self.state)
                 return None # Wait for interactive input
 
+            if self.save_state_callback: await self.save_state_callback(self.state)
             self.state.current_section_index += 1
 
         await self._finalize_summary()
+        if self.save_state_callback: await self.save_state_callback(self.state)
         return self.state.final_report

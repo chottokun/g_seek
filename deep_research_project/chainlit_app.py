@@ -69,7 +69,32 @@ async def start():
 AIを活用したリサーチを開始します。
 リサーチしたいトピックを入力してください。
 
-※ 左側の設定（Chat Settings）から、**言語**や**自動・対話モード**の切り替えが可能です。""").send()
+※ 左側の設定（Chat Settings）から、**言語**や**自動・対話モード**の切り替えが可能です。
+※ 長時間の調査の場合、接続が切れることがありますが、結果は自動的に保存されます。""").send()
+
+        # Check for recent reports to notify user
+        if REPORT_DIR.exists():
+            reports = sorted([f for f in REPORT_DIR.glob("research_report_*.md") if f.is_file()],
+                            key=lambda x: x.stat().st_mtime, reverse=True)
+            if reports:
+                recent_reports = reports[:3]
+                msg = "### 📂 最近の完了済みレポート\n"
+                for r in recent_reports:
+                    mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(r.stat().st_mtime))
+                    msg += f"- {r.name} ({mtime})\n"
+                await cl.Message(content=msg).send()
+
+            # Check for unfinished states to resume
+            states = sorted([f for f in REPORT_DIR.glob("state_*.json") if f.is_file()],
+                            key=lambda x: x.stat().st_mtime, reverse=True)
+            if states:
+                # Filter out already finished ones if we want, or just show the latest
+                latest_state_path = states[0]
+                mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(latest_state_path.stat().st_mtime))
+                actions = [
+                    cl.Action(name="resume_research", payload={"path": str(latest_state_path)}, label=f"Resume Research ({mtime})")
+                ]
+                await cl.Message(content="進行中のリサーチを再開できます：", actions=actions).send()
     except Exception as e:
         await cl.Message(content=f"Error initializing configuration: {e}").send()
 
@@ -147,9 +172,61 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
 
     return state.final_report
 
+async def run_research(state: ResearchState):
+    """Core logic to run the research loop with callbacks and error handling"""
+    config = cl.user_session.get("config")
+    cl.user_session.set("state", state)
+
+    actions = [
+        cl.Action(name="stop_research", payload={"value": "stop"}, label="⏹️ Stop Research")
+    ]
+    root_msg = cl.Message(content=f"## Researching: {state.research_topic}", actions=actions)
+    await root_msg.send()
+
+    status_msg = None
+
+    async def progress_callback(info: str):
+        """Consolidated progress display to reduce WebSocket traffic"""
+        nonlocal status_msg
+        try:
+            # Categorize progress updates
+            major_milestones = ["Generating", "Searching", "Found", "Summarizing", "Synthesizing", "Final", "Plan", "Reflecting", "Starting"]
+            is_major = any(m in info for m in major_milestones)
+
+            if is_major or status_msg is None:
+                status_msg = cl.Message(content=f"📍 {info}", author="Progress")
+                await status_msg.send()
+            else:
+                status_msg.content = f"⏳ {info}"
+                await status_msg.update()
+        except Exception as e:
+            logger.warning(f"Could not update progress in UI: {e}")
+
+    async def save_state_callback(state: ResearchState):
+        """Persists the current research state to disk"""
+        try:
+            REPORT_DIR.mkdir(exist_ok=True)
+            # Use session ID for unique state file
+            session_id = cl.context.session.id
+            state_path = REPORT_DIR / f"state_{session_id}.json"
+            with open(state_path, "w", encoding="utf-8") as f:
+                json.dump(state.to_dict(), f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Failed to save state: {e}")
+
+    loop = ResearchLoop(config, state, progress_callback=progress_callback, save_state_callback=save_state_callback)
+    cl.user_session.set("loop", loop)
+
+    try:
+        final_report = await handle_interactive_steps(loop, state)
+        if final_report:
+            await display_final_report(final_report, state)
+    except Exception as e:
+        logger.error(f"Error in research loop: {e}", exc_info=True)
+        await cl.Message(content=f"❌ An error occurred: {str(e)}").send()
+
 @cl.on_message
 async def main(message: cl.Message):
-    config = cl.user_session.get("config")
     state = cl.user_session.get("state")
 
     if state and state.final_report:
@@ -167,46 +244,30 @@ async def main(message: cl.Message):
     topic = message.content
     language = cl.user_session.get("language") or "Japanese"
     state = ResearchState(research_topic=topic, language=language)
-    cl.user_session.set("state", state)
+    await run_research(state)
 
-    actions = [
-        cl.Action(name="stop_research", payload={"value": "stop"}, label="⏹️ Stop Research")
-    ]
-    root_msg = cl.Message(content=f"## Researching: {topic}", actions=actions)
-    await root_msg.send()
-
-    progress_messages = []  # Track progress as messages
-
-    async def progress_callback(info: str):
-        """Simple message-based progress display"""
-        # Send each progress update as a visible message
-        await cl.Message(content=f"📍 {info}", author="Progress").send()
-
-    loop = ResearchLoop(config, state, progress_callback=progress_callback)
-    cl.user_session.set("loop", loop)
+@cl.action_callback("resume_research")
+async def on_resume(action: cl.Action):
+    state_path = action.payload.get("path")
+    if not state_path: return
 
     try:
-        final_report = await handle_interactive_steps(loop, state)
-        if final_report:
-            await display_final_report(final_report, state)
+        with open(state_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        state = ResearchState.from_dict(data)
+        await cl.Message(content=f"📝 Resuming research on: **{state.research_topic}**").send()
+        await run_research(state)
     except Exception as e:
-        logger.error(f"Error in research loop: {e}", exc_info=True)
-        await cl.Message(content=f"❌ An error occurred: {str(e)}").send()
+        logger.error(f"Failed to resume research: {e}")
+        await cl.Message(content=f"❌ Failed to resume: {e}").send()
 
 async def display_final_report(final_report: str, state: ResearchState):
-    if state.is_interrupted:
-        await cl.Message(content="⚠️ Research was interrupted. Generating partial report...").send()
-    else:
-        await cl.Message(content="✅ Research complete!").send()
-
-    await cl.Message(content=final_report).send()
-
-    # Thread-safe unique report path
+    # 1. First, ensure results are saved to disk (Robustness)
+    report_path = None
+    elements = []
     try:
         REPORT_DIR.mkdir(exist_ok=True)
         unique_id = uuid.uuid4().hex
-
-        elements = []
 
         # Report file
         report_filename = f"research_report_{unique_id}.md"
@@ -242,12 +303,31 @@ async def display_final_report(final_report: str, state: ResearchState):
             except Exception as e:
                 logger.error(f"Failed to generate KG visual: {e}")
 
-        await cl.Message(content="You can download the results below:", elements=elements).send()
-    except Exception as e:
-        logger.error(f"Failed to save results: {e}")
-        await cl.Message(content="Failed to save the result files locally, but you can see the report above.").send()
+        # Save state one last time
+        session_id = cl.context.session.id
+        state_path = REPORT_DIR / f"state_{session_id}.json"
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(state.to_dict(), f, indent=2, ensure_ascii=False)
 
-    await cl.Message(content="You can ask follow-up questions about the report above.").send()
+    except Exception as e:
+        logger.error(f"Failed to save results to disk: {e}")
+
+    # 2. Then, attempt to display in UI
+    try:
+        if state.is_interrupted:
+            await cl.Message(content="⚠️ Research was interrupted. Generating partial report...").send()
+        else:
+            await cl.Message(content="✅ Research complete!").send()
+
+        await cl.Message(content=final_report).send()
+
+        if elements:
+            await cl.Message(content="You can download the results below:", elements=elements).send()
+
+        await cl.Message(content="You can ask follow-up questions about the report above.").send()
+    except Exception as e:
+        logger.error(f"Failed to display final report in UI: {e}")
+        # If UI fails, at least the user might find it on disk if they know where to look
 
 @cl.action_callback("switch_to_auto")
 async def on_switch_to_auto(action: cl.Action):
