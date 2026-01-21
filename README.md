@@ -10,9 +10,11 @@ Google社のAIコーディングアシスタント[Jules](https://jules.google.c
 
 - **三段階のリサーチプロセス**: 計画（Planning）→ 実行（Execution）→ 統合（Synthesis）のステップによる高度なレポート作成
 - **インタラクティブ・モード**: リサーチ計画の修正や、検索結果の取捨選択を人間が介在して調整可能
-- **マルチプロバイダー対応**: Ollama, OpenAI, Azure OpenAI 等のLLM、SearxNG, DuckDuckGo 等の検索エンジンを切り替え可能
+- **マルチプロバイダー対応**: OpenAI, Azure OpenAI, Ollama (ChatOllama) 等のLLMプロバイダーをサポート。構造化出力やフォールバック処理を内蔵
+- **多様な検索エンジン**: SearxNG, DuckDuckGo 等の検索エンジンを切り替え可能
 - **高速な環境構築**: `uv` による決定論的で高速なパッケージ管理
-- **LLM呼び出しの最適化**: 処理の並列化（asyncio）による調査時間の短縮と、RPM制限・同時実行数制御によるレート制限への対応
+- **LLM呼び出しの最適化**: 処理の並列化（asyncio）による調査時間の短縮と、RPM制限・同時実行数制御（Semaphore）によるレート制限への対応
+- **ドキュメント解析**: HTMLに加え、PDFファイルの自動解析に対応
 - **コンテナ化**: Docker / Docker Compose ですぐに開発・実行環境を立ち上げ可能
 
 ## セットアップ
@@ -118,12 +120,31 @@ uv run -m deep_research_project.main "Your Topic" --loops 5 --results 5 --snippe
 - `-s`, `--snippets`: スニペットのみを使用（高速）
 - `--lang`: プロンプトの言語 (`Japanese` または `English`)
 
-### Docker Compose
-SearxNG等を含めたフルスタック環境をワンコマンドで起動できます。
-
 ```bash
 docker-compose up -d
 ```
+
+## テスト (Testing)
+
+プロジェクトの品質を維持するために、`pytest` を使用したテストセットを用意しています。
+
+```bash
+# 全てのテストを実行
+PYTHONPATH=. uv run pytest deep_research_project/tests
+
+# 特定のカテゴリーのテストを実行
+# LLMクライアント関連
+PYTHONPATH=. uv run pytest deep_research_project/tests/test_llm_client_extended.py
+# コンテンツ取得・PDF解析関連
+PYTHONPATH=. uv run pytest deep_research_project/tests/test_content_retriever_extended.py
+```
+
+テストは以下の項目を網羅しています：
+- **LLMプロバイダー**: OpenAI, Azure, Ollama の初期化と動作
+- **構造化出力**: 正常系および PydanticOutputParser によるフォールバック
+- **並列処理**: LLM呼び出しの同時実行数制限と RPM（Rate Limit）の制御
+- **コンテンツ取得**: HTMLクリーンアップ、PDF解析、テキスト切詰め
+- **リサーチロジック**: ナレッジグラフの統合、中断処理、リフレクションのパース
 
 ## ドキュメント
 

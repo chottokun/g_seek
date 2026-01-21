@@ -43,6 +43,12 @@ The system was refactored from a simple, single-topic iterative loop into a stru
 ### Async Unit Testing
 - **Refactoring**: Converted the test suite to use `unittest.IsolatedAsyncioTestCase`.
 - **Coverage**: Added detailed tests for async LLM calls, structured output parsing, and the multi-section research loop.
+- **Extended Coverage (New)**:
+    - **Multi-Provider Verification**: Added automated tests for OpenAI, Azure OpenAI, and Ollama initialization and message exchange.
+    - **Robust Structured Output**: Implemented tests for fallback mechanisms using `PydanticOutputParser` when native LLM structured output fails.
+    - **Content Retrieval Assets**: Added tests for PDF parsing, HTML sanitization (removing nav/header/footer), and text truncation logic.
+    - **Search Engine Robustness**: Verified SearxNG and DuckDuckGo error handling and result parsing.
+    - **Logic Verification**: Specialized tests for Knowledge Graph node/edge merging and Research Reflection parsing logic.
 
 ### UI Verification
 - **Improvement**: Implemented Playwright scripts to automatically verify both "Automated" and "Interactive" research modes in Streamlit, capturing screenshots for visual confirmation.
