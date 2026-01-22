@@ -63,6 +63,8 @@ async def start():
             Slider(id="max_loops", label="Max Research Loops", initial=config.MAX_RESEARCH_LOOPS, min=1, max=10, step=1),
             Switch(id="snippets_only", label="Use Snippets Only", initial=config.USE_SNIPPETS_ONLY_MODE),
             Slider(id="max_search_results", label="Max Search Results", initial=config.MAX_SEARCH_RESULTS_PER_QUERY, min=1, max=10, step=1),
+            Slider(id="chunk_size", label="Summarization Chunk Size (Chars)", initial=config.SUMMARIZATION_CHUNK_SIZE_CHARS, min=500, max=30000, step=500),
+            Slider(id="chunk_overlap", label="Summarization Chunk Overlap (Chars)", initial=config.SUMMARIZATION_CHUNK_OVERLAP_CHARS, min=0, max=5000, step=100),
         ]).send()
 
         await cl.Message(content="""# Deep Research Assistant
@@ -86,6 +88,8 @@ async def setup_agent(settings):
         config.MAX_RESEARCH_LOOPS = int(settings["max_loops"])
         config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
         config.MAX_SEARCH_RESULTS_PER_QUERY = int(settings["max_search_results"])
+        config.SUMMARIZATION_CHUNK_SIZE_CHARS = int(settings["chunk_size"])
+        config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = int(settings["chunk_overlap"])
 
         if state:
             state.language = settings["language"]

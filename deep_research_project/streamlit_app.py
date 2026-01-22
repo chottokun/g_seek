@@ -45,6 +45,8 @@ def main():
         interactive = st.toggle("Run Interactively?", value=False)
         snippets_only = st.toggle("Use Snippets Only?", value=False)
         max_chars = st.number_input("Max Chars/Source (0=unlim)", min_value=0, value=10000, step=1000)
+        chunk_size = st.number_input("Chunk Size (Chars)", min_value=500, value=10000, step=500)
+        chunk_overlap = st.number_input("Chunk Overlap (Chars)", min_value=0, value=500, step=100)
         process_pdf = st.toggle("Process PDF Files?", value=True)
 
         topic = st.text_input("Research Topic:")
@@ -60,6 +62,8 @@ def main():
                 config.INTERACTIVE_MODE = interactive
                 config.USE_SNIPPETS_ONLY_MODE = snippets_only
                 config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = max_chars
+                config.SUMMARIZATION_CHUNK_SIZE_CHARS = chunk_size
+                config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = chunk_overlap
                 config.PROCESS_PDF_FILES = process_pdf
 
                 st.session_state.research_state = ResearchState(research_topic=topic, language=language)

@@ -21,6 +21,8 @@ async def main():
     parser.add_argument("-l", "--loops", type=int, help="Max research loops")
     parser.add_argument("-r", "--results", type=int, help="Max search results per query")
     parser.add_argument("-s", "--snippets", action="store_true", help="Use snippets only mode")
+    parser.add_argument("--chunk-size", type=int, help="Summarization chunk size (chars)")
+    parser.add_argument("--chunk-overlap", type=int, help="Summarization chunk overlap (chars)")
     parser.add_argument("--lang", choices=["Japanese", "English"], default="Japanese", help="Prompt language")
     args = parser.parse_args()
 
@@ -38,6 +40,10 @@ async def main():
             config.MAX_SEARCH_RESULTS_PER_QUERY = args.results
         if args.snippets:
             config.USE_SNIPPETS_ONLY_MODE = True
+        if args.chunk_size is not None:
+            config.SUMMARIZATION_CHUNK_SIZE_CHARS = args.chunk_size
+        if args.chunk_overlap is not None:
+            config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = args.chunk_overlap
 
     except Exception as e:
         print(f"CRITICAL: Error initializing configuration: {e}")
