@@ -54,8 +54,16 @@ class SearchClient:
 
     def _sync_search(self, query: str, num_results: int) -> list[SearchResult]:
         if self.config.SEARCH_API == "searxng":
-            raw_results = self.search_tool.results(query, num_results)
+            # For SearxSearchWrapper, 'k' was set at init, but let's see if results() supports limit override.
+            # SearxSearchWrapper.results(query, num_results=...)
+            try:
+                 raw_results = self.search_tool.results(query, num_results=num_results)
+            except TypeError:
+                # If num_results kwarg is not supported, fallback to default behavior which relies on 'k' in init
+                logger.warning("SearxSearchWrapper.results() does not support num_results, using default 'k' from init.")
+                raw_results = self.search_tool.results(query)
         else:
+            # DuckDuckGo
             raw_results = self.search_tool.results(query=query, max_results=num_results)
 
         processed_results: list[SearchResult] = []

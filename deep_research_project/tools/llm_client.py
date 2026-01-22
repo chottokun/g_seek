@@ -1,6 +1,7 @@
 from deep_research_project.config.config import Configuration
 import logging
 from typing import Type, TypeVar, Any, Optional
+import asyncio
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -77,8 +78,25 @@ class LLMClient:
             logger.info(f"LLM Provider is '{self.config.LLM_PROVIDER}'. Using placeholder.")
             self.llm = "PlaceholderLLMInstance"
 
+    async def _wait_for_rate_limit(self):
+        """Waits to respect the rate limit."""
+        if not hasattr(self, '_rate_limit_lock'):
+            self._rate_limit_lock = asyncio.Lock()
+            self._last_request_time = 0.0
+
+        limit_interval = 60.0 / self.config.LLM_RATE_LIMIT_RPM if self.config.LLM_RATE_LIMIT_RPM > 0 else 0
+
+        async with self._rate_limit_lock:
+            current_time = asyncio.get_event_loop().time()
+            time_since_last = current_time - self._last_request_time
+            if time_since_last < limit_interval:
+                await asyncio.sleep(limit_interval - time_since_last)
+            self._last_request_time = asyncio.get_event_loop().time()
+
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt."""
+        await self._wait_for_rate_limit()
+
         if self.llm == "PlaceholderLLMInstance":
             return self._simulate_placeholder(prompt)
 
@@ -96,6 +114,8 @@ class LLMClient:
 
     async def generate_structured(self, prompt: str, response_model: Type[T]) -> T:
         """Asynchronously generates structured output using LangChain's with_structured_output."""
+        await self._wait_for_rate_limit()
+
         if self.llm == "PlaceholderLLMInstance":
             return self._simulate_placeholder_structured(prompt, response_model)
 

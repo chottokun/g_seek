@@ -60,6 +60,13 @@ class Configuration:
         # Summarization Configuration
         self.SUMMARIZATION_CHUNK_SIZE_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_SIZE_CHARS", 10000))
         self.SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_OVERLAP_CHARS", 500))
+        
+        # Optimization Configuration
+        # MAX_CONCURRENT_CHUNKS: Max number of chunk summarization tasks to run in parallel.
+        self.MAX_CONCURRENT_CHUNKS: int = int(os.getenv("MAX_CONCURRENT_CHUNKS", 5))
+        # LLM_RATE_LIMIT_RPM: Max requests per minute to the LLM API.
+        self.LLM_RATE_LIMIT_RPM: int = int(os.getenv("LLM_RATE_LIMIT_RPM", 60))
+        
         self.USE_SNIPPETS_ONLY_MODE: bool = os.getenv("USE_SNIPPETS_ONLY_MODE", "False").lower() == 'true'
         self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = int(os.getenv("MAX_TEXT_LENGTH_PER_SOURCE_CHARS", 0))
         self.PROCESS_PDF_FILES: bool = os.getenv("PROCESS_PDF_FILES", "True").lower() == 'true'
@@ -122,6 +129,8 @@ class Configuration:
             f"  Interactive Mode: {self.INTERACTIVE_MODE}",
             f"  Summarization Chunk Size Chars: {self.SUMMARIZATION_CHUNK_SIZE_CHARS}",
             f"  Summarization Chunk Overlap Chars: {self.SUMMARIZATION_CHUNK_OVERLAP_CHARS}",
+            f"  Max Concurrent Chunks: {self.MAX_CONCURRENT_CHUNKS}",
+            f"  LLM Rate Limit RPM: {self.LLM_RATE_LIMIT_RPM}",
             f"  Use Snippets Only Mode: {self.USE_SNIPPETS_ONLY_MODE}",
             f"  Max Text Length per Source (Chars): {self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS}",
             f"  Process PDF Files: {self.PROCESS_PDF_FILES}",

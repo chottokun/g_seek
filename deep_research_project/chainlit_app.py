@@ -65,6 +65,8 @@ async def start():
             Slider(id="max_search_results", label="Max Search Results", initial=config.MAX_SEARCH_RESULTS_PER_QUERY, min=1, max=10, step=1),
             Slider(id="chunk_size", label="Summarization Chunk Size (Chars)", initial=config.SUMMARIZATION_CHUNK_SIZE_CHARS, min=500, max=30000, step=500),
             Slider(id="chunk_overlap", label="Summarization Chunk Overlap (Chars)", initial=config.SUMMARIZATION_CHUNK_OVERLAP_CHARS, min=0, max=5000, step=100),
+            Slider(id="max_concurrent_chunks", label="Max Concurrent Chunks", initial=config.MAX_CONCURRENT_CHUNKS, min=1, max=10, step=1),
+            Slider(id="llm_rpm", label="LLM Rate Limit (RPM)", initial=config.LLM_RATE_LIMIT_RPM, min=1, max=120, step=10),
         ]).send()
 
         await cl.Message(content="""# Deep Research Assistant
@@ -99,6 +101,10 @@ async def setup_agent(settings):
 
         config.SUMMARIZATION_CHUNK_SIZE_CHARS = chunk_size
         config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = chunk_overlap
+
+        # Optimizations
+        config.MAX_CONCURRENT_CHUNKS = int(settings["max_concurrent_chunks"])
+        config.LLM_RATE_LIMIT_RPM = int(settings["llm_rpm"])
 
         if state:
             state.language = settings["language"]
