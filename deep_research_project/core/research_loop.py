@@ -216,7 +216,6 @@ class ResearchLoop:
                 self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
 
         self.state.pending_source_selection = False
-        self.state.pending_source_selection = False
         # await self._extract_entities_and_relations() # Now handled in parallel with reflection
 
     async def _extract_entities_and_relations(self):
