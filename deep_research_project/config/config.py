@@ -81,6 +81,14 @@ class Configuration:
         if self.SEARCH_API == "tavily" and not self.TAVILY_API_KEY:
             raise ValueError("TAVILY_API_KEY is required when SEARCH_API is 'tavily'")
 
+        # Validate summarization settings
+        if self.SUMMARIZATION_CHUNK_SIZE_CHARS <= 0:
+            raise ValueError("SUMMARIZATION_CHUNK_SIZE_CHARS must be positive.")
+        if self.SUMMARIZATION_CHUNK_OVERLAP_CHARS < 0 or self.SUMMARIZATION_CHUNK_OVERLAP_CHARS >= self.SUMMARIZATION_CHUNK_SIZE_CHARS:
+            # Instead of raising, we can force it to a safe value or just let the user know later.
+            # But for initial config, raising is okay.
+            raise ValueError("SUMMARIZATION_CHUNK_OVERLAP_CHARS must be non-negative and less than SUMMARIZATION_CHUNK_SIZE_CHARS.")
+
     def __str__(self):
         # Dynamically build the string representation
         config_details = [

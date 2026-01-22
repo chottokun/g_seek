@@ -88,8 +88,17 @@ async def setup_agent(settings):
         config.MAX_RESEARCH_LOOPS = int(settings["max_loops"])
         config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
         config.MAX_SEARCH_RESULTS_PER_QUERY = int(settings["max_search_results"])
-        config.SUMMARIZATION_CHUNK_SIZE_CHARS = int(settings["chunk_size"])
-        config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = int(settings["chunk_overlap"])
+
+        chunk_size = int(settings["chunk_size"])
+        chunk_overlap = int(settings["chunk_overlap"])
+
+        # Simple validation to prevent app crash
+        if chunk_overlap >= chunk_size:
+            chunk_overlap = chunk_size - 1
+            await cl.Message(content=f"⚠️ Chunk overlap was adjusted to {chunk_overlap} because it must be less than chunk size.").send()
+
+        config.SUMMARIZATION_CHUNK_SIZE_CHARS = chunk_size
+        config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = chunk_overlap
 
         if state:
             state.language = settings["language"]

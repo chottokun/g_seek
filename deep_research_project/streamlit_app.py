@@ -62,6 +62,12 @@ def main():
                 config.INTERACTIVE_MODE = interactive
                 config.USE_SNIPPETS_ONLY_MODE = snippets_only
                 config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = max_chars
+
+                # Simple validation
+                if chunk_overlap >= chunk_size:
+                    chunk_overlap = chunk_size - 1
+                    st.warning(f"Chunk overlap was adjusted to {chunk_overlap} to be less than chunk size.")
+
                 config.SUMMARIZATION_CHUNK_SIZE_CHARS = chunk_size
                 config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = chunk_overlap
                 config.PROCESS_PDF_FILES = process_pdf

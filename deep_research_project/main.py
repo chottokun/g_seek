@@ -45,6 +45,11 @@ async def main():
         if args.chunk_overlap is not None:
             config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = args.chunk_overlap
 
+        # Re-validate after overrides
+        if config.SUMMARIZATION_CHUNK_OVERLAP_CHARS >= config.SUMMARIZATION_CHUNK_SIZE_CHARS:
+            print(f"ERROR: Chunk overlap ({config.SUMMARIZATION_CHUNK_OVERLAP_CHARS}) must be less than chunk size ({config.SUMMARIZATION_CHUNK_SIZE_CHARS}).")
+            return
+
     except Exception as e:
         print(f"CRITICAL: Error initializing configuration: {e}")
         return
