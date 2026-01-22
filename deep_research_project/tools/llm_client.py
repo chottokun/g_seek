@@ -12,6 +12,8 @@ class LLMClient:
     def __init__(self, config: Configuration):
         self.config = config
         self.llm = None
+        self._rate_limit_lock = asyncio.Lock()
+        self._last_request_time = 0.0
 
         if self.config.LLM_PROVIDER == "openai":
             try:
@@ -80,10 +82,6 @@ class LLMClient:
 
     async def _wait_for_rate_limit(self):
         """Waits to respect the rate limit."""
-        if not hasattr(self, '_rate_limit_lock'):
-            self._rate_limit_lock = asyncio.Lock()
-            self._last_request_time = 0.0
-
         limit_interval = 60.0 / self.config.LLM_RATE_LIMIT_RPM if self.config.LLM_RATE_LIMIT_RPM > 0 else 0
 
         async with self._rate_limit_lock:
