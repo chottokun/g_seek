@@ -125,18 +125,37 @@ class LLMClient:
     def _simulate_placeholder_structured(self, prompt: str, response_model: Type[T]) -> T:
         logger.debug(f"LLMClient (Placeholder) generating structured output for: {response_model.__name__}")
 
-        if "structured research plan" in prompt.lower():
+        prompt_lower = prompt.lower()
+        if "research plan" in prompt_lower or "リサーチ計画" in prompt_lower:
             from deep_research_project.core.state import ResearchPlanModel, Section
             return ResearchPlanModel(sections=[
                 Section(title="Introduction", description="Overview of the topic"),
                 Section(title="Current State", description="Latest trends"),
                 Section(title="Conclusion", description="Final thoughts")
             ])
-        elif "identify key entities" in prompt.lower():
+        elif "entities" in prompt_lower or "エンティティ" in prompt_lower:
             from deep_research_project.core.state import KnowledgeGraphModel, KGNode, KGEdge
             return KnowledgeGraphModel(
                 nodes=[KGNode(id="n1", label="Entity 1", type="Concept")],
                 edges=[KGEdge(source="n1", target="n1", label="related to")]
             )
 
-        return response_model.model_validate({})
+        # Fallback: try to create a dummy instance by looking at the model's fields
+        dummy_data = {}
+        for field_name, field in response_model.model_fields.items():
+            if field.is_required():
+                # Very basic heuristic for required fields
+                if getattr(field.annotation, "__origin__", None) is list:
+                    dummy_data[field_name] = []
+                elif field.annotation is str:
+                    dummy_data[field_name] = "dummy"
+                elif field.annotation is int:
+                    dummy_data[field_name] = 0
+                else:
+                    dummy_data[field_name] = None
+
+        try:
+            return response_model.model_validate(dummy_data)
+        except Exception:
+            # Last resort
+            return response_model.model_construct(**dummy_data)

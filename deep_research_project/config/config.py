@@ -64,6 +64,7 @@ class Configuration:
         self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = int(os.getenv("MAX_TEXT_LENGTH_PER_SOURCE_CHARS", 0))
         self.PROCESS_PDF_FILES: bool = os.getenv("PROCESS_PDF_FILES", "True").lower() == 'true'
 
+        self.MAX_CONCURRENT_CHUNKS: int = int(os.getenv("MAX_CONCURRENT_CHUNKS", "5"))
 
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY and not self.OPENAI_API_BASE_URL:

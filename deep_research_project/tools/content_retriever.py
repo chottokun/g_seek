@@ -17,6 +17,17 @@ class ContentRetriever:
         self.progress_callback = progress_callback
         self.headers = {"User-Agent": self.user_agent}
 
+    async def _call_progress(self, message: str):
+        if not self.progress_callback:
+            return
+        try:
+            if asyncio.iscoroutinefunction(self.progress_callback):
+                await self.progress_callback(message)
+            else:
+                self.progress_callback(message)
+        except Exception as e:
+            logger.error(f"Error in progress callback: {e}")
+
     def extract_text(self, html_content: str, url: str = "") -> str:
         """Extracts and cleans text content from HTML using BeautifulSoup."""
         if not html_content:
@@ -61,7 +72,7 @@ class ContentRetriever:
                 elif "text/html" in content_type:
                     text_content = self.extract_text(response.text, url=url)
                     if text_content and self.progress_callback:
-                        self.progress_callback(f"Successfully extracted {len(text_content)} chars from HTML: {url}")
+                        await self._call_progress(f"Successfully extracted {len(text_content)} chars from HTML: {url}")
                     return self._apply_truncation(text_content, url)
 
                 # Fallback for plain text
@@ -78,7 +89,7 @@ class ContentRetriever:
 
     async def _process_pdf(self, pdf_bytes: bytes, url: str) -> str:
         if self.progress_callback:
-            self.progress_callback(f"PDF detected. Processing: {url}")
+            await self._call_progress(f"PDF detected. Processing: {url}")
 
         # PdfReader is CPU-bound, run in executor
         loop = asyncio.get_running_loop()

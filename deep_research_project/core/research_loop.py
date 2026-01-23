@@ -156,33 +156,43 @@ class ResearchLoop:
              sources_titles = ", ".join([r['title'] for r in selected_results])
              await self.progress_callback(f"Summarizing {len(selected_results)} sources: {sources_titles}...")
 
-        all_chunk_summaries = []
         if self.state.fetched_content is None: self.state.fetched_content = {}
 
-        for result in selected_results:
+        semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_CHUNKS) # Limit concurrency for source processing
+
+        async def process_and_summarize(result: SearchResult) -> List[str]:
             url = result['link']
-            if url not in self.state.fetched_content:
-                if self.config.USE_SNIPPETS_ONLY_MODE:
-                    content = result.get('snippet', '')
-                else:
-                    content = await self.content_retriever.retrieve_and_extract(url)
-                    if not content: content = result.get('snippet', '')
-                self.state.fetched_content[url] = content
+            async with semaphore:
+                if self.state.is_interrupted: return []
+                if url not in self.state.fetched_content:
+                    if self.config.USE_SNIPPETS_ONLY_MODE:
+                        content = result.get('snippet', '')
+                    else:
+                        content = await self.content_retriever.retrieve_and_extract(url)
+                        if not content: content = result.get('snippet', '')
+                    self.state.fetched_content[url] = content
 
-            content = self.state.fetched_content[url]
-            chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
+                content = self.state.fetched_content[url]
+                chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
 
-            for i, chunk in enumerate(chunks):
-                if self.state.is_interrupted: break
-                if self.progress_callback: await self.progress_callback(f"Summarizing chunk {i+1}/{len(chunks)} from {url}...")
-                if self.state.language == "Japanese":
-                    prompt = f"リサーチクエリ: '{self.state.current_query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
-                else:
-                    prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
-                summary = await self.llm_client.generate_text(prompt=prompt)
-                if summary: all_chunk_summaries.append(summary)
+                source_summaries = []
+                for i, chunk in enumerate(chunks):
+                    if self.state.is_interrupted: break
+                    if self.progress_callback: await self.progress_callback(f"Summarizing chunk {i+1}/{len(chunks)} from {url}...")
+                    if self.state.language == "Japanese":
+                        prompt = f"リサーチクエリ: '{self.state.current_query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
+                    else:
+                        prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
+                    summary = await self.llm_client.generate_text(prompt=prompt)
+                    if summary: source_summaries.append(summary)
+                return source_summaries
 
-            if self.state.is_interrupted: break
+        tasks = [process_and_summarize(r) for r in selected_results]
+        results = await asyncio.gather(*tasks)
+
+        all_chunk_summaries = []
+        for res_summaries in results:
+            all_chunk_summaries.extend(res_summaries)
 
         if not all_chunk_summaries:
             self.state.new_information = "Could not summarize any content."

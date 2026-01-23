@@ -20,6 +20,7 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.mock_config.USE_SNIPPETS_ONLY_MODE = False
         self.mock_config.SUMMARIZATION_CHUNK_SIZE_CHARS = 1000
         self.mock_config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = 100
+        self.mock_config.MAX_CONCURRENT_CHUNKS = 5
         self.mock_config.LOG_LEVEL = "INFO"
 
         self.state = ResearchState(research_topic="AI in Healthcare")
@@ -103,6 +104,43 @@ class TestSplitTextIntoChunks(unittest.TestCase):
         text = "1234567890"
         chunks = split_text_into_chunks(text, 5, 2)
         self.assertEqual(chunks, ["12345", "45678", "7890"])
+
+    def test_chunking_edge_cases(self):
+        # Empty text
+        self.assertEqual(split_text_into_chunks("", 5, 2), [])
+
+        # Text shorter than chunk size
+        self.assertEqual(split_text_into_chunks("abc", 5, 2), ["abc"])
+
+        # Text equal to chunk size
+        self.assertEqual(split_text_into_chunks("abcde", 5, 2), ["abcde"])
+
+        # Invalid overlap
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("abcde", 5, 5)
+
+        # Zero chunk size
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("abcde", 0, 0)
+
+class TestResearchStateSerialization(unittest.TestCase):
+    def test_to_dict_and_from_dict(self):
+        state = ResearchState(research_topic="Test Topic", language="English")
+        state.accumulated_summary = "Some summary"
+        state.completed_loops = 1
+        state.research_plan = [{"title": "S1", "description": "D1", "status": "completed", "summary": "Sum1", "sources": []}]
+
+        data = state.to_dict()
+        self.assertEqual(data['research_topic'], "Test Topic")
+        self.assertEqual(data['language'], "English")
+        self.assertEqual(data['accumulated_summary'], "Some summary")
+
+        new_state = ResearchState.from_dict(data)
+        self.assertEqual(new_state.research_topic, "Test Topic")
+        self.assertEqual(new_state.language, "English")
+        self.assertEqual(new_state.accumulated_summary, "Some summary")
+        self.assertEqual(len(new_state.research_plan), 1)
+        self.assertEqual(new_state.research_plan[0]['title'], "S1")
 
 if __name__ == '__main__':
     unittest.main()
