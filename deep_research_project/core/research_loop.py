@@ -157,6 +157,7 @@ class ResearchLoop:
              await self.progress_callback(f"Summarizing {len(selected_results)} sources: {sources_titles}...")
 
         all_chunk_summaries = []
+        all_chunks_info = [] # Store all chunks to be processed in parallel
         if self.state.fetched_content is None: self.state.fetched_content = {}
 
         for result in selected_results:
@@ -171,18 +172,30 @@ class ResearchLoop:
 
             content = self.state.fetched_content[url]
             chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
+            all_chunks_info.extend([(chunk, url) for chunk in chunks])
 
-            for i, chunk in enumerate(chunks):
-                if self.state.is_interrupted: break
-                if self.progress_callback: await self.progress_callback(f"Summarizing chunk {i+1}/{len(chunks)} from {url}...")
+        # Limit concurrency using Semaphore
+        semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_CHUNKS)
+
+        async def summarize_chunk(chunk_info):
+            chunk, url = chunk_info
+            if self.state.is_interrupted: return None
+            async with semaphore:
+                if self.progress_callback: await self.progress_callback(f"Summarizing chunk from {url}...")
                 if self.state.language == "Japanese":
                     prompt = f"リサーチクエリ: '{self.state.current_query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
                 else:
                     prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
-                summary = await self.llm_client.generate_text(prompt=prompt)
-                if summary: all_chunk_summaries.append(summary)
+                return await self.llm_client.generate_text(prompt=prompt)
 
-            if self.state.is_interrupted: break
+        # Execute parallel summarization
+        if all_chunks_info:
+            if self.progress_callback: await self.progress_callback(f"Starting parallel summarization for {len(all_chunks_info)} chunks...")
+            summaries = await asyncio.gather(*[summarize_chunk(info) for info in all_chunks_info])
+            all_chunk_summaries.extend([s for s in summaries if s])
+        
+        if self.state.is_interrupted:
+             return
 
         if not all_chunk_summaries:
             self.state.new_information = "Could not summarize any content."
@@ -203,7 +216,7 @@ class ResearchLoop:
                 self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
 
         self.state.pending_source_selection = False
-        await self._extract_entities_and_relations()
+        # await self._extract_entities_and_relations() # Now handled in parallel with reflection
 
     async def _extract_entities_and_relations(self):
         if not self.state.new_information or len(self.state.new_information) < 20: return
@@ -387,7 +400,12 @@ class ResearchLoop:
                 self.state.search_results = None # Clear results for this query
 
                 if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
-                    await self._reflect_on_summary()
+                    # Parallelize Graph Extraction and Reflection
+                    await asyncio.gather(
+                        self._extract_entities_and_relations(),
+                        self._reflect_on_summary()
+                    )
+                    
                     if not self.state.proposed_query: break
                     if not self.interactive_mode:
                         self.state.current_query = self.state.proposed_query
