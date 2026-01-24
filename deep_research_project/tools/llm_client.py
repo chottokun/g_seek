@@ -99,10 +99,13 @@ class LLMClient:
             return self._simulate_placeholder(prompt)
 
         try:
-            # Note: temperature override if provided
-            # However, most LangChain ChatModels are immutable once created with with_structured_output or similar.
-            # For direct calls, we'll use the default temperature set in __init__.
-            response = await self.llm.ainvoke(prompt)
+            # temperature override if provided
+            llm_to_call = self.llm
+            if temperature is not None and hasattr(self.llm, "bind"):
+                # Use bind to override parameters for this specific call
+                llm_to_call = self.llm.bind(temperature=temperature)
+
+            response = await llm_to_call.ainvoke(prompt)
             if hasattr(response, 'content'):
                 return response.content
             return str(response)
