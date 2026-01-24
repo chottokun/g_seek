@@ -71,6 +71,18 @@ class Configuration:
         self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = int(os.getenv("MAX_TEXT_LENGTH_PER_SOURCE_CHARS", 0))
         self.PROCESS_PDF_FILES: bool = os.getenv("PROCESS_PDF_FILES", "True").lower() == 'true'
 
+        # Additional configurations to avoid hard-coding
+        self.RETRIEVAL_TIMEOUT: int = int(os.getenv("RETRIEVAL_TIMEOUT", 15))
+        self.USER_AGENT: str = os.getenv("USER_AGENT", "DeepResearchBot/1.0")
+        self.SEARXNG_LANGUAGE: str = os.getenv("SEARXNG_LANGUAGE", "ja")
+        self.SEARXNG_SAFESEARCH: int = int(os.getenv("SEARXNG_SAFESEARCH", 1))
+        self.SEARXNG_CATEGORIES: str = os.getenv("SEARXNG_CATEGORIES", "general")
+        self.RESEARCH_PLAN_MIN_SECTIONS: int = int(os.getenv("RESEARCH_PLAN_MIN_SECTIONS", 3))
+        self.RESEARCH_PLAN_MAX_SECTIONS: int = int(os.getenv("RESEARCH_PLAN_MAX_SECTIONS", 5))
+        self.MAX_QUERY_WORDS: int = int(os.getenv("MAX_QUERY_WORDS", 12))
+        self.REPORT_DIR: str = os.getenv("REPORT_DIR", "temp_reports")
+        self.CLEANUP_AGE_SECONDS: int = int(os.getenv("CLEANUP_AGE_SECONDS", 3600))
+        self.DEFAULT_LANGUAGE: str = os.getenv("DEFAULT_LANGUAGE", "Japanese")
 
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY and not self.OPENAI_API_BASE_URL:
@@ -134,6 +146,16 @@ class Configuration:
             f"  Use Snippets Only Mode: {self.USE_SNIPPETS_ONLY_MODE}",
             f"  Max Text Length per Source (Chars): {self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS}",
             f"  Process PDF Files: {self.PROCESS_PDF_FILES}",
+            f"  Retrieval Timeout: {self.RETRIEVAL_TIMEOUT}",
+            f"  User Agent: {self.USER_AGENT}",
+            f"  SearxNG Language: {self.SEARXNG_LANGUAGE}",
+            f"  SearxNG SafeSearch: {self.SEARXNG_SAFESEARCH}",
+            f"  SearxNG Categories: {self.SEARXNG_CATEGORIES}",
+            f"  Research Plan Sections: {self.RESEARCH_PLAN_MIN_SECTIONS}-{self.RESEARCH_PLAN_MAX_SECTIONS}",
+            f"  Max Query Words: {self.MAX_QUERY_WORDS}",
+            f"  Report Directory: {self.REPORT_DIR}",
+            f"  Cleanup Age (Seconds): {self.CLEANUP_AGE_SECONDS}",
+            f"  Default Language: {self.DEFAULT_LANGUAGE}",
             f"  Log Level: {self.LOG_LEVEL}",
         ])
         return "Configuration:\n" + "\n".join(config_details)

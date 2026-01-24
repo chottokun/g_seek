@@ -51,15 +51,17 @@ class ResearchLoop:
         if self.progress_callback: await self.progress_callback("Generating structured research plan...")
 
         try:
+            min_sec = getattr(self.config, "RESEARCH_PLAN_MIN_SECTIONS", 3)
+            max_sec = getattr(self.config, "RESEARCH_PLAN_MAX_SECTIONS", 5)
             if self.state.language == "Japanese":
                 prompt = (
-                    f"以下のリサーチトピックに基づいて、3〜5つの主要なセクションで構成される構造化されたリサーチ計画を生成してください。\n"
+                    f"以下のリサーチトピックに基づいて、{min_sec}〜{max_sec}つの主要なセクションで構成される構造化されたリサーチ計画を生成してください。\n"
                     f"リサーチトピック: {self.state.research_topic}\n\n"
                     f"各セクションについて、タイトルとリサーチすべき内容の簡潔な説明を提供してください。"
                 )
             else:
                 prompt = (
-                    f"Based on the following research topic, generate a structured research plan consisting of 3 to 5 key sections.\n"
+                    f"Based on the following research topic, generate a structured research plan consisting of {min_sec} to {max_sec} key sections.\n"
                     f"Research Topic: {self.state.research_topic}\n\n"
                     f"For each section, provide a title and a brief description of what should be researched."
                 )
@@ -103,9 +105,10 @@ class ResearchLoop:
 
         logger.info(f"Generating initial query for: {topic}")
         try:
+            max_words = getattr(self.config, "MAX_QUERY_WORDS", 12)
             if self.state.language == "Japanese":
                 prompt = (
-                    f"以下のリサーチタスクのために、簡潔なWeb検索クエリ（最大12単語）を生成してください。\n"
+                    f"以下のリサーチタスクのために、簡潔なWeb検索クエリ（最大{max_words}単語）を生成してください。\n"
                     f"メインテーマ: {self.state.research_topic}\n"
                     f"セクション: {topic}\n"
                     f"説明: {desc}\n\n"
@@ -113,7 +116,7 @@ class ResearchLoop:
                 )
             else:
                 prompt = (
-                    f"Generate a concise web search query (max 12 words) for the following research task.\n"
+                    f"Generate a concise web search query (max {max_words} words) for the following research task.\n"
                     f"Main Topic: {self.state.research_topic}\n"
                     f"Section: {topic}\n"
                     f"Description: {desc}\n\n"

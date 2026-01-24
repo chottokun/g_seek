@@ -41,13 +41,17 @@ def main():
 
     with st.sidebar:
         st.header("Controls")
-        language = st.selectbox("Prompt Language", ["Japanese", "English"], index=0)
-        interactive = st.toggle("Run Interactively?", value=False)
-        snippets_only = st.toggle("Use Snippets Only?", value=False)
-        max_chars = st.number_input("Max Chars/Source (0=unlim)", min_value=0, value=10000, step=1000)
-        chunk_size = st.number_input("Chunk Size (Chars)", min_value=500, value=10000, step=500)
-        chunk_overlap = st.number_input("Chunk Overlap (Chars)", min_value=0, value=500, step=100)
-        process_pdf = st.toggle("Process PDF Files?", value=True)
+        config_default = Configuration()
+        languages = ["Japanese", "English"]
+        default_lang = config_default.DEFAULT_LANGUAGE
+        lang_index = languages.index(default_lang) if default_lang in languages else 0
+        language = st.selectbox("Prompt Language", languages, index=lang_index)
+        interactive = st.toggle("Run Interactively?", value=config_default.INTERACTIVE_MODE)
+        snippets_only = st.toggle("Use Snippets Only?", value=config_default.USE_SNIPPETS_ONLY_MODE)
+        max_chars = st.number_input("Max Chars/Source (0=unlim)", min_value=0, value=config_default.MAX_TEXT_LENGTH_PER_SOURCE_CHARS, step=1000)
+        chunk_size = st.number_input("Chunk Size (Chars)", min_value=500, value=config_default.SUMMARIZATION_CHUNK_SIZE_CHARS, step=500)
+        chunk_overlap = st.number_input("Chunk Overlap (Chars)", min_value=0, value=config_default.SUMMARIZATION_CHUNK_OVERLAP_CHARS, step=100)
+        process_pdf = st.toggle("Process PDF Files?", value=config_default.PROCESS_PDF_FILES)
 
         topic = st.text_input("Research Topic:")
 
