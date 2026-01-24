@@ -11,9 +11,9 @@ from typing import Optional, Callable
 logger = logging.getLogger(__name__)
 
 class ContentRetriever:
-    def __init__(self, config: Configuration, user_agent="DeepResearchBot/1.0", progress_callback: Optional[Callable[[str], None]] = None):
+    def __init__(self, config: Configuration, user_agent=None, progress_callback: Optional[Callable[[str], None]] = None):
         self.config = config
-        self.user_agent = user_agent
+        self.user_agent = user_agent or getattr(config, "USER_AGENT", "DeepResearchBot/1.0")
         self.progress_callback = progress_callback
         self.headers = {"User-Agent": self.user_agent}
 
@@ -55,12 +55,14 @@ class ContentRetriever:
         except Exception as e:
             logger.error(f"Error in progress_callback: {e}")
 
-    async def retrieve_and_extract(self, url: str, timeout: int = 15) -> str:
+    async def retrieve_and_extract(self, url: str, timeout: Optional[int] = None) -> str:
         """Asynchronously fetches content from a URL and extracts clean text."""
         logger.info(f"Attempting to retrieve and extract content from: {url}")
 
+        request_timeout = timeout or getattr(self.config, "RETRIEVAL_TIMEOUT", 15)
+
         try:
-            async with httpx.AsyncClient(headers=self.headers, follow_redirects=True, timeout=timeout) as client:
+            async with httpx.AsyncClient(headers=self.headers, follow_redirects=True, timeout=request_timeout) as client:
                 response = await client.get(url)
                 response.raise_for_status()
 

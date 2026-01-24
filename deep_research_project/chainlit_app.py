@@ -21,25 +21,22 @@ from chainlit.input_widget import Switch, Slider, Select
 
 logger = logging.getLogger(__name__)
 
-REPORT_DIR = pathlib.Path("temp_reports")
-CLEANUP_AGE_SECONDS = 3600 # 1 hour
-
-def cleanup_old_reports():
-    """Deletes files in REPORT_DIR older than CLEANUP_AGE_SECONDS."""
-    if not REPORT_DIR.exists():
+def cleanup_old_reports(report_dir: pathlib.Path, cleanup_age: int):
+    """Deletes files in report_dir older than cleanup_age."""
+    if not report_dir.exists():
         return
     
     now = time.time()
     count = 0
     try:
-        for item in REPORT_DIR.iterdir():
+        for item in report_dir.iterdir():
             if item.is_file():
-                if now - item.stat().st_mtime > CLEANUP_AGE_SECONDS:
+                if now - item.stat().st_mtime > cleanup_age:
                     item.unlink()
                     count += 1
             elif item.is_dir():
                 # If we used unique subdirs, clean them too
-                if now - item.stat().st_mtime > CLEANUP_AGE_SECONDS:
+                if now - item.stat().st_mtime > cleanup_age:
                     shutil.rmtree(item)
                     count += 1
         if count > 0:
@@ -50,14 +47,14 @@ def cleanup_old_reports():
 @cl.on_chat_start
 async def start():
     try:
-        # Run cleanup occasionally on startup
-        cleanup_old_reports()
-        
         config = Configuration()
+        # Run cleanup occasionally on startup
+        cleanup_old_reports(pathlib.Path(config.REPORT_DIR), config.CLEANUP_AGE_SECONDS)
+        
         cl.user_session.set("config", config)
 
         await cl.ChatSettings([
-            Select(id="language", label="Language", values=["Japanese", "English"], initial_value="Japanese"),
+            Select(id="language", label="Language", values=["Japanese", "English"], initial_value=config.DEFAULT_LANGUAGE),
             Select(id="search_api", label="Search Engine", values=["duckduckgo", "searxng", "tavily"], initial_value=config.SEARCH_API),
             Switch(id="interactive_mode", label="Interactive Mode", initial=config.INTERACTIVE_MODE),
             Slider(id="max_loops", label="Max Research Loops", initial=config.MAX_RESEARCH_LOOPS, min=1, max=10, step=1),
@@ -184,7 +181,7 @@ async def main(message: cl.Message):
 
     # Start new research
     topic = message.content
-    language = cl.user_session.get("language") or "Japanese"
+    language = cl.user_session.get("language") or config.DEFAULT_LANGUAGE
     state = ResearchState(research_topic=topic, language=language)
     cl.user_session.set("state", state)
 
@@ -213,6 +210,9 @@ async def main(message: cl.Message):
         await cl.Message(content=f"❌ An error occurred: {str(e)}").send()
 
 async def display_final_report(final_report: str, state: ResearchState):
+    config = cl.user_session.get("config")
+    report_dir = pathlib.Path(config.REPORT_DIR) if config else pathlib.Path("temp_reports")
+
     if state.is_interrupted:
         await cl.Message(content="⚠️ Research was interrupted. Generating partial report...").send()
     else:
@@ -222,14 +222,14 @@ async def display_final_report(final_report: str, state: ResearchState):
 
     # Thread-safe unique report path
     try:
-        REPORT_DIR.mkdir(exist_ok=True)
+        report_dir.mkdir(exist_ok=True)
         unique_id = uuid.uuid4().hex
 
         elements = []
 
         # Report file
         report_filename = f"research_report_{unique_id}.md"
-        report_path = REPORT_DIR / report_filename
+        report_path = report_dir / report_filename
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(final_report)
         elements.append(cl.File(name="research_report.md", path=str(report_path), display="inline"))
@@ -238,7 +238,7 @@ async def display_final_report(final_report: str, state: ResearchState):
         if state.knowledge_graph_nodes:
             # JSON
             kg_json_filename = f"knowledge_graph_{unique_id}.json"
-            kg_json_path = REPORT_DIR / kg_json_filename
+            kg_json_path = report_dir / kg_json_filename
             kg_data = {
                 "nodes": state.knowledge_graph_nodes,
                 "edges": state.knowledge_graph_edges
@@ -250,7 +250,7 @@ async def display_final_report(final_report: str, state: ResearchState):
             # HTML (Visual)
             try:
                 kg_html_filename = f"knowledge_graph_{unique_id}.html"
-                kg_html_path = REPORT_DIR / kg_html_filename
+                kg_html_path = report_dir / kg_html_filename
                 net = Network(height="600px", width="100%", notebook=False, directed=True)
                 for node in state.knowledge_graph_nodes:
                     net.add_node(node['id'], label=node['label'], title=node['type'], group=node['type'])

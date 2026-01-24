@@ -22,9 +22,13 @@ class SearchClient:
             try:
                 searxng_host = getattr(self.config, "SEARXNG_BASE_URL", "http://localhost:8080")
                 k_results = getattr(self.config, "MAX_SEARCH_RESULTS_PER_QUERY", 3)
-                searx_params = {"language": "ja", "safesearch": 1, "categories": "general"}
+                searxng_lang = getattr(self.config, "SEARXNG_LANGUAGE", "ja")
+                searx_safesearch = getattr(self.config, "SEARXNG_SAFESEARCH", 1)
+                searx_categories = getattr(self.config, "SEARXNG_CATEGORIES", "general")
+                searx_params = {"language": searxng_lang, "safesearch": searx_safesearch, "categories": searx_categories}
+                user_agent = getattr(self.config, "USER_AGENT", "DeepResearchBot/1.0")
                 headers = {
-                    "User-Agent": "Mozilla/5.0 (compatible; SearxngBot/1.0; +https://github.com/searxng/searxng)"
+                    "User-Agent": user_agent
                 }
                 self.search_tool = SearxSearchWrapper(
                     searx_host=searxng_host,

@@ -15,6 +15,7 @@ import logging
 import asyncio
 
 async def main():
+    config_default = Configuration()
     parser = argparse.ArgumentParser(description="AI Research Assistant CLI")
     parser.add_argument("topic", nargs="?", default="Modern AI Research Agents", help="Research topic")
     parser.add_argument("-i", "--interactive", action="store_true", help="Run in interactive mode")
@@ -23,7 +24,7 @@ async def main():
     parser.add_argument("-s", "--snippets", action="store_true", help="Use snippets only mode")
     parser.add_argument("--chunk-size", type=int, help="Summarization chunk size (chars)")
     parser.add_argument("--chunk-overlap", type=int, help="Summarization chunk overlap (chars)")
-    parser.add_argument("--lang", choices=["Japanese", "English"], default="Japanese", help="Prompt language")
+    parser.add_argument("--lang", choices=["Japanese", "English"], default=config_default.DEFAULT_LANGUAGE, help="Prompt language")
     args = parser.parse_args()
 
     try:

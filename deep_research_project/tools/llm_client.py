@@ -64,6 +64,8 @@ class LLMClient:
 
                 ollama_kwargs = {
                     "model": self.config.LLM_MODEL,
+                    "temperature": self.config.LLM_TEMPERATURE,
+                    "num_predict": self.config.LLM_MAX_TOKENS
                 }
                 if hasattr(self.config, "OLLAMA_BASE_URL") and self.config.OLLAMA_BASE_URL:
                     ollama_kwargs["base_url"] = self.config.OLLAMA_BASE_URL
