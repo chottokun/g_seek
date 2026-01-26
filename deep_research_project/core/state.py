@@ -1,4 +1,5 @@
-from typing import List, Dict, Optional, TypedDict
+from typing import List, Dict, Optional, TypedDict, Any
+import copy
 from pydantic import BaseModel, Field
 
 class SearchResult(TypedDict):
@@ -63,6 +64,25 @@ class ResearchState:
         self.current_section_index: int = -1 # -1 means plan not yet generated
         self.plan_approved: bool = False
         self.is_interrupted: bool = False
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes the state to a dictionary."""
+        return copy.deepcopy(self.__dict__)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ResearchState':
+        """Creates a ResearchState instance from a dictionary."""
+        # specific handling for init args
+        topic = data.get("research_topic", "")
+        language = data.get("language", "Japanese")
+
+        instance = cls(research_topic=topic, language=language)
+
+        for key, value in data.items():
+            if hasattr(instance, key):
+                setattr(instance, key, value)
+
+        return instance
 
     def __str__(self):
         plan_status = f"{len(self.research_plan)} sections" if self.research_plan else "Not generated"

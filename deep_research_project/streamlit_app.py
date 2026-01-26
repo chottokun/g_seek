@@ -17,8 +17,19 @@ from deep_research_project.core.research_loop import ResearchLoop
 from streamlit_agraph import agraph, Node, Edge, Config
 from pyvis.network import Network
 from typing import Callable, Optional
+import pathlib
 
 logger = logging.getLogger(__name__)
+
+async def save_state_to_disk(state: ResearchState):
+    """Async callback to save state to disk."""
+    try:
+        report_dir = pathlib.Path("temp_reports")
+        report_dir.mkdir(exist_ok=True)
+        with open(report_dir / "autosave_streamlit.json", "w", encoding="utf-8") as f:
+            json.dump(state.to_dict(), f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Streamlit autosave failed: {e}")
 
 def format_follow_up_log_for_download(follow_up_log: list) -> str:
     if not follow_up_log: return "No follow-up Q&A recorded."
@@ -60,6 +71,11 @@ def main():
                 st.session_state.research_state.is_interrupted = True
                 st.warning("Stop signal sent. Finishing current task...")
 
+        st.divider()
+        if os.path.exists("temp_reports/autosave_streamlit.json"):
+             with open("temp_reports/autosave_streamlit.json", "r", encoding="utf-8") as f:
+                 st.download_button("📂 Recover Last Autosave", f, file_name="autosave_streamlit.json", mime="application/json", help="Download the state of the last research session")
+
         if st.button("Start Research"):
             if topic:
                 config = Configuration()
@@ -77,7 +93,12 @@ def main():
                 config.PROCESS_PDF_FILES = process_pdf
 
                 st.session_state.research_state = ResearchState(research_topic=topic, language=language)
-                st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state)
+                # Pass save_state_to_disk as the autosave callback
+                st.session_state.research_loop = ResearchLoop(
+                    config,
+                    st.session_state.research_state,
+                    state_save_func=save_state_to_disk
+                )
 
                 if not config.INTERACTIVE_MODE:
                     with st.status("Automated research processing...", expanded=True) as status:
