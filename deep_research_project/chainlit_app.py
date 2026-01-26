@@ -71,8 +71,66 @@ AIを活用したリサーチを開始します。
 リサーチしたいトピックを入力してください。
 
 ※ 左側の設定（Chat Settings）から、**言語**や**自動・対話モード**の切り替えが可能です。""").send()
+
+        # Check for autosave
+        autosave_path = pathlib.Path("temp_reports/autosave_latest.json")
+        if autosave_path.exists():
+            try:
+                with open(autosave_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if "research_topic" in data:
+                    topic = data["research_topic"]
+                    actions = [
+                        cl.Action(name="resume_session", payload={"value": "resume"}, label="🔄 Resume Previous Session"),
+                        cl.Action(name="ignore_session", payload={"value": "ignore"}, label="❌ Start New")
+                    ]
+                    await cl.Message(
+                        content=f"⚠️ Found a previous interrupted session for topic: **{topic}**.\nDo you want to resume?",
+                        actions=actions
+                    ).send()
+            except Exception as e:
+                logger.error(f"Error reading autosave: {e}")
+
     except Exception as e:
         await cl.Message(content=f"Error initializing configuration: {e}").send()
+
+@cl.action_callback("resume_session")
+async def on_resume(action: cl.Action):
+    await action.remove()
+
+    autosave_path = pathlib.Path("temp_reports/autosave_latest.json")
+    try:
+        with open(autosave_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        state = ResearchState.from_dict(data)
+        config = cl.user_session.get("config")
+
+        # Ensure state.language respects config or saved state? Saved state is better for resume.
+        # But we might want to update config language to match state
+        cl.user_session.set("state", state)
+        cl.user_session.set("language", state.language)
+
+        await cl.Message(content=f"🔄 Resuming research on: **{state.research_topic}**...").send()
+
+        async def progress_callback(info: str):
+            await cl.Message(content=f"📍 {info}", author="Progress").send()
+
+        loop = ResearchLoop(config, state, progress_callback=progress_callback, state_save_func=autosave_callback)
+        cl.user_session.set("loop", loop)
+
+        final_report = await handle_interactive_steps(loop, state)
+        if final_report:
+            await display_final_report(final_report, state)
+
+    except Exception as e:
+        logger.error(f"Error resuming session: {e}", exc_info=True)
+        await cl.Message(content=f"❌ Failed to resume session: {e}").send()
+
+@cl.action_callback("ignore_session")
+async def on_ignore(action: cl.Action):
+    await action.remove()
+    await cl.Message(content="Starting fresh. Please enter your topic.").send()
 
 @cl.on_settings_update
 async def setup_agent(settings):
@@ -109,6 +167,43 @@ async def setup_agent(settings):
             loop.interactive_mode = settings["interactive_mode"]
 
         logger.info(f"Settings updated: {settings}")
+
+async def autosave_callback(current_state: ResearchState):
+    """Autosave callback to save state and provide partial download."""
+    try:
+        report_dir = pathlib.Path("temp_reports")
+        report_dir.mkdir(exist_ok=True)
+
+        # Save JSON State
+        with open(report_dir / "autosave_latest.json", "w", encoding="utf-8") as f:
+            json.dump(current_state.to_dict(), f, indent=2, ensure_ascii=False)
+
+        # Generate Partial Report
+        partial_report = f"# Partial Research Report: {current_state.research_topic}\n\n"
+        if current_state.research_plan:
+            for sec in current_state.research_plan:
+                    status_icon = "✅" if sec['status'] == 'completed' else "⏳"
+                    partial_report += f"## {status_icon} {sec['title']}\n"
+                    if sec['summary']:
+                        partial_report += f"{sec['summary']}\n\n"
+                    elif sec['description']:
+                        partial_report += f"*Plan:* {sec['description']}\n\n"
+
+        # Timestamp for filename
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        report_filename = f"partial_report_{timestamp}.md"
+        report_path = report_dir / report_filename
+
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(partial_report)
+
+        # Send to Chat
+        await cl.Message(
+            content=f"💾 Autosave: Progress saved.",
+            elements=[cl.File(name=report_filename, path=str(report_path), display="inline")]
+        ).send()
+    except Exception as e:
+        logger.error(f"Autosave failed: {e}")
 
 async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
     """Handles interactive steps if enabled."""
@@ -198,7 +293,7 @@ async def main(message: cl.Message):
         # Send each progress update as a visible message
         await cl.Message(content=f"📍 {info}", author="Progress").send()
 
-    loop = ResearchLoop(config, state, progress_callback=progress_callback)
+    loop = ResearchLoop(config, state, progress_callback=progress_callback, state_save_func=autosave_callback)
     cl.user_session.set("loop", loop)
 
     try:

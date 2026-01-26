@@ -10,7 +10,7 @@ from deep_research_project.tools.content_retriever import ContentRetriever
 import logging
 import json
 import asyncio
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Awaitable, Any
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +36,18 @@ def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> Li
 
 
 class ResearchLoop:
-    def __init__(self, config: Configuration, state: ResearchState, progress_callback: Optional[Callable[[str], None]] = None):
+    def __init__(
+        self,
+        config: Configuration,
+        state: ResearchState,
+        progress_callback: Optional[Callable[[str], None]] = None,
+        state_save_func: Optional[Callable[[ResearchState], Awaitable[None]]] = None
+    ):
         self.config = config
         self.state = state
         self.interactive_mode = config.INTERACTIVE_MODE
         self.progress_callback = progress_callback
+        self.state_save_func = state_save_func
 
         self.llm_client = LLMClient(config)
         self.search_client = SearchClient(config)
@@ -86,6 +93,9 @@ class ResearchLoop:
                 plan_str += f"{i+1}. **{sec['title']}**\n   - {sec['description']}\n\n"
             if self.progress_callback: 
                 await self.progress_callback(plan_str)
+
+            if self.state_save_func:
+                await self.state_save_func(self.state)
             
             logger.info(f"Research plan generated with {len(self.state.research_plan)} sections.")
         except Exception as e:
@@ -427,6 +437,10 @@ class ResearchLoop:
         self.state.proposed_query = None
         self.state.search_results = None
         self.state.fetched_content = {}
+
+        if self.state_save_func:
+            await self.state_save_func(self.state)
+
         return True
 
     async def run_loop(self):
