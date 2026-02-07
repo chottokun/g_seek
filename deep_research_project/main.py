@@ -17,7 +17,7 @@ import asyncio
 async def main():
     config_default = Configuration()
     parser = argparse.ArgumentParser(description="AI Research Assistant CLI")
-    parser.add_argument("topic", nargs="?", default="Modern AI Research Agents", help="Research topic")
+    parser.add_argument("topic", nargs="?", help="Research topic")
     parser.add_argument("-i", "--interactive", action="store_true", help="Run in interactive mode")
     parser.add_argument("-l", "--loops", type=int, help="Max research loops")
     parser.add_argument("-r", "--results", type=int, help="Max search results per query")
@@ -26,6 +26,17 @@ async def main():
     parser.add_argument("--chunk-overlap", type=int, help="Summarization chunk overlap (chars)")
     parser.add_argument("--lang", choices=["Japanese", "English"], default=config_default.DEFAULT_LANGUAGE, help="Prompt language")
     args = parser.parse_args()
+
+    if not args.topic:
+        try:
+            input_topic = input("Enter the research topic: ")
+            args.topic = input_topic.strip()
+        except EOFError:
+            pass
+
+    if not args.topic:
+        print("Error: Research topic is required.")
+        return
 
     try:
         config = Configuration()
