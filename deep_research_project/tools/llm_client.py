@@ -87,11 +87,12 @@ class LLMClient:
         limit_interval = 60.0 / self.config.LLM_RATE_LIMIT_RPM if self.config.LLM_RATE_LIMIT_RPM > 0 else 0
 
         async with self._rate_limit_lock:
-            current_time = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            current_time = loop.time()
             time_since_last = current_time - self._last_request_time
             if time_since_last < limit_interval:
                 await asyncio.sleep(limit_interval - time_since_last)
-            self._last_request_time = asyncio.get_event_loop().time()
+            self._last_request_time = loop.time()
 
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt."""

@@ -43,9 +43,10 @@ class TestResearchLoopParallel(unittest.IsolatedAsyncioTestCase):
 
         self.loop.llm_client.generate_text = AsyncMock(side_effect=mock_generate_text)
 
-        start_time = asyncio.get_event_loop().time()
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
         await self.loop._summarize_sources(selected)
-        end_time = asyncio.get_event_loop().time()
+        end_time = loop.time()
 
         duration = end_time - start_time
         # 2 chunks -> 1 wave of 2 if parallel -> 0.5s
@@ -58,9 +59,10 @@ class TestResearchLoopParallel(unittest.IsolatedAsyncioTestCase):
         selected = [
             SearchResult(title="T1", link="L1", snippet="1234567890123456789012345678901234567890") # 4 chunks
         ]
-        start_time = asyncio.get_event_loop().time()
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
         await self.loop._summarize_sources(selected)
-        end_time = asyncio.get_event_loop().time()
+        end_time = loop.time()
 
         duration = end_time - start_time
         # 4 chunks, concurrency 2 -> 2 waves of 0.5s -> ~1.0s
@@ -81,13 +83,14 @@ class TestResearchLoopParallel(unittest.IsolatedAsyncioTestCase):
         self.loop.llm_client.generate_structured = AsyncMock(side_effect=mock_gen_struct)
         self.loop.llm_client.generate_text = AsyncMock(side_effect=mock_gen_text)
 
-        start_time = asyncio.get_event_loop().time()
+        loop = asyncio.get_running_loop()
+        start_time = loop.time()
         # These two should run in parallel
         await asyncio.gather(
             self.loop._extract_entities_and_relations(),
             self.loop._reflect_on_summary()
         )
-        end_time = asyncio.get_event_loop().time()
+        end_time = loop.time()
 
         duration = end_time - start_time
         # If parallel, ~0.5s. If sequential, ~1.0s.

@@ -23,14 +23,15 @@ class TestLLMClientRateLimit(unittest.IsolatedAsyncioTestCase):
             client.llm = AsyncMock()
             client.llm.ainvoke.return_value = MagicMock(content="response")
 
-            start_time = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            start_time = loop.time()
             # Send 3 requests
             await asyncio.gather(
                 client.generate_text("p1"),
                 client.generate_text("p2"),
                 client.generate_text("p3")
             )
-            end_time = asyncio.get_event_loop().time()
+            end_time = loop.time()
 
             duration = end_time - start_time
             # Request 1: 0s
@@ -47,13 +48,14 @@ class TestLLMClientRateLimit(unittest.IsolatedAsyncioTestCase):
             client.llm = AsyncMock()
             client.llm.ainvoke.return_value = MagicMock(content="response")
 
-            start_time = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            start_time = loop.time()
             await asyncio.gather(
                 client.generate_text("p1"),
                 client.generate_text("p2"),
                 client.generate_text("p3")
             )
-            end_time = asyncio.get_event_loop().time()
+            end_time = loop.time()
 
             duration = end_time - start_time
             # Should be almost instantaneous
