@@ -147,7 +147,7 @@ def main():
             st.subheader("Select Sources")
             selected = []
             for res in state.search_results:
-                if st.checkbox(res['title'], key=f"src_{res['link']}"):
+                if st.checkbox(res.title, key=f"src_{res.link}"):
                     selected.append(res)
             if st.button("Summarize Selected"):
                 with st.status("Summarizing selected sources and continuing research...", expanded=True) as status:

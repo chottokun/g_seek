@@ -1,12 +1,12 @@
 from typing import List, Dict, Optional, TypedDict
 from pydantic import BaseModel, Field
 
-class SearchResult(TypedDict):
+class SearchResult(BaseModel):
     title: str
     link: str
     snippet: str # Or any other relevant fields from search API
 
-class Source(TypedDict):
+class Source(BaseModel):
     title: str
     link: str
 

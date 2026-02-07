@@ -139,7 +139,7 @@ class ResearchLoop:
             self.state.pending_source_selection = bool(results)
             if self.progress_callback:
                 if results:
-                    results_str = "\n".join([f"- [{r['title']}]({r['link']})" for r in results])
+                    results_str = "\n".join([f"- [{r.title}]({r.link})" for r in results])
                     await self.progress_callback(f"Found {len(results)} potential sources:\n{results_str}")
                 else:
                     await self.progress_callback("No search results found.")
@@ -156,7 +156,7 @@ class ResearchLoop:
             return
 
         if self.progress_callback:
-             sources_titles = ", ".join([r['title'] for r in selected_results])
+             sources_titles = ", ".join([r.title for r in selected_results])
              await self.progress_callback(f"Summarizing {len(selected_results)} sources: {sources_titles}...")
 
         all_chunk_summaries = []
@@ -164,13 +164,13 @@ class ResearchLoop:
         if self.state.fetched_content is None: self.state.fetched_content = {}
 
         for result in selected_results:
-            url = result['link']
+            url = result.link
             if url not in self.state.fetched_content:
                 if self.config.USE_SNIPPETS_ONLY_MODE:
-                    content = result.get('snippet', '')
+                    content = result.snippet
                 else:
                     content = await self.content_retriever.retrieve_and_extract(url)
-                    if not content: content = result.get('snippet', '')
+                    if not content: content = result.snippet
                 self.state.fetched_content[url] = content
 
             content = self.state.fetched_content[url]
@@ -215,8 +215,8 @@ class ResearchLoop:
             if self.progress_callback: await self.progress_callback("Summary update complete.")
 
         for res in selected_results:
-            if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
-                self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
+            if res.link not in [s.link for s in self.state.sources_gathered]:
+                self.state.sources_gathered.append(Source(title=res.title, link=res.link))
 
         self.state.pending_source_selection = False
         # await self._extract_entities_and_relations() # Now handled in parallel with reflection
@@ -302,10 +302,10 @@ class ResearchLoop:
                 if sec['summary']:
                     full_context += f"\n\n### {sec['title']}\n{sec['summary']}"
                 for s in sec['sources']:
-                    if s['link'] not in [src['link'] for src in all_sources]:
+                    if s.link not in [src.link for src in all_sources]:
                         all_sources.append(s)
 
-        source_list_str = "\n".join([f"[{i+1}] {s['title']} ({s['link']})" for i, s in enumerate(all_sources)])
+        source_list_str = "\n".join([f"[{i+1}] {s.title} ({s.link})" for i, s in enumerate(all_sources)])
 
         if not source_list_str:
             source_info = "No specific web sources were found or selected for this research."

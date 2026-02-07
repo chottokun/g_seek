@@ -150,7 +150,7 @@ async def handle_interactive_steps(loop: ResearchLoop, state: ResearchState):
             content = "### Select sources to summarize:\n"
             actions = []
             for i, res in enumerate(state.search_results):
-                content += f"{i+1}. [{res['title']}]({res['link']})\n"
+                content += f"{i+1}. [{res.title}]({res.link})\n"
                 actions.append(cl.Action(name="select_source", payload={"value": str(i)}, label=f"Source {i+1}"))
 
             actions.append(cl.Action(name="summarize_all", payload={"value": "all"}, label="All Sources"))
