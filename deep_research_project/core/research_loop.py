@@ -163,17 +163,32 @@ class ResearchLoop:
         all_chunks_info = [] # Store all chunks to be processed in parallel
         if self.state.fetched_content is None: self.state.fetched_content = {}
 
+        async def fetch_and_store(res: SearchResult):
+            url = res['link']
+            if self.config.USE_SNIPPETS_ONLY_MODE:
+                content = res.get('snippet', '')
+            else:
+                content = await self.content_retriever.retrieve_and_extract(url)
+                if not content: content = res.get('snippet', '')
+            self.state.fetched_content[url] = content
+
+        # Filter results that need fetching to avoid redundant parallel tasks
+        to_fetch = []
+        seen_in_to_fetch = set()
+        for res in selected_results:
+            url = res['link']
+            if url not in self.state.fetched_content and url not in seen_in_to_fetch:
+                to_fetch.append(res)
+                seen_in_to_fetch.add(url)
+
+        if to_fetch:
+            if self.progress_callback:
+                await self.progress_callback(f"Fetching {len(to_fetch)} sources in parallel...")
+            await asyncio.gather(*[fetch_and_store(res) for res in to_fetch])
+
         for result in selected_results:
             url = result['link']
-            if url not in self.state.fetched_content:
-                if self.config.USE_SNIPPETS_ONLY_MODE:
-                    content = result.get('snippet', '')
-                else:
-                    content = await self.content_retriever.retrieve_and_extract(url)
-                    if not content: content = result.get('snippet', '')
-                self.state.fetched_content[url] = content
-
-            content = self.state.fetched_content[url]
+            content = self.state.fetched_content.get(url, '')
             chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
             all_chunks_info.extend([(chunk, url) for chunk in chunks])
 
