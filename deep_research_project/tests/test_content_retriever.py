@@ -1,5 +1,6 @@
 import unittest
 import asyncio
+import socket
 from unittest.mock import MagicMock, AsyncMock, patch
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.content_retriever import ContentRetriever
@@ -39,18 +40,24 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
 
         retriever = ContentRetriever(self.mock_config)
         # We need to mock AsyncClient as a whole or mock the context manager
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("httpx.AsyncClient") as mock_client_class, \
+             patch("socket.getaddrinfo") as mock_getaddrinfo:
+
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client_class.return_value = mock_client
+
+            # Mock DNS to return a public IP
+            mock_getaddrinfo.return_value = [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('93.184.216.34', 80))]
 
             text = await retriever.retrieve_and_extract("http://example.com")
             self.assertEqual(text, "Content")
 
     @patch("deep_research_project.tools.content_retriever.PdfReader")
     @patch("httpx.AsyncClient")
-    async def test_retrieve_and_extract_pdf(self, mock_client_class, mock_pdf_reader):
+    @patch("socket.getaddrinfo")
+    async def test_retrieve_and_extract_pdf(self, mock_getaddrinfo, mock_client_class, mock_pdf_reader):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {"Content-Type": "application/pdf"}
@@ -61,6 +68,9 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         mock_client.get.return_value = mock_response
         mock_client.__aenter__.return_value = mock_client
         mock_client_class.return_value = mock_client
+
+        # Mock DNS to return a public IP
+        mock_getaddrinfo.return_value = [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('93.184.216.34', 80))]
 
         mock_page = MagicMock()
         mock_page.extract_text.return_value = "PDF Page Content"
