@@ -108,6 +108,34 @@ class Configuration:
             # But for initial config, raising is okay.
             raise ValueError("SUMMARIZATION_CHUNK_OVERLAP_CHARS must be non-negative and less than SUMMARIZATION_CHUNK_SIZE_CHARS.")
 
+    def _scrub_url(self, url: Optional[str]) -> str:
+        """
+        Scrub sensitive information (username/password) from URLs.
+        """
+        if not url:
+            return "Not Set"
+        try:
+            from urllib.parse import urlparse, urlunparse
+            parsed = urlparse(url)
+            if parsed.password or parsed.username:
+                # Reconstruct netloc with masked credentials
+                # format: user:pass@host:port
+                netloc = parsed.netloc
+                if "@" in netloc:
+                    auth_part, host_part = netloc.rsplit("@", 1)
+                    if ":" in auth_part:
+                        user, _ = auth_part.split(":", 1)
+                        new_auth = f"{user}:********"
+                    else:
+                        new_auth = "********"
+                    new_netloc = f"{new_auth}@{host_part}"
+                    parsed = parsed._replace(netloc=new_netloc)
+                return urlunparse(parsed)
+            return url
+        except Exception:
+            # If parsing fails, return a safe placeholder to avoid leaking anything
+            return "Invalid/Unsafe URL"
+
     def __str__(self):
         # Dynamically build the string representation
         config_details = [
@@ -118,18 +146,18 @@ class Configuration:
         ]
         if self.LLM_PROVIDER == "openai" or self.OPENAI_API_BASE_URL: # Show relevant OpenAI details
             config_details.append(f"  OpenAI API Key: {'********' if self.OPENAI_API_KEY else 'Not Set'}")
-            config_details.append(f"  OpenAI API Base URL: {self.OPENAI_API_BASE_URL if self.OPENAI_API_BASE_URL else 'Default'}")
+            config_details.append(f"  OpenAI API Base URL: {self._scrub_url(self.OPENAI_API_BASE_URL) if self.OPENAI_API_BASE_URL else 'Default'}")
 
         if self.LLM_PROVIDER == "azure_openai": # Show relevant Azure details
             config_details.extend([
                 f"  Azure OpenAI API Key: {'********' if self.AZURE_OPENAI_API_KEY else 'Not Set'}",
-                f"  Azure OpenAI Endpoint: {self.AZURE_OPENAI_ENDPOINT}",
+                f"  Azure OpenAI Endpoint: {self._scrub_url(self.AZURE_OPENAI_ENDPOINT)}",
                 f"  Azure OpenAI API Version: {self.AZURE_OPENAI_API_VERSION}",
                 f"  Azure OpenAI Deployment Name: {self.AZURE_OPENAI_DEPLOYMENT_NAME}",
             ])
 
         if self.LLM_PROVIDER == "ollama": # Show relevant Ollama details
-             config_details.append(f"  Ollama Base URL: {self.OLLAMA_BASE_URL if self.OLLAMA_BASE_URL else 'Default'}")
+             config_details.append(f"  Ollama Base URL: {self._scrub_url(self.OLLAMA_BASE_URL) if self.OLLAMA_BASE_URL else 'Default'}")
              config_details.append(f"  Ollama Num Retries: {self.OLLAMA_NUM_RETRIES}")
              config_details.append(f"  Ollama Retry Delay Seconds: {self.OLLAMA_RETRY_DELAY_SECONDS}")
 
