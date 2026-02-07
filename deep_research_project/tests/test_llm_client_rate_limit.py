@@ -24,21 +24,23 @@ class TestLLMClientRateLimit(unittest.IsolatedAsyncioTestCase):
             client.llm.ainvoke.return_value = MagicMock(content="response")
 
             start_time = asyncio.get_event_loop().time()
-            # Send 3 requests
-            await asyncio.gather(
-                client.generate_text("p1"),
-                client.generate_text("p2"),
-                client.generate_text("p3")
-            )
+            # Send 12 requests. Burst capacity is 10.
+            # Req 1-10: Instant
+            # Req 11: 0.5s
+            # Req 12: 1.0s
+            tasks = [client.generate_text(f"p{i}") for i in range(12)]
+            await asyncio.gather(*tasks)
             end_time = asyncio.get_event_loop().time()
 
             duration = end_time - start_time
-            # Request 1: 0s
-            # Request 2: 0.5s
-            # Request 3: 1.0s
-            # Total duration should be at least 1.0s
+
+            # With burst capacity 10 and 120 RPM (0.5s interval):
+            # 12 requests should take approx 1.0s (wait for 11th and 12th).
+            # Strict serialization would take (12-1)*0.5 = 5.5s.
+            # No rate limit would take ~0s.
+
             self.assertGreaterEqual(duration, 1.0)
-            self.assertLess(duration, 1.5) # Should not be too much more
+            self.assertLess(duration, 1.5)
 
     async def test_rate_limit_disabled(self):
         self.mock_config.LLM_RATE_LIMIT_RPM = 0

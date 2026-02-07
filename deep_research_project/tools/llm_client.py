@@ -13,7 +13,8 @@ class LLMClient:
         self.config = config
         self.llm = None
         self._rate_limit_lock = asyncio.Lock()
-        self._last_request_time = 0.0
+        self._last_refill_time = 0.0
+        self._tokens = 10.0  # Initial burst capacity
 
         if self.config.LLM_PROVIDER == "openai":
             try:
@@ -83,15 +84,42 @@ class LLMClient:
             self.llm = "PlaceholderLLMInstance"
 
     async def _wait_for_rate_limit(self):
-        """Waits to respect the rate limit."""
-        limit_interval = 60.0 / self.config.LLM_RATE_LIMIT_RPM if self.config.LLM_RATE_LIMIT_RPM > 0 else 0
+        """Waits to respect the rate limit using a token bucket algorithm."""
+        if self.config.LLM_RATE_LIMIT_RPM <= 0:
+            return
 
+        rate = self.config.LLM_RATE_LIMIT_RPM / 60.0
+        burst_capacity = 10.0  # Allow for short bursts
+
+        wait_time = 0.0
         async with self._rate_limit_lock:
-            current_time = asyncio.get_event_loop().time()
-            time_since_last = current_time - self._last_request_time
-            if time_since_last < limit_interval:
-                await asyncio.sleep(limit_interval - time_since_last)
-            self._last_request_time = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+
+            # Refill tokens
+            elapsed = now - self._last_refill_time
+            if self._last_refill_time == 0.0:
+                # First call, full bucket
+                self._tokens = burst_capacity
+            else:
+                self._tokens += elapsed * rate
+
+            if self._tokens > burst_capacity:
+                self._tokens = burst_capacity
+
+            self._last_refill_time = now
+
+            if self._tokens >= 1.0:
+                self._tokens -= 1.0
+            else:
+                # Not enough tokens, calculate wait
+                needed = 1.0 - self._tokens
+                wait_time = needed / rate
+                # Deduct token (we are reserving it)
+                self._tokens -= 1.0
+
+        if wait_time > 0:
+            await asyncio.sleep(wait_time)
 
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt."""
