@@ -80,7 +80,18 @@ class Configuration:
         self.RESEARCH_PLAN_MIN_SECTIONS: int = int(os.getenv("RESEARCH_PLAN_MIN_SECTIONS", 3))
         self.RESEARCH_PLAN_MAX_SECTIONS: int = int(os.getenv("RESEARCH_PLAN_MAX_SECTIONS", 5))
         self.MAX_QUERY_WORDS: int = int(os.getenv("MAX_QUERY_WORDS", 12))
-        self.REPORT_DIR: str = os.getenv("REPORT_DIR", "temp_reports")
+
+        # Security: Validate REPORT_DIR to prevent arbitrary file deletion
+        raw_report_dir = os.getenv("REPORT_DIR", "temp_reports")
+        # For simplicity and security, we ensure it's treated as a relative path
+        # from the project root if it looks suspicious or is absolute.
+        if os.path.isabs(raw_report_dir) or ".." in raw_report_dir:
+            self.REPORT_DIR: str = os.path.basename(raw_report_dir)
+            if not self.REPORT_DIR: # in case it was just "/"
+                self.REPORT_DIR = "temp_reports"
+        else:
+            self.REPORT_DIR: str = raw_report_dir
+
         self.CLEANUP_AGE_SECONDS: int = int(os.getenv("CLEANUP_AGE_SECONDS", 3600))
         self.DEFAULT_LANGUAGE: str = os.getenv("DEFAULT_LANGUAGE", "Japanese")
 

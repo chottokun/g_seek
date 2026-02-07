@@ -26,6 +26,18 @@ def cleanup_old_reports(report_dir: pathlib.Path, cleanup_age: int):
     if not report_dir.exists():
         return
     
+    # Safety check: ensure report_dir is within the project root and is not the root itself
+    try:
+        project_root = pathlib.Path(__file__).parent.parent.resolve()
+        resolved_report_dir = report_dir.resolve()
+
+        if not resolved_report_dir.is_relative_to(project_root) or resolved_report_dir == project_root:
+            logger.warning(f"Cleanup skipped: {report_dir} is not a valid subdirectory of {project_root}")
+            return
+    except Exception as e:
+        logger.error(f"Error validating report directory: {e}")
+        return
+
     now = time.time()
     count = 0
     try:
