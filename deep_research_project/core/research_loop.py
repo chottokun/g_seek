@@ -46,6 +46,10 @@ class ResearchLoop:
         self.search_client = SearchClient(config)
         self.content_retriever = ContentRetriever(config=self.config, progress_callback=progress_callback)
 
+        # Performance optimization: maintain sets of existing IDs for O(1) lookups
+        self._kg_node_ids = {n['id'] for n in self.state.knowledge_graph_nodes}
+        self._kg_edge_keys = {(e['source'], e['target'], e.get('label')) for e in self.state.knowledge_graph_edges}
+
     async def _generate_research_plan(self):
         logger.info(f"Generating research plan for topic: {self.state.research_topic} (Language: {self.state.language})")
         if self.progress_callback: await self.progress_callback("Generating structured research plan...")
@@ -235,19 +239,17 @@ class ResearchLoop:
             kg_model = await self.llm_client.generate_structured(prompt=prompt, response_model=KnowledgeGraphModel)
 
             # Merge nodes
-            existing_node_ids = {n['id'] for n in self.state.knowledge_graph_nodes}
             for n in kg_model.nodes:
-                if n.id not in existing_node_ids:
+                if n.id not in self._kg_node_ids:
                     self.state.knowledge_graph_nodes.append(n.model_dump())
-                    existing_node_ids.add(n.id)
+                    self._kg_node_ids.add(n.id)
 
             # Merge edges (simplified deduplication based on source/target/label)
-            existing_edge_keys = {(e['source'], e['target'], e.get('label')) for e in self.state.knowledge_graph_edges}
             for e in kg_model.edges:
                 edge_key = (e.source, e.target, e.label)
-                if edge_key not in existing_edge_keys:
+                if edge_key not in self._kg_edge_keys:
                     self.state.knowledge_graph_edges.append(e.model_dump())
-                    existing_edge_keys.add(edge_key)
+                    self._kg_edge_keys.add(edge_key)
 
             if self.progress_callback: await self.progress_callback(f"Knowledge graph now has {len(self.state.knowledge_graph_nodes)} nodes and {len(self.state.knowledge_graph_edges)} edges.")
         except Exception as e:
