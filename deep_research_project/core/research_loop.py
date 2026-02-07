@@ -7,32 +7,17 @@ from .state import (
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
+from deep_research_project.core.planning import PlanGenerator
+from deep_research_project.core.execution import ExecutionManager
+from deep_research_project.core.reflection import ReflectionManager
+from deep_research_project.core.reporting import ReportGenerator
+
 import logging
 import json
 import asyncio
 from typing import List, Optional, Callable
 
 logger = logging.getLogger(__name__)
-
-
-def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
-    """Splits a given text into overlapping chunks."""
-    if not text: return []
-    if chunk_size <= 0: raise ValueError("Chunk size must be positive.")
-    if chunk_overlap < 0 or chunk_overlap >= chunk_size:
-        raise ValueError("Invalid chunk overlap.")
-
-    text_len = len(text)
-    if text_len <= chunk_size: return [text]
-
-    chunks = []
-    idx = 0
-    while idx < text_len:
-        end_idx = idx + chunk_size
-        chunks.append(text[idx:end_idx])
-        if end_idx >= text_len: break
-        idx += (chunk_size - chunk_overlap)
-    return chunks
 
 
 class ResearchLoop:
@@ -46,52 +31,18 @@ class ResearchLoop:
         self.search_client = SearchClient(config)
         self.content_retriever = ContentRetriever(config=self.config, progress_callback=progress_callback)
 
+        self.planner = PlanGenerator(self.llm_client, config)
+        self.executor = ExecutionManager(self.llm_client, self.search_client, self.content_retriever, config)
+        self.reflector = ReflectionManager(self.llm_client, config)
+        self.reporter = ReportGenerator(self.llm_client, config)
+
     async def _generate_research_plan(self):
-        logger.info(f"Generating research plan for topic: {self.state.research_topic} (Language: {self.state.language})")
-        if self.progress_callback: await self.progress_callback("Generating structured research plan...")
-
-        try:
-            min_sec = getattr(self.config, "RESEARCH_PLAN_MIN_SECTIONS", 3)
-            max_sec = getattr(self.config, "RESEARCH_PLAN_MAX_SECTIONS", 5)
-            if self.state.language == "Japanese":
-                prompt = (
-                    f"以下のリサーチトピックに基づいて、{min_sec}〜{max_sec}つの主要なセクションで構成される構造化されたリサーチ計画を生成してください。\n"
-                    f"リサーチトピック: {self.state.research_topic}\n\n"
-                    f"各セクションについて、タイトルとリサーチすべき内容の簡潔な説明を提供してください。"
-                )
-            else:
-                prompt = (
-                    f"Based on the following research topic, generate a structured research plan consisting of {min_sec} to {max_sec} key sections.\n"
-                    f"Research Topic: {self.state.research_topic}\n\n"
-                    f"For each section, provide a title and a brief description of what should be researched."
-                )
-
-            plan_model = await self.llm_client.generate_structured(prompt=prompt, response_model=ResearchPlanModel)
-
-            self.state.research_plan = []
-            for sec in plan_model.sections:
-                self.state.research_plan.append({
-                    "title": sec.title,
-                    "description": sec.description,
-                    "status": "pending",
-                    "summary": "",
-                    "sources": []
-                })
-
-            self.state.current_section_index = -1
-            
-            # Visibility Enhancement: Emit plan details as formatted message
-            plan_str = "## 📋 Research Plan\n\n"
-            for i, sec in enumerate(self.state.research_plan):
-                plan_str += f"{i+1}. **{sec['title']}**\n   - {sec['description']}\n\n"
-            if self.progress_callback: 
-                await self.progress_callback(plan_str)
-            
-            logger.info(f"Research plan generated with {len(self.state.research_plan)} sections.")
-        except Exception as e:
-            logger.error(f"Error generating research plan: {e}", exc_info=True)
-            self.state.research_plan = [{"title": "General Research", "description": f"Research on {self.state.research_topic}", "status": "pending", "summary": "", "sources": []}]
-            self.state.current_section_index = -1
+        self.state.research_plan = await self.planner.generate_plan(
+            self.state.research_topic,
+            self.state.language,
+            self.progress_callback
+        )
+        self.state.current_section_index = -1
 
     def _get_current_section(self):
         if 0 <= self.state.current_section_index < len(self.state.research_plan):
@@ -103,189 +54,33 @@ class ResearchLoop:
         topic = section['title'] if section else self.state.research_topic
         desc = section['description'] if section else ""
 
-        logger.info(f"Generating initial query for: {topic}")
-        try:
-            max_words = getattr(self.config, "MAX_QUERY_WORDS", 12)
-            if self.state.language == "Japanese":
-                prompt = (
-                    f"以下のリサーチタスクのために、簡潔なWeb検索クエリ（最大{max_words}単語）を生成してください。\n"
-                    f"メインテーマ: {self.state.research_topic}\n"
-                    f"セクション: {topic}\n"
-                    f"説明: {desc}\n\n"
-                    f"クエリのみを出力してください。英語のソースも取得できるよう、適切であれば英語のクエリも検討してください。"
-                )
-            else:
-                prompt = (
-                    f"Generate a concise web search query (max {max_words} words) for the following research task.\n"
-                    f"Main Topic: {self.state.research_topic}\n"
-                    f"Section: {topic}\n"
-                    f"Description: {desc}\n\n"
-                    f"Output only the query."
-                )
-            query = await self.llm_client.generate_text(prompt=prompt)
-            self.state.proposed_query = query
-            self.state.current_query = None
-        except Exception as e:
-            logger.error(f"Error generating query: {e}")
-            self.state.proposed_query = None
+        query = await self.executor.generate_initial_query(self.state, topic, desc)
+        self.state.proposed_query = query
+        self.state.current_query = None
 
     async def _web_search(self):
         if not self.state.current_query: return
-        logger.info(f"Performing web search for: {self.state.current_query}")
-        if self.progress_callback: await self.progress_callback(f"Searching web for: '{self.state.current_query}'...")
-        try:
-            results = await self.search_client.search(self.state.current_query, num_results=self.config.MAX_SEARCH_RESULTS_PER_QUERY)
-            self.state.search_results = results
-            self.state.pending_source_selection = bool(results)
-            if self.progress_callback:
-                if results:
-                    results_str = "\n".join([f"- [{r['title']}]({r['link']})" for r in results])
-                    await self.progress_callback(f"Found {len(results)} potential sources:\n{results_str}")
-                else:
-                    await self.progress_callback("No search results found.")
-        except Exception as e:
-            logger.error(f"Error during search: {e}")
-            self.state.search_results = []
-            self.state.pending_source_selection = False
-            if self.progress_callback: await self.progress_callback(f"Search failed: {e}")
+        results = await self.executor.web_search(self.state.current_query, self.progress_callback)
+        self.state.search_results = results
+        self.state.pending_source_selection = bool(results)
 
     async def _summarize_sources(self, selected_results: List[SearchResult]):
-        if not selected_results:
-            self.state.new_information = "No sources selected."
-            self.state.pending_source_selection = False
-            return
-
-        if self.progress_callback:
-             sources_titles = ", ".join([r['title'] for r in selected_results])
-             await self.progress_callback(f"Summarizing {len(selected_results)} sources: {sources_titles}...")
-
-        all_chunk_summaries = []
-        all_chunks_info = [] # Store all chunks to be processed in parallel
-        if self.state.fetched_content is None: self.state.fetched_content = {}
-
-        for result in selected_results:
-            url = result['link']
-            if url not in self.state.fetched_content:
-                if self.config.USE_SNIPPETS_ONLY_MODE:
-                    content = result.get('snippet', '')
-                else:
-                    content = await self.content_retriever.retrieve_and_extract(url)
-                    if not content: content = result.get('snippet', '')
-                self.state.fetched_content[url] = content
-
-            content = self.state.fetched_content[url]
-            chunks = split_text_into_chunks(content, self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
-            all_chunks_info.extend([(chunk, url) for chunk in chunks])
-
-        # Limit concurrency using Semaphore
-        semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_CHUNKS)
-
-        async def summarize_chunk(chunk_info):
-            chunk, url = chunk_info
-            if self.state.is_interrupted: return None
-            async with semaphore:
-                if self.progress_callback: await self.progress_callback(f"Summarizing chunk from {url}...")
-                if self.state.language == "Japanese":
-                    prompt = f"リサーチクエリ: '{self.state.current_query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
-                else:
-                    prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
-                return await self.llm_client.generate_text(prompt=prompt)
-
-        # Execute parallel summarization
-        if all_chunks_info:
-            if self.progress_callback: await self.progress_callback(f"Starting parallel summarization for {len(all_chunks_info)} chunks...")
-            summaries = await asyncio.gather(*[summarize_chunk(info) for info in all_chunks_info])
-            all_chunk_summaries.extend([s for s in summaries if s])
-        
-        if self.state.is_interrupted:
-             return
-
-        if not all_chunk_summaries:
-            self.state.new_information = "Could not summarize any content."
-            if self.progress_callback: await self.progress_callback("No content could be summarized.")
-        else:
-            if self.progress_callback: await self.progress_callback("Synthesizing final summary for the query...")
-            combined = "\n\n---\n\n".join(all_chunk_summaries)
-            if self.state.language == "Japanese":
-                prompt = f"これらの要約を、クエリ: '{self.state.current_query}' に関する一つの首尾一貫した要約にまとめてください。\n\n要約群:\n{combined}"
-            else:
-                prompt = f"Combine these summaries into one coherent summary for query: '{self.state.current_query}'.\n\nSummaries:\n{combined}"
-            self.state.new_information = await self.llm_client.generate_text(prompt=prompt)
-            self.state.accumulated_summary += f"\n\n## {self.state.current_query}\n{self.state.new_information}"
-            if self.progress_callback: await self.progress_callback("Summary update complete.")
-
-        for res in selected_results:
-            if res['link'] not in [s['link'] for s in self.state.sources_gathered]:
-                self.state.sources_gathered.append(Source(title=res['title'], link=res['link']))
-
-        self.state.pending_source_selection = False
-        # await self._extract_entities_and_relations() # Now handled in parallel with reflection
+        await self.executor.summarize_sources(self.state, selected_results, self.progress_callback)
 
     async def _extract_entities_and_relations(self):
-        if not self.state.new_information or len(self.state.new_information) < 20: return
-
-        logger.info("Extracting entities and relations (structured).")
-        if self.progress_callback: await self.progress_callback("Extracting entities and relations for knowledge graph...")
-        if self.state.language == "Japanese":
-            prompt = f"このテキストから主要なエンティティと関係を特定してください:\n\n{self.state.new_information}"
-        else:
-            prompt = f"Identify key entities and relationships from this text:\n\n{self.state.new_information}"
-
-        try:
-            kg_model = await self.llm_client.generate_structured(prompt=prompt, response_model=KnowledgeGraphModel)
-
-            # Merge nodes
-            existing_node_ids = {n['id'] for n in self.state.knowledge_graph_nodes}
-            for n in kg_model.nodes:
-                if n.id not in existing_node_ids:
-                    self.state.knowledge_graph_nodes.append(n.model_dump())
-                    existing_node_ids.add(n.id)
-
-            # Merge edges (simplified deduplication based on source/target/label)
-            existing_edge_keys = {(e['source'], e['target'], e.get('label')) for e in self.state.knowledge_graph_edges}
-            for e in kg_model.edges:
-                edge_key = (e.source, e.target, e.label)
-                if edge_key not in existing_edge_keys:
-                    self.state.knowledge_graph_edges.append(e.model_dump())
-                    existing_edge_keys.add(edge_key)
-
-            if self.progress_callback: await self.progress_callback(f"Knowledge graph now has {len(self.state.knowledge_graph_nodes)} nodes and {len(self.state.knowledge_graph_edges)} edges.")
-        except Exception as e:
-            logger.error(f"KG extraction failed: {e}")
-            if self.progress_callback: await self.progress_callback("Knowledge graph extraction skipped or failed.")
+        await self.executor.extract_entities_and_relations(self.state, self.progress_callback)
 
     async def _reflect_on_summary(self):
         section = self._get_current_section()
         title = section['title'] if section else "General"
 
-        if self.progress_callback: await self.progress_callback(f"Reflecting on findings for section: '{title}'...")
-        if self.state.language == "Japanese":
-            prompt = (
-                f"トピック: {self.state.research_topic}\n"
-                f"セクション: {title}\n"
-                f"現在の要約:\n{self.state.accumulated_summary}\n\n"
-                f"このセクションにさらなる調査が必要かどうかを評価してください。"
-                f"フォーマット: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <次の検索クエリまたは None>"
-            )
-        else:
-            prompt = (
-                f"Topic: {self.state.research_topic}\n"
-                f"Section: {title}\n"
-                f"Current Summary:\n{self.state.accumulated_summary}\n\n"
-                f"Evaluate if more research is needed for this section. "
-                f"Format: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <Next search query or None>"
-            )
-
-        response = await self.llm_client.generate_text(prompt=prompt)
-        # Simple parsing for reflection
-        lines = response.split('\n')
-        evaluation = "CONCLUDE"
-        next_query = None
-        for line in lines:
-            if "EVALUATION:" in line.upper(): evaluation = line.split(":")[-1].strip().upper()
-            if "QUERY:" in line.upper():
-                q = line.split(":")[-1].strip()
-                if q.lower() != "none": next_query = q
+        next_query, evaluation = await self.reflector.reflect_on_summary(
+            self.state.research_topic,
+            title,
+            self.state.accumulated_summary,
+            self.state.language,
+            self.progress_callback
+        )
 
         if "CONCLUDE" in evaluation:
             self.state.proposed_query = None
@@ -293,78 +88,15 @@ class ResearchLoop:
             self.state.proposed_query = next_query
 
     async def _finalize_summary(self):
-        logger.info("Finalizing report with citations.")
-
-        full_context = ""
-        all_sources = []
-        if self.state.research_plan:
-            for i, sec in enumerate(self.state.research_plan):
-                if sec['summary']:
-                    full_context += f"\n\n### {sec['title']}\n{sec['summary']}"
-                for s in sec['sources']:
-                    if s['link'] not in [src['link'] for src in all_sources]:
-                        all_sources.append(s)
-
-        source_list_str = "\n".join([f"[{i+1}] {s['title']} ({s['link']})" for i, s in enumerate(all_sources)])
-
-        if not source_list_str:
-            source_info = "No specific web sources were found or selected for this research."
-            citation_instruction = "Since no sources are available, do not use in-text citations."
-        else:
-            source_info = f"Reference Sources:\n{source_list_str}"
-            if self.state.language == "Japanese":
-                citation_instruction = "上記のソースに情報を帰属させるために、[1]や[2, 3]のような番号付きのインライン引用を必ず使用してください。"
-            else:
-                citation_instruction = "You MUST use numbered in-text citations such as [1] or [2, 3] to attribute information to the sources listed above."
-
-        if self.state.language == "Japanese":
-            prompt = (
-                f"トピック: {self.state.research_topic} に関する最終的なリサーチレポートを統合してください。\n\n"
-                f"リサーチコンテキスト（各セクションからの要約）:\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"厳格な指示:\n"
-                f"1. レポートは包括的でプロフェッショナルであり、明確な見出しを伴う構造になっている必要があります。出力は日本語で作成してください。\n"
-                f"2. {citation_instruction}\n"
-                f"3. ソースがある場合、すべての主要な主張やデータポイントには引用を付けることが理想的です。\n"
-                f"4. 提供されたリストにないソースには言及しないでください。\n"
-                f"5. 最後に調査結果のまとめを記述してください。"
-            )
-        else:
-            prompt = (
-                f"Synthesize a final research report for the topic: {self.state.research_topic}\n\n"
-                f"Research Context (Summaries from various sections):\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"STRICT INSTRUCTIONS:\n"
-                f"1. The report must be comprehensive, professional, and well-structured with clear headings.\n"
-                f"2. {citation_instruction}\n"
-                f"3. Every major claim or data point should ideally be cited if sources are available.\n"
-                f"4. Do not mention sources that are not in the provided list.\n"
-                f"5. End with a summary of the findings."
-            )
-
-        if self.progress_callback: await self.progress_callback("Synthesizing final research report with all findings...")
-        report = await self.llm_client.generate_text(prompt=prompt)
-
-        sources_section = f"\n\n## Sources\n{source_list_str}" if source_list_str else ""
-        self.state.final_report = f"{report}{sources_section}"
-        if self.progress_callback: await self.progress_callback("Final report generation complete.")
+        self.state.final_report = await self.reporter.finalize_report(
+            self.state.research_topic,
+            self.state.research_plan,
+            self.state.language,
+            self.progress_callback
+        )
 
     def format_follow_up_prompt(self, final_report: str, question: str) -> str:
-        """Formats the prompt for a follow-up question based on the final report."""
-        if self.state.language == "Japanese":
-            return (
-                f"以下のリサーチレポートに基づいて、ユーザーのフォローアップ質問に答えてください。\n\n"
-                f"レポート:\n{final_report}\n\n"
-                f"ユーザーの質問: {question}\n\n"
-                f"レポートの内容のみに基づいて、明確で簡潔な回答を提供してください。回答は日本語で行ってください。"
-            )
-        else:
-            return (
-                f"Based on the following research report, answer the user's follow-up question.\n\n"
-                f"Report:\n{final_report}\n\n"
-                f"User Question: {question}\n\n"
-                f"Provide a clear and concise answer based only on the report content."
-            )
+        return self.reporter.format_follow_up_prompt(final_report, question, self.state.language)
 
     async def _process_section(self, section):
         """Processes a single research section."""

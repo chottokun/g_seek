@@ -5,7 +5,8 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 # Modules to be tested
 from deep_research_project.config.config import Configuration
-from deep_research_project.core.research_loop import ResearchLoop, split_text_into_chunks
+from deep_research_project.core.research_loop import ResearchLoop
+from deep_research_project.core.utils import split_text_into_chunks
 from deep_research_project.core.state import ResearchState, Source, SearchResult, ResearchPlanModel, Section, KnowledgeGraphModel
 from deep_research_project.tools.llm_client import LLMClient
 
