@@ -27,11 +27,9 @@ class ContentRetriever:
                 script_or_style.decompose()
 
             text = soup.get_text(separator='\n', strip=True)
-            lines = [line.strip() for line in text.splitlines()]
-            cleaned_lines = []
-            for line in lines:
-                if line:
-                    cleaned_lines.append(' '.join(line.split()))
+            cleaned_lines = [
+                " ".join(line.split()) for line in text.splitlines() if line.strip()
+            ]
 
             text = "\n\n".join(cleaned_lines)
 
