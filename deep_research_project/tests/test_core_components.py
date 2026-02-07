@@ -108,5 +108,47 @@ class TestSplitTextIntoChunks(unittest.TestCase):
         chunks = split_text_into_chunks(text, 5, 2)
         self.assertEqual(chunks, ["12345", "45678", "7890"])
 
+    def test_empty_text(self):
+        self.assertEqual(split_text_into_chunks("", 100, 20), [])
+        self.assertEqual(split_text_into_chunks(None, 100, 20), [])
+
+    def test_chunk_size_larger_than_text(self):
+        text = "Short text"
+        self.assertEqual(split_text_into_chunks(text, 100, 20), [text])
+
+    def test_exact_chunk_size(self):
+        text = "12345"
+        self.assertEqual(split_text_into_chunks(text, 5, 2), ["12345"])
+
+    def test_no_overlap(self):
+        text = "123456"
+        chunks = split_text_into_chunks(text, 2, 0)
+        self.assertEqual(chunks, ["12", "34", "56"])
+
+    def test_overlap_logic(self):
+        # Trace for "ABCDEFG", size=3, overlap=1
+        # 1. idx=0, end=3, append "ABC". end(3) < 7. idx becomes 2.
+        # 2. idx=2, end=5, append "CDE". end(5) < 7. idx becomes 4.
+        # 3. idx=4, end=7, append "EFG". end(7) >= 7. Break.
+        text = "ABCDEFG"
+        chunks = split_text_into_chunks(text, 3, 1)
+        self.assertEqual(chunks, ["ABC", "CDE", "EFG"])
+
+    def test_invalid_inputs(self):
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("text", 0, 0)
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("text", -1, 0)
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("text", 10, -1)
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("text", 10, 10) # Overlap == Size
+        with self.assertRaises(ValueError):
+            split_text_into_chunks("text", 10, 11) # Overlap > Size
+
+    def test_single_char_text(self):
+        self.assertEqual(split_text_into_chunks("A", 1, 0), ["A"])
+        self.assertEqual(split_text_into_chunks("A", 5, 2), ["A"])
+
 if __name__ == '__main__':
     unittest.main()
