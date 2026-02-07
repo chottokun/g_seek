@@ -21,7 +21,7 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.mock_config.SUMMARIZATION_CHUNK_SIZE_CHARS = 1000
         self.mock_config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = 100
         self.mock_config.LOG_LEVEL = "INFO"
-        
+
         # New configs
         self.mock_config.MAX_CONCURRENT_CHUNKS = 5
         self.mock_config.LLM_RATE_LIMIT_RPM = 60
@@ -67,6 +67,19 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(self.state.search_results, mock_results)
         self.assertTrue(self.state.pending_source_selection)
+
+    async def test_web_search_handles_error(self):
+        self.state.current_query = "AI medical imaging"
+        self.mock_search_client.search = AsyncMock(side_effect=Exception("Search API failed"))
+
+        mock_callback = AsyncMock()
+        self.loop.progress_callback = mock_callback
+
+        await self.loop._web_search()
+
+        self.assertEqual(self.state.search_results, [])
+        self.assertFalse(self.state.pending_source_selection)
+        mock_callback.assert_called_with("Search failed: Search API failed")
 
     async def test_summarize_sources_accumulates_data(self):
         self.state.current_query = "Query A"
