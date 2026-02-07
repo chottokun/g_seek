@@ -1,4 +1,5 @@
 from deep_research_project.config.config import Configuration
+from deep_research_project.config.prompts import PROMPTS
 from .state import (
     ResearchState, SearchResult, Source,
     ResearchPlanModel, KnowledgeGraphModel
@@ -46,6 +47,12 @@ class ResearchLoop:
         self.search_client = SearchClient(config)
         self.content_retriever = ContentRetriever(config=self.config, progress_callback=progress_callback)
 
+    def _get_prompt(self, key: str, **kwargs) -> str:
+        """Retrieves and formats a prompt based on language and key."""
+        language = self.state.language if self.state.language in PROMPTS.get(key, {}) else "English"
+        template = PROMPTS[key][language]
+        return template.format(**kwargs)
+
     async def _generate_research_plan(self):
         logger.info(f"Generating research plan for topic: {self.state.research_topic} (Language: {self.state.language})")
         if self.progress_callback: await self.progress_callback("Generating structured research plan...")
@@ -53,18 +60,13 @@ class ResearchLoop:
         try:
             min_sec = getattr(self.config, "RESEARCH_PLAN_MIN_SECTIONS", 3)
             max_sec = getattr(self.config, "RESEARCH_PLAN_MAX_SECTIONS", 5)
-            if self.state.language == "Japanese":
-                prompt = (
-                    f"以下のリサーチトピックに基づいて、{min_sec}〜{max_sec}つの主要なセクションで構成される構造化されたリサーチ計画を生成してください。\n"
-                    f"リサーチトピック: {self.state.research_topic}\n\n"
-                    f"各セクションについて、タイトルとリサーチすべき内容の簡潔な説明を提供してください。"
-                )
-            else:
-                prompt = (
-                    f"Based on the following research topic, generate a structured research plan consisting of {min_sec} to {max_sec} key sections.\n"
-                    f"Research Topic: {self.state.research_topic}\n\n"
-                    f"For each section, provide a title and a brief description of what should be researched."
-                )
+
+            prompt = self._get_prompt(
+                "generate_research_plan",
+                min_sec=min_sec,
+                max_sec=max_sec,
+                topic=self.state.research_topic
+            )
 
             plan_model = await self.llm_client.generate_structured(prompt=prompt, response_model=ResearchPlanModel)
 
@@ -106,22 +108,13 @@ class ResearchLoop:
         logger.info(f"Generating initial query for: {topic}")
         try:
             max_words = getattr(self.config, "MAX_QUERY_WORDS", 12)
-            if self.state.language == "Japanese":
-                prompt = (
-                    f"以下のリサーチタスクのために、簡潔なWeb検索クエリ（最大{max_words}単語）を生成してください。\n"
-                    f"メインテーマ: {self.state.research_topic}\n"
-                    f"セクション: {topic}\n"
-                    f"説明: {desc}\n\n"
-                    f"クエリのみを出力してください。英語のソースも取得できるよう、適切であれば英語のクエリも検討してください。"
-                )
-            else:
-                prompt = (
-                    f"Generate a concise web search query (max {max_words} words) for the following research task.\n"
-                    f"Main Topic: {self.state.research_topic}\n"
-                    f"Section: {topic}\n"
-                    f"Description: {desc}\n\n"
-                    f"Output only the query."
-                )
+            prompt = self._get_prompt(
+                "generate_initial_query",
+                max_words=max_words,
+                topic=self.state.research_topic,
+                section_topic=topic,
+                description=desc
+            )
             query = await self.llm_client.generate_text(prompt=prompt)
             self.state.proposed_query = query
             self.state.current_query = None
@@ -185,10 +178,11 @@ class ResearchLoop:
             if self.state.is_interrupted: return None
             async with semaphore:
                 if self.progress_callback: await self.progress_callback(f"Summarizing chunk from {url}...")
-                if self.state.language == "Japanese":
-                    prompt = f"リサーチクエリ: '{self.state.current_query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
-                else:
-                    prompt = f"Summarize this segment for the research query: '{self.state.current_query}'.\n\nSegment:\n{chunk}"
+                prompt = self._get_prompt(
+                    "summarize_chunk",
+                    query=self.state.current_query,
+                    chunk=chunk
+                )
                 return await self.llm_client.generate_text(prompt=prompt)
 
         # Execute parallel summarization
@@ -206,10 +200,11 @@ class ResearchLoop:
         else:
             if self.progress_callback: await self.progress_callback("Synthesizing final summary for the query...")
             combined = "\n\n---\n\n".join(all_chunk_summaries)
-            if self.state.language == "Japanese":
-                prompt = f"これらの要約を、クエリ: '{self.state.current_query}' に関する一つの首尾一貫した要約にまとめてください。\n\n要約群:\n{combined}"
-            else:
-                prompt = f"Combine these summaries into one coherent summary for query: '{self.state.current_query}'.\n\nSummaries:\n{combined}"
+            prompt = self._get_prompt(
+                "combine_summaries",
+                query=self.state.current_query,
+                summaries=combined
+            )
             self.state.new_information = await self.llm_client.generate_text(prompt=prompt)
             self.state.accumulated_summary += f"\n\n## {self.state.current_query}\n{self.state.new_information}"
             if self.progress_callback: await self.progress_callback("Summary update complete.")
@@ -226,10 +221,10 @@ class ResearchLoop:
 
         logger.info("Extracting entities and relations (structured).")
         if self.progress_callback: await self.progress_callback("Extracting entities and relations for knowledge graph...")
-        if self.state.language == "Japanese":
-            prompt = f"このテキストから主要なエンティティと関係を特定してください:\n\n{self.state.new_information}"
-        else:
-            prompt = f"Identify key entities and relationships from this text:\n\n{self.state.new_information}"
+        prompt = self._get_prompt(
+            "extract_entities",
+            text=self.state.new_information
+        )
 
         try:
             kg_model = await self.llm_client.generate_structured(prompt=prompt, response_model=KnowledgeGraphModel)
@@ -259,22 +254,12 @@ class ResearchLoop:
         title = section['title'] if section else "General"
 
         if self.progress_callback: await self.progress_callback(f"Reflecting on findings for section: '{title}'...")
-        if self.state.language == "Japanese":
-            prompt = (
-                f"トピック: {self.state.research_topic}\n"
-                f"セクション: {title}\n"
-                f"現在の要約:\n{self.state.accumulated_summary}\n\n"
-                f"このセクションにさらなる調査が必要かどうかを評価してください。"
-                f"フォーマット: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <次の検索クエリまたは None>"
-            )
-        else:
-            prompt = (
-                f"Topic: {self.state.research_topic}\n"
-                f"Section: {title}\n"
-                f"Current Summary:\n{self.state.accumulated_summary}\n\n"
-                f"Evaluate if more research is needed for this section. "
-                f"Format: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <Next search query or None>"
-            )
+        prompt = self._get_prompt(
+            "reflect_on_summary",
+            topic=self.state.research_topic,
+            section_title=title,
+            summary=self.state.accumulated_summary
+        )
 
         response = await self.llm_client.generate_text(prompt=prompt)
         # Simple parsing for reflection
@@ -312,35 +297,15 @@ class ResearchLoop:
             citation_instruction = "Since no sources are available, do not use in-text citations."
         else:
             source_info = f"Reference Sources:\n{source_list_str}"
-            if self.state.language == "Japanese":
-                citation_instruction = "上記のソースに情報を帰属させるために、[1]や[2, 3]のような番号付きのインライン引用を必ず使用してください。"
-            else:
-                citation_instruction = "You MUST use numbered in-text citations such as [1] or [2, 3] to attribute information to the sources listed above."
+            citation_instruction = self._get_prompt("citation_instruction")
 
-        if self.state.language == "Japanese":
-            prompt = (
-                f"トピック: {self.state.research_topic} に関する最終的なリサーチレポートを統合してください。\n\n"
-                f"リサーチコンテキスト（各セクションからの要約）:\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"厳格な指示:\n"
-                f"1. レポートは包括的でプロフェッショナルであり、明確な見出しを伴う構造になっている必要があります。出力は日本語で作成してください。\n"
-                f"2. {citation_instruction}\n"
-                f"3. ソースがある場合、すべての主要な主張やデータポイントには引用を付けることが理想的です。\n"
-                f"4. 提供されたリストにないソースには言及しないでください。\n"
-                f"5. 最後に調査結果のまとめを記述してください。"
-            )
-        else:
-            prompt = (
-                f"Synthesize a final research report for the topic: {self.state.research_topic}\n\n"
-                f"Research Context (Summaries from various sections):\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"STRICT INSTRUCTIONS:\n"
-                f"1. The report must be comprehensive, professional, and well-structured with clear headings.\n"
-                f"2. {citation_instruction}\n"
-                f"3. Every major claim or data point should ideally be cited if sources are available.\n"
-                f"4. Do not mention sources that are not in the provided list.\n"
-                f"5. End with a summary of the findings."
-            )
+        prompt = self._get_prompt(
+            "finalize_summary",
+            topic=self.state.research_topic,
+            context=full_context,
+            source_info=source_info,
+            citation_instruction=citation_instruction
+        )
 
         if self.progress_callback: await self.progress_callback("Synthesizing final research report with all findings...")
         report = await self.llm_client.generate_text(prompt=prompt)
@@ -351,20 +316,11 @@ class ResearchLoop:
 
     def format_follow_up_prompt(self, final_report: str, question: str) -> str:
         """Formats the prompt for a follow-up question based on the final report."""
-        if self.state.language == "Japanese":
-            return (
-                f"以下のリサーチレポートに基づいて、ユーザーのフォローアップ質問に答えてください。\n\n"
-                f"レポート:\n{final_report}\n\n"
-                f"ユーザーの質問: {question}\n\n"
-                f"レポートの内容のみに基づいて、明確で簡潔な回答を提供してください。回答は日本語で行ってください。"
-            )
-        else:
-            return (
-                f"Based on the following research report, answer the user's follow-up question.\n\n"
-                f"Report:\n{final_report}\n\n"
-                f"User Question: {question}\n\n"
-                f"Provide a clear and concise answer based only on the report content."
-            )
+        return self._get_prompt(
+            "follow_up_prompt",
+            report=final_report,
+            question=question
+        )
 
     async def _process_section(self, section):
         """Processes a single research section."""
