@@ -54,7 +54,7 @@ class SearchClient:
             return await loop.run_in_executor(None, self._sync_search, query, num_results)
         except Exception as e:
             logger.error(f"Error during search with {self.config.SEARCH_API} for query '{query}': {e}", exc_info=True)
-            return []
+            raise
 
     def _sync_search(self, query: str, num_results: int) -> list[SearchResult]:
         if self.config.SEARCH_API == "searxng":
