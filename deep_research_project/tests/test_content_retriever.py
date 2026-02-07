@@ -70,5 +70,28 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         text = await retriever.retrieve_and_extract("http://example.com/test.pdf")
         self.assertIn("PDF Page Content", text)
 
+    @patch("deep_research_project.tools.content_retriever.PdfReader")
+    @patch("httpx.AsyncClient")
+    async def test_retrieve_and_extract_pdf_error(self, mock_client_class, mock_pdf_reader):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "application/pdf"}
+        mock_response.content = b"corrupt pdf"
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+        mock_client.__aenter__.return_value = mock_client
+        mock_client_class.return_value = mock_client
+
+        # Mock PdfReader to raise an exception
+        mock_pdf_reader.side_effect = Exception("PDF parsing failed")
+
+        retriever = ContentRetriever(self.mock_config)
+        text = await retriever.retrieve_and_extract("http://example.com/test.pdf")
+
+        # Should return empty string on error
+        self.assertEqual(text, "")
+
 if __name__ == "__main__":
     unittest.main()
