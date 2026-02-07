@@ -9,14 +9,17 @@ logging.basicConfig(level=logging.INFO)
 
 async def test_structured_output():
     config = Configuration()
-    # Ensure it's using the ollama provider as in .env
-    print(f"Testing with Provider: {config.LLM_PROVIDER}, Model: {config.LLM_MODEL}")
+    # Mock: use placeholder to avoid real LLM calls
+    config.LLM_PROVIDER = "placeholder_llm"
+    
+    print(f"Testing structured output with Provider: {config.LLM_PROVIDER}")
     
     client = LLMClient(config)
     
-    prompt = "Generate a research plan for 'Quantum Computing'. Provide 3 sections."
+    # Trigger placeholder logic in LLMClient
+    prompt = "Generate a structured research plan for 'Quantum Computing'. Provide 3 sections."
     
-    print("\nAttempting generate_structured...")
+    print("\nAttempting generate_structured (Mocked)...")
     try:
         result = await client.generate_structured(prompt, ResearchPlanModel)
         print("\nSuccess!")
