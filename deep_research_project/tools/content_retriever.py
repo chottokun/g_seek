@@ -74,7 +74,7 @@ class ContentRetriever:
 
                 # HTML Processing
                 elif "text/html" in content_type:
-                    text_content = self.extract_text(response.text, url=url)
+                    text_content = await asyncio.to_thread(self.extract_text, response.text, url=url)
                     if text_content:
                         await self._call_progress(f"Successfully extracted {len(text_content)} chars from HTML: {url}")
                     return self._apply_truncation(text_content, url)
