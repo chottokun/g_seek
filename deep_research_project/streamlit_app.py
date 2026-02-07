@@ -171,37 +171,67 @@ def main():
                 st.divider()
                 st.subheader("Knowledge Graph")
                 try:
-                    nodes = [Node(id=n['id'], label=n['label'], size=25, group=n['type']) for n in state.knowledge_graph_nodes]
+                    # Color mapping for entity types
+                    type_colors = {
+                        "Person": "#FF6B6B",
+                        "Organization": "#4ECDC4",
+                        "Concept": "#45B7D1",
+                        "Event": "#FFA07A",
+                        "Technology": "#98D8C8",
+                        "Location": "#F0E68C"
+                    }
+
+                    nodes = []
+                    for n in state.knowledge_graph_nodes:
+                        props = n.get('properties', {})
+                        mention_count = int(props.get('mention_count', 1))
+                        node_size = 20 + min(mention_count * 5, 40)
+                        
+                        # Build detailed title for hover
+                        hover_info = f"{n['label']} ({n['type']})\n"
+                        for k, v in props.items():
+                            if k not in ['mention_count', 'section']:
+                                hover_info += f"- {k}: {v}\n"
+                        
+                        source_urls = n.get('source_urls', [])
+                        if source_urls:
+                             hover_info += "\nSources:\n" + "\n".join([f"• {url}" for url in source_urls])
+
+                        nodes.append(Node(
+                            id=n['id'], 
+                            label=n['label'], 
+                            size=node_size, 
+                            group=n['type'],
+                            color=type_colors.get(n['type'], "#CCCCCC"),
+                            title=hover_info # title is used for mouseover in agraph/vis.js
+                        ))
+
                     edges = [Edge(source=e['source'], target=e['target'], label=e['label']) for e in state.knowledge_graph_edges]
-                    config = Config(width=900, height=600, directed=True, nodeHighlightBehavior=True, highlightColor="#F7A7A6", staticGraph=False)
-                    agraph(nodes=nodes, edges=edges, config=config)
+                    
+                    config = Config(
+                        width=900, 
+                        height=600, 
+                        directed=True, 
+                        nodeHighlightBehavior=True, 
+                        highlightColor="#F7A7A6", 
+                        staticGraph=False,
+                        collapsible=False
+                    )
+                    
+                    # agraph returns the clicked node id
+                    return_value = agraph(nodes=nodes, edges=edges, config=config)
+                    
+                    if return_value:
+                        # Find the node and open URL if available
+                        clicked_node = next((n for n in state.knowledge_graph_nodes if n['id'] == return_value), None)
+                        if clicked_node and clicked_node.get('source_urls'):
+                            url_to_open = clicked_node['source_urls'][0]
+                            st.info(f"Opening source: {url_to_open}")
+                            # Streamlit doesn't have a direct "open in new tab" cmd, but we can use a link
+                            st.markdown(f'<a href="{url_to_open}" target="_blank">Click here to open the source in a new tab</a>', unsafe_allow_html=True)
+
                 except Exception as e:
                     st.error(f"Error rendering graph: {e}")
-
-                col1, col2 = st.columns(2)
-                with col1:
-                    kg_json = json.dumps({"nodes": state.knowledge_graph_nodes, "edges": state.knowledge_graph_edges}, indent=2, ensure_ascii=False)
-                    st.download_button("Download KG (JSON)", data=kg_json, file_name="knowledge_graph.json", mime="application/json")
-                with col2:
-                    try:
-                        net = Network(height="600px", width="100%", notebook=False, directed=True)
-                        for node in state.knowledge_graph_nodes:
-                            net.add_node(node['id'], label=node['label'], title=node['type'], group=node['type'])
-                        for edge in state.knowledge_graph_edges:
-                            net.add_edge(edge['source'], edge['target'], label=edge['label'])
-
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp:
-                            tmp_path = tmp.name
-                        try:
-                            net.save_graph(tmp_path)
-                            with open(tmp_path, "r", encoding="utf-8") as f:
-                                html_content = f.read()
-                            st.download_button("Download KG (Visual HTML)", data=html_content, file_name="knowledge_graph_visual.html", mime="text/html")
-                        finally:
-                            if os.path.exists(tmp_path):
-                                os.remove(tmp_path)
-                    except Exception as e:
-                        st.error(f"Error generating visual KG: {e}")
 
             # Follow-up
             st.divider()

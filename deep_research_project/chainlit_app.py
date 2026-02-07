@@ -252,11 +252,91 @@ async def display_final_report(final_report: str, state: ResearchState):
                 kg_html_filename = f"knowledge_graph_{unique_id}.html"
                 kg_html_path = report_dir / kg_html_filename
                 net = Network(height="600px", width="100%", notebook=False, directed=True)
+                
+                # Color mapping for entity types
+                type_colors = {
+                    "Person": "#FF6B6B",
+                    "Organization": "#4ECDC4",
+                    "Concept": "#45B7D1",
+                    "Event": "#FFA07A",
+                    "Technology": "#98D8C8",
+                    "Location": "#F0E68C"
+                }
+                
                 for node in state.knowledge_graph_nodes:
-                    net.add_node(node['id'], label=node['label'], title=node['type'], group=node['type'])
+                    # Enhanced properties display for hover (title)
+                    props = node.get('properties', {})
+                    mention_count = int(props.get('mention_count', 1))
+                    node_size = 15 + min(mention_count * 5, 50) # Scale size by mention count
+                    
+                    hover_info = f"<b>{node['label']}</b> ({node['type']})<br/>"
+                    for k, v in props.items():
+                        if k not in ['mention_count', 'section']:
+                            hover_info += f"{k}: {v}<br/>"
+                    
+                    source_urls = node.get('source_urls', [])
+                    if source_urls:
+                        hover_info += "<br/><b>Sources:</b><br/>" + "<br/>".join([f"- {url}" for url in source_urls])
+                    
+                    color = type_colors.get(node['type'], "#CCCCCC")
+                    
+                    net.add_node(
+                        node['id'], 
+                        label=node['label'], 
+                        title=hover_info, 
+                        group=node['type'], 
+                        color=color,
+                        size=node_size
+                    )
+                    
                 for edge in state.knowledge_graph_edges:
-                    net.add_edge(edge['source'], edge['target'], label=edge['label'])
+                    edge_props = edge.get('properties', {})
+                    edge_hover = f"Relationship: {edge['label']}<br/>"
+                    for k, v in edge_props.items():
+                         edge_hover += f"{k}: {v}<br/>"
+                    
+                    net.add_edge(edge['source'], edge['target'], label=edge['label'], title=edge_hover)
+                
+                # Dynamic interaction: Click to open URL
+                script = """
+                var container = document.getElementById('mynetwork');
+                network.on("click", function (params) {
+                    if (params.nodes.length > 0) {
+                        var nodeId = params.nodes[0];
+                        var node = nodes.get(nodeId);
+                        // Extract URL from title if present or use first source_url
+                        // For simplicity in this implementation, we look for first URL in hover text
+                        var match = node.title.match(/https?:\/\/[^\\s<]+/);
+                        if (match) {
+                            window.open(match[0], '_blank');
+                        }
+                    }
+                });
+                """
+                
+                # We need to inject the script into the generated HTML. 
+                # Pyvis doesn't support this directly via Network object easily for standalone HTML,
+                # so we will append it to the saved file or use set_options.
+                net.set_options("""
+                var options = {
+                  "interaction": {
+                    "hover": true,
+                    "navigationButtons": true
+                  }
+                }
+                """)
+                
                 net.save_graph(str(kg_html_path))
+                
+                # Inject the click handler script into the saved HTML
+                with open(kg_html_path, "r", encoding="utf-8") as f:
+                    html_content = f.read()
+                
+                if "</body>" in html_content:
+                    html_content = html_content.replace("</body>", f"<script>{script}</script></body>")
+                    with open(kg_html_path, "w", encoding="utf-8") as f:
+                        f.write(html_content)
+
                 elements.append(cl.File(name="knowledge_graph_visual.html", path=str(kg_html_path), display="inline"))
             except Exception as e:
                 logger.error(f"Failed to generate KG visual: {e}")

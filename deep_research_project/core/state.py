@@ -22,11 +22,15 @@ class KGNode(BaseModel):
     id: str = Field(description="Unique identifier for the node")
     label: str = Field(description="Label or name of the entity")
     type: str = Field(description="Type of the entity (e.g., Person, Organization, Concept)")
+    properties: Dict[str, str] = Field(default_factory=dict, description="Additional attributes of the entity")
+    source_urls: List[str] = Field(default_factory=list, description="URLs of the sources where this entity was found")
 
 class KGEdge(BaseModel):
     source: str = Field(description="ID of the source node")
     target: str = Field(description="ID of the target node")
     label: str = Field(description="Label describing the relationship")
+    properties: Dict[str, str] = Field(default_factory=dict, description="Additional attributes of the relationship")
+    source_urls: List[str] = Field(default_factory=list, description="URLs of the sources where this relationship was found")
 
 class KnowledgeGraphModel(BaseModel):
     nodes: List[KGNode]

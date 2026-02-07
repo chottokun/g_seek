@@ -224,35 +224,75 @@ class ResearchLoop:
     async def _extract_entities_and_relations(self):
         if not self.state.new_information or len(self.state.new_information) < 20: return
 
-        logger.info("Extracting entities and relations (structured).")
-        if self.progress_callback: await self.progress_callback("Extracting entities and relations for knowledge graph...")
+        logger.info("Extracting entities and relations (detailed).")
+        if self.progress_callback: await self.progress_callback("Extracting detailed entities and relations for knowledge graph...")
+        
+        # Get active sources for this section to help LLM attribute source_urls
+        active_urls = [s['link'] for s in self.state.sources_gathered]
+        current_section = self._get_current_section()
+        section_title = current_section['title'] if current_section else "General"
+
         if self.state.language == "Japanese":
-            prompt = f"このテキストから主要なエンティティと関係を特定してください:\n\n{self.state.new_information}"
+            prompt = (
+                f"このテキストから主要なエンティティと関係を特定し、構造化データとして抽出してください:\n\n"
+                f"テキスト:\n{self.state.new_information}\n\n"
+                f"指針:\n"
+                f"1. エンティティのタイプを標準化してください（例: Person, Organization, Concept, Event, Technology, Location）。\n"
+                f"2. 各エンティティと関係に、テキストから得られる詳細なプロパティ（キー・値のペア）を含めてください。\n"
+                f"3. 可能な限り、以下のソースURLの中から該当するものを各項目に紐付けてください:\n"
+                + "\n".join([f"- {url}" for url in active_urls]) + "\n"
+                f"4. properties には、'section': '{section_title}' を必ず含めてください。"
+            )
         else:
-            prompt = f"Identify key entities and relationships from this text:\n\n{self.state.new_information}"
+            prompt = (
+                f"Identify and extract key entities and relationships from this text as structured data:\n\n"
+                f"Text:\n{self.state.new_information}\n\n"
+                f"Guidelines:\n"
+                f"1. Standardize entity types (e.g., Person, Organization, Concept, Event, Technology, Location).\n"
+                f"2. Include detailed properties (key-value pairs) for each entity and relationship found in the text.\n"
+                f"3. Link each item to relevant source URLs from this list if applicable:\n"
+                + "\n".join([f"- {url}" for url in active_urls]) + "\n"
+                f"4. In properties, always include 'section': '{section_title}'."
+            )
 
         try:
             kg_model = await self.llm_client.generate_structured(prompt=prompt, response_model=KnowledgeGraphModel)
 
-            # Merge nodes
-            existing_node_ids = {n['id'] for n in self.state.knowledge_graph_nodes}
-            for n in kg_model.nodes:
-                if n.id not in existing_node_ids:
-                    self.state.knowledge_graph_nodes.append(n.model_dump())
-                    existing_node_ids.add(n.id)
+            # --- Merge Logic for Nodes ---
+            for new_node in kg_model.nodes:
+                existing_node = next((n for n in self.state.knowledge_graph_nodes if n['id'] == new_node.id), None)
+                if existing_node:
+                    # Update properties
+                    existing_node.setdefault('properties', {}).update(new_node.properties)
+                    # Merge source URLs
+                    existing_urls = set(existing_node.get('source_urls', []))
+                    existing_urls.update(new_node.source_urls)
+                    existing_node['source_urls'] = list(existing_urls)
+                    # Increment "mention_count" for centrality visualization
+                    props = existing_node['properties']
+                    props['mention_count'] = str(int(props.get('mention_count', 1)) + 1)
+                else:
+                    node_data = new_node.model_dump()
+                    node_data['properties']['mention_count'] = "1"
+                    self.state.knowledge_graph_nodes.append(node_data)
 
-            # Merge edges (simplified deduplication based on source/target/label)
-            existing_edge_keys = {(e['source'], e['target'], e.get('label')) for e in self.state.knowledge_graph_edges}
-            for e in kg_model.edges:
-                edge_key = (e.source, e.target, e.label)
-                if edge_key not in existing_edge_keys:
-                    self.state.knowledge_graph_edges.append(e.model_dump())
-                    existing_edge_keys.add(edge_key)
+            # --- Merge Logic for Edges ---
+            for new_edge in kg_model.edges:
+                edge_key = (new_edge.source, new_edge.target, new_edge.label)
+                existing_edge = next((e for e in self.state.knowledge_graph_edges if (e['source'], e['target'], e.get('label')) == edge_key), None)
+                if existing_edge:
+                    existing_edge.setdefault('properties', {}).update(new_edge.properties)
+                    existing_urls = set(existing_edge.get('source_urls', []))
+                    existing_urls.update(new_edge.source_urls)
+                    existing_edge['source_urls'] = list(existing_urls)
+                else:
+                    self.state.knowledge_graph_edges.append(new_edge.model_dump())
 
-            if self.progress_callback: await self.progress_callback(f"Knowledge graph now has {len(self.state.knowledge_graph_nodes)} nodes and {len(self.state.knowledge_graph_edges)} edges.")
+            if self.progress_callback: 
+                await self.progress_callback(f"Knowledge graph enhanced: {len(self.state.knowledge_graph_nodes)} nodes, {len(self.state.knowledge_graph_edges)} edges.")
         except Exception as e:
-            logger.error(f"KG extraction failed: {e}")
-            if self.progress_callback: await self.progress_callback("Knowledge graph extraction skipped or failed.")
+            logger.error(f"Detailed KG extraction failed: {e}")
+            if self.progress_callback: await self.progress_callback("Detailed KG extraction failed. Falling back.")
 
     async def _reflect_on_summary(self):
         section = self._get_current_section()
@@ -402,13 +442,13 @@ class ResearchLoop:
                 self.state.current_query = None # Clear current query as it's finished
                 self.state.search_results = None # Clear results for this query
 
+                # Parallelize Graph Extraction and Reflection on every loop completion
+                await asyncio.gather(
+                    self._extract_entities_and_relations(),
+                    self._reflect_on_summary()
+                )
+
                 if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
-                    # Parallelize Graph Extraction and Reflection
-                    await asyncio.gather(
-                        self._extract_entities_and_relations(),
-                        self._reflect_on_summary()
-                    )
-                    
                     if not self.state.proposed_query: break
                     if not self.interactive_mode:
                         self.state.current_query = self.state.proposed_query
