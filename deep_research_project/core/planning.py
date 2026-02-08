@@ -66,4 +66,18 @@ class ResearchPlanner:
             
         logger.info("Generating initial query.")
         if progress_callback: await progress_callback("Generating initial search query...")
-        return await self.llm_client.generate_text(prompt=prompt)
+        
+        raw_query = await self.llm_client.generate_text(prompt=prompt)
+        return self._sanitize_query(raw_query)
+
+    def _sanitize_query(self, query: str) -> str:
+        """Cleans and truncates the query to prevent API errors."""
+        if not query: return ""
+        # Remove markdown bold/italic/code fences
+        clean = query.strip().replace("**", "").replace("__", "").replace("`", "").replace('"', '')
+        # Take only the first line if multiple lines returned
+        clean = clean.split('\n')[0].strip()
+        # Truncate to a reasonable character length (e.g., 100 characters)
+        if len(clean) > 100:
+            clean = clean[:100].rsplit(' ', 1)[0] # Try to cut at word boundary
+        return clean

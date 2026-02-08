@@ -12,8 +12,8 @@ RESEARCH_PLAN_PROMPT_EN = (
     "Each section must have a clear title and a detailed description of what to research."
 )
 
-INITIAL_QUERY_PROMPT_JA = "トピック: '{topic}' に関するリサーチを開始するための、具体的で効果的な検索クエリを 1 つ生成してください。"
-INITIAL_QUERY_PROMPT_EN = "Generate one specific and effective search query to start research on the topic: '{topic}'."
+INITIAL_QUERY_PROMPT_JA = "トピック: '{topic}' に関する検索クエリを 1 つ生成してください。出力は検索クエリ文字列のみにしてください。解説、マークダウン、引用符、前置きなどは一切含めないでください。"
+INITIAL_QUERY_PROMPT_EN = "Generate one effective search query for the topic: '{topic}'. Output ONLY the search query string. Do NOT include any explanations, markdown, quotes, or preambles."
 
 # Add more prompts as needed for other modules
 KG_EXTRACTION_PROMPT_JA = (
