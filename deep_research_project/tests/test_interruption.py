@@ -11,6 +11,14 @@ class TestInterruption(unittest.IsolatedAsyncioTestCase):
         self.mock_config = MagicMock(spec=Configuration)
         self.mock_config.INTERACTIVE_MODE = False
         self.mock_config.MAX_RESEARCH_LOOPS = 2
+        self.mock_config.RESEARCH_PLAN_MIN_SECTIONS = 3
+        self.mock_config.RESEARCH_PLAN_MAX_SECTIONS = 5
+        self.mock_config.MAX_CONCURRENT_CHUNKS = 5
+        self.mock_config.MAX_SEARCH_RESULTS_PER_QUERY = 3
+        self.mock_config.USE_SNIPPETS_ONLY_MODE = False
+        self.mock_config.SUMMARIZATION_CHUNK_SIZE_CHARS = 1000
+        self.mock_config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = 100
+        self.mock_config.MAX_QUERY_WORDS = 10
 
         self.state = ResearchState(research_topic="Test Topic")
 

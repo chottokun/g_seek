@@ -1,0 +1,39 @@
+# Language independent prompts could go here, but we focus on modularizing the loop's prompts.
+
+RESEARCH_PLAN_PROMPT_JA = (
+    "トピック: '{topic}' に関する詳細なリサーチプランを生成してください。\n"
+    "プランは少なくとも {min_sections} つ、最大 {max_sections} つのセクションで構成してください。\n"
+    "各セクションには明確なタイトルと、そのセクションで何を調査すべきかの詳細な説明を含めてください。"
+)
+
+RESEARCH_PLAN_PROMPT_EN = (
+    "Generate a detailed research plan for the topic: '{topic}'.\n"
+    "The plan should have at least {min_sections} and at most {max_sections} sections.\n"
+    "Each section must have a clear title and a detailed description of what to research."
+)
+
+INITIAL_QUERY_PROMPT_JA = "トピック: '{topic}' に関するリサーチを開始するための、具体的で効果的な検索クエリを 1 つ生成してください。"
+INITIAL_QUERY_PROMPT_EN = "Generate one specific and effective search query to start research on the topic: '{topic}'."
+
+# Add more prompts as needed for other modules
+KG_EXTRACTION_PROMPT_JA = (
+    "このテキストから主要なエンティティと関係を特定し、構造化データとして抽出してください:\n\n"
+    "テキスト:\n{text}\n\n"
+    "指針:\n"
+    "1. エンティティのタイプを標準化してください（例: Person, Organization, Concept, Event, Technology, Location）。\n"
+    "2. 各エンティティと関係に、テキストから得られる詳細なプロパティ（キー・値のペア）を含めてください。\n"
+    "3. 可能な限り、以下のソースURLの中から該当するものを各項目に紐付けてください:\n"
+    "{urls}\n"
+    "4. properties には、'section': '{section_title}' を必ず含めてください。"
+)
+
+KG_EXTRACTION_PROMPT_EN = (
+    "Identify and extract key entities and relationships from this text as structured data:\n\n"
+    "Text:\n{text}\n\n"
+    "Guidelines:\n"
+    "1. Standardize entity types (e.g., Person, Organization, Concept, Event, Technology, Location).\n"
+    "2. Include detailed properties (key-value pairs) for each entity and relationship found in the text.\n"
+    "3. Link each item to relevant source URLs from this list if applicable:\n"
+    "{urls}\n"
+    "4. In properties, always include 'section': '{section_title}'."
+)

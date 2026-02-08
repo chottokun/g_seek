@@ -1,7 +1,9 @@
 import asyncio
 import httpx
+import pytest
 from unittest.mock import patch, MagicMock
 
+@pytest.mark.asyncio
 async def test_ollama():
     url = "http://localhost:11434/api/tags"
     print(f"Testing Ollama connectivity (Mocked) at: {url}")

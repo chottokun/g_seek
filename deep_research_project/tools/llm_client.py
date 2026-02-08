@@ -2,7 +2,9 @@ from deep_research_project.config.config import Configuration
 import logging
 from typing import Type, TypeVar, Any, Optional
 import asyncio
-from pydantic import BaseModel
+import json
+import re
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -116,20 +118,26 @@ class LLMClient:
             raise
 
     async def generate_structured(self, prompt: str, response_model: Type[T]) -> T:
-        """Asynchronously generates structured output using LangChain's with_structured_output."""
+        """Asynchronously generates structured output using LangChain's with_structured_output with robust fallbacks."""
         await self._wait_for_rate_limit()
 
         if self.llm == "PlaceholderLLMInstance":
             return self._simulate_placeholder_structured(prompt, response_model)
 
         try:
+            # Try native structured output first
             structured_llm = self.llm.with_structured_output(response_model)
-            return await structured_llm.ainvoke(prompt)
+            result = await structured_llm.ainvoke(prompt)
+            if result:
+                return result
+            else:
+                raise ValueError("LLM returned empty structured output")
         except Exception as e:
-            logger.warning(f"Native structured output failed, falling back to PydanticOutputParser: {e}")
+            logger.warning(f"Native structured output failed, falling back to PydanticOutputParser and robust extraction: {e}")
             return await self._generate_structured_fallback(prompt, response_model)
 
     async def _generate_structured_fallback(self, prompt: str, response_model: Type[T]) -> T:
+        """Fallback that uses PydanticOutputParser and custom robust JSON extraction if parsing fails."""
         from langchain_core.output_parsers import PydanticOutputParser
         parser = PydanticOutputParser(pydantic_object=response_model)
 
@@ -137,7 +145,85 @@ class LLMClient:
         full_prompt = f"{prompt}\n\n{format_instructions}"
 
         response_text = await self.generate_text(full_prompt)
-        return parser.parse(response_text)
+        
+        try:
+            # Standard parsing
+            return parser.parse(response_text)
+        except Exception as e:
+            logger.warning(f"Standard PydanticOutputParser failed: {e}. Attempting robust manual extraction.")
+            return self._robust_json_extract(response_text, response_model)
+
+    def _robust_json_extract(self, text: str, response_model: Type[T]) -> T:
+        """Attempts to find and parse JSON even from messy LLM output, with field-level tolerance."""
+        # Clean the text to find potential JSON blocks
+        json_matches = re.findall(r'(\{.*\}|\[.*\])', text, re.DOTALL)
+        
+        parsed_data = {}
+        for match in json_matches:
+            try:
+                data = json.loads(match)
+                if isinstance(data, dict):
+                    parsed_data.update(data)
+                elif isinstance(data, list) and hasattr(response_model, 'model_fields'):
+                    # If it's a list, check if the model has a list field that might fit
+                    for field_name, field_info in response_model.model_fields.items():
+                        # Check if annotation is a list (handling List[T] and list[T])
+                        origin = getattr(field_info.annotation, '__origin__', None)
+                        if origin is list or field_info.annotation is list:
+                            parsed_data[field_name] = data
+                            break
+            except json.JSONDecodeError:
+                continue
+
+        if not parsed_data:
+            logger.error(f"Failed to extract any valid JSON from: {text[:200]}...")
+            try:
+                # Try to create a minimal valid instance by fulfilling list fields
+                min_data = {}
+                if hasattr(response_model, 'model_fields'):
+                    for field_name, field_info in response_model.model_fields.items():
+                        origin = getattr(field_info.annotation, '__origin__', None)
+                        if origin is list or field_info.annotation is list:
+                            min_data[field_name] = []
+                return response_model.model_validate(min_data)
+            except ValidationError:
+                raise ValueError(f"Could not generate {response_model.__name__} even with robust extraction.")
+
+        # Final attempt to validate what we found
+        try:
+            return response_model.model_validate(parsed_data)
+        except ValidationError as ve:
+            logger.warning(f"Validation failed on extracted data: {ve}. Attempting partial recovery.")
+            return self._partial_model_recovery(parsed_data, response_model)
+
+    def _partial_model_recovery(self, data: dict, response_model: Type[T]) -> T:
+        """Tries to recover a model by cleaning up list fields that failed validation."""
+        cleaned_data = data.copy()
+        
+        if not hasattr(response_model, 'model_fields'):
+            return response_model.model_validate(data)
+
+        for field_name, field_info in response_model.model_fields.items():
+            if field_name in data and isinstance(data[field_name], list):
+                # Check if it's a list of BaseModels
+                origin = getattr(field_info.annotation, '__origin__', None)
+                args = getattr(field_info.annotation, '__args__', [])
+                if (origin is list or field_info.annotation is list) and args and isinstance(args[0], type) and issubclass(args[0], BaseModel):
+                    item_model = args[0]
+                    valid_items = []
+                    for item in data[field_name]:
+                        try:
+                            valid_items.append(item_model.model_validate(item))
+                        except ValidationError:
+                            logger.debug(f"Skipping invalid item in {field_name}: {item}")
+                            continue
+                    cleaned_data[field_name] = valid_items
+        
+        try:
+            return response_model.model_validate(cleaned_data)
+        except ValidationError:
+            # Last resort: try to return a very basic instance
+            return response_model.model_validate({})
 
     def _simulate_placeholder(self, prompt: str) -> str:
         logger.debug(f"LLMClient (Placeholder) generating text for prompt: '{prompt[:80]}...'")

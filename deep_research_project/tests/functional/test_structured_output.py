@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import pytest
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.state import ResearchPlanModel
@@ -7,6 +8,7 @@ from deep_research_project.core.state import ResearchPlanModel
 # Configure logging to see what's happening
 logging.basicConfig(level=logging.INFO)
 
+@pytest.mark.asyncio
 async def test_structured_output():
     config = Configuration()
     # Mock: use placeholder to avoid real LLM calls

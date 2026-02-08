@@ -63,9 +63,10 @@ class TestResearchLoopParallel(unittest.IsolatedAsyncioTestCase):
         end_time = asyncio.get_event_loop().time()
 
         duration = end_time - start_time
-        # 4 chunks, concurrency 2 -> 2 waves of 0.5s -> ~1.0s
-        self.assertGreaterEqual(duration, 1.0)
-        self.assertLess(duration, 1.4)
+        # 4 chunks, concurrency 2 -> 2 waves of 0.5s -> 1.0s
+        # Plus 1 synthesis call of 0.5s -> Total ~1.5s
+        self.assertGreaterEqual(duration, 1.5)
+        self.assertLess(duration, 1.9)
 
     async def test_parallel_graph_and_reflection(self):
         self.state.new_information = "Some long enough text for KG extraction"

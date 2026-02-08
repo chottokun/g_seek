@@ -5,7 +5,8 @@ from unittest.mock import patch, MagicMock, AsyncMock
 
 # Modules to be tested
 from deep_research_project.config.config import Configuration
-from deep_research_project.core.research_loop import ResearchLoop, split_text_into_chunks
+from deep_research_project.core.research_loop import ResearchLoop
+from deep_research_project.core.utils import split_text_into_chunks
 from deep_research_project.core.state import ResearchState, Source, SearchResult, ResearchPlanModel, Section, KnowledgeGraphModel
 from deep_research_project.tools.llm_client import LLMClient
 
@@ -25,6 +26,9 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         # New configs
         self.mock_config.MAX_CONCURRENT_CHUNKS = 5
         self.mock_config.LLM_RATE_LIMIT_RPM = 60
+        self.mock_config.RESEARCH_PLAN_MIN_SECTIONS = 3
+        self.mock_config.RESEARCH_PLAN_MAX_SECTIONS = 5
+        self.mock_config.MAX_QUERY_WORDS = 10
 
         self.state = ResearchState(research_topic="AI in Healthcare")
 

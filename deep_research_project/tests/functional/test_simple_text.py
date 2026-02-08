@@ -1,7 +1,9 @@
 import asyncio
+import pytest
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
 
+@pytest.mark.asyncio
 async def test_simple_text():
     config = Configuration()
     # Mock: use placeholder to avoid real LLM calls

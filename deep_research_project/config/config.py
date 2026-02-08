@@ -1,91 +1,98 @@
 import os
+import logging
 from dotenv import load_dotenv
-from typing import Optional # Added for type hinting
+from typing import Optional
+from pydantic import Field, AliasChoices, model_validator
+from pydantic_settings import BaseSettings
 
 # Load environment variables from .env file
 load_dotenv()
 
-class Configuration:
-    def __init__(self):
-        # LLM Configuration
-        # LLM_PROVIDER: Specifies the LLM provider to use (e.g., "openai", "ollama", "azure_openai", "placeholder_llm").
-        self.LLM_PROVIDER = os.getenv("LLM_PROVIDER", "placeholder_llm")
-        # LLM_MODEL: Specifies the model name for the selected provider.
-        # For Azure OpenAI, this should be your DEPLOYMENT NAME.
-        self.LLM_MODEL = os.getenv("LLM_MODEL", "default_model_name")
-        # LLM_TEMPERATURE: Controls randomness. Lower is more deterministic.
-        self.LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", 0.7))
-        # LLM_MAX_TOKENS: Maximum number of tokens to generate.
-        self.LLM_MAX_TOKENS: int = int(os.getenv("LLM_MAX_TOKENS", 1024)) # Default was 256, increased to 1024
+logger = logging.getLogger(__name__)
 
-        # OpenAI Specific Configuration (also used for LiteLLM proxies)
-        self.OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
-        # OPENAI_API_BASE_URL: Optional. Use for OpenAI-compatible APIs (e.g., LiteLLM, local LLMs). If None, uses default OpenAI.
-        self.OPENAI_API_BASE_URL: Optional[str] = os.getenv("OPENAI_API_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+class Configuration(BaseSettings):
+    # LLM Configuration
+    LLM_PROVIDER: str = Field(default="placeholder_llm")
+    LLM_MODEL: str = Field(default="default_model_name")
+    LLM_TEMPERATURE: float = Field(default=0.7)
+    LLM_MAX_TOKENS: int = Field(default=1024)
 
-        # Azure OpenAI Specific Configuration: Required settings for using Azure OpenAI directly.
-        self.AZURE_OPENAI_API_KEY: Optional[str] = os.getenv("AZURE_OPENAI_API_KEY", None)
-        self.AZURE_OPENAI_ENDPOINT: Optional[str] = os.getenv("AZURE_OPENAI_ENDPOINT", None)
-        # AZURE_OPENAI_API_VERSION: API version, e.g., "2023-12-01-preview".
-        self.AZURE_OPENAI_API_VERSION: Optional[str] = os.getenv("AZURE_OPENAI_API_VERSION", None)
-        # AZURE_OPENAI_DEPLOYMENT_NAME: Your Azure deployment name (used as LLM_MODEL if provider is "azure_openai").
-        self.AZURE_OPENAI_DEPLOYMENT_NAME: Optional[str] = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", None)
+    # OpenAI Specific Configuration
+    OPENAI_API_KEY: Optional[str] = Field(default=None)
+    OPENAI_API_BASE_URL: Optional[str] = Field(default=None, validation_alias=AliasChoices("OPENAI_API_BASE_URL", "OPENAI_BASE_URL"))
 
-        # Ollama Specific Configuration
-        self.OLLAMA_BASE_URL: Optional[str] = os.getenv("OLLAMA_BASE_URL", None)
-        # Number of retries for Ollama connection errors, 0 means one attempt only.
-        self.OLLAMA_NUM_RETRIES: int = int(os.getenv("OLLAMA_NUM_RETRIES", 1))
-        # Delay in seconds between retries for Ollama.
-        self.OLLAMA_RETRY_DELAY_SECONDS: float = float(os.getenv("OLLAMA_RETRY_DELAY_SECONDS", 2.0))
+    # Azure OpenAI Specific Configuration
+    AZURE_OPENAI_API_KEY: Optional[str] = Field(default=None)
+    AZURE_OPENAI_ENDPOINT: Optional[str] = Field(default=None)
+    AZURE_OPENAI_API_VERSION: Optional[str] = Field(default=None)
+    AZURE_OPENAI_DEPLOYMENT_NAME: Optional[str] = Field(default=None)
 
+    # Ollama Specific Configuration
+    OLLAMA_BASE_URL: Optional[str] = Field(default=None)
+    OLLAMA_NUM_RETRIES: int = Field(default=1)
+    OLLAMA_RETRY_DELAY_SECONDS: float = Field(default=2.0)
 
-        # Search Configuration
-        self.SEARCH_API: str = os.getenv("SEARCH_API", "duckduckgo")
-        self.TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-        self.SEARXNG_BASE_URL = os.getenv("SEARXNG_BASE_URL", "http://localhost:8080")
+    # Search Configuration
+    SEARCH_API: str = Field(default="duckduckgo")
+    TAVILY_API_KEY: Optional[str] = Field(default=None)
+    SEARXNG_BASE_URL: str = Field(default="http://localhost:8080")
 
-        # Research Loop Configuration
-        self.MAX_RESEARCH_LOOPS = int(os.getenv("MAX_RESEARCH_LOOPS", "3"))
-        self.MAX_SEARCH_RESULTS_PER_QUERY = int(os.getenv("MAX_SEARCH_RESULTS_PER_QUERY", "3"))
+    # Research Loop Configuration
+    MAX_RESEARCH_LOOPS: int = Field(default=3)
+    MAX_SEARCH_RESULTS_PER_QUERY: int = Field(default=3)
 
-        # Output Configuration
-        self.OUTPUT_FILENAME = os.getenv("OUTPUT_FILENAME", "research_report.md")
+    # Output Configuration
+    OUTPUT_FILENAME: str = Field(default="research_report.md")
 
-        # Logging Configuration
-        self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+    # Logging Configuration
+    LOG_LEVEL: str = Field(default="INFO")
 
-        # Interactive Mode Configuration
-        self.INTERACTIVE_MODE = os.getenv("INTERACTIVE_MODE", "False").lower() == "true"
+    # Interactive Mode Configuration
+    INTERACTIVE_MODE: bool = Field(default=False)
 
-        # Security Configuration
-        self.BLOCK_LOCAL_IP_ACCESS: bool = os.getenv("BLOCK_LOCAL_IP_ACCESS", "False").lower() == 'true'
+    # Security Configuration
+    BLOCK_LOCAL_IP_ACCESS: bool = Field(default=False)
 
-        # Summarization Configuration
-        self.SUMMARIZATION_CHUNK_SIZE_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_SIZE_CHARS", 10000))
-        self.SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_OVERLAP_CHARS", 500))
-        
-        # Optimization Configuration
-        # MAX_CONCURRENT_CHUNKS: Max number of chunk summarization tasks to run in parallel.
-        self.MAX_CONCURRENT_CHUNKS: int = int(os.getenv("MAX_CONCURRENT_CHUNKS", 5))
-        # LLM_RATE_LIMIT_RPM: Max requests per minute to the LLM API.
-        self.LLM_RATE_LIMIT_RPM: int = int(os.getenv("LLM_RATE_LIMIT_RPM", 60))
-        
-        self.USE_SNIPPETS_ONLY_MODE: bool = os.getenv("USE_SNIPPETS_ONLY_MODE", "False").lower() == 'true'
-        self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = int(os.getenv("MAX_TEXT_LENGTH_PER_SOURCE_CHARS", 0))
-        self.PROCESS_PDF_FILES: bool = os.getenv("PROCESS_PDF_FILES", "True").lower() == 'true'
+    # Summarization Configuration
+    SUMMARIZATION_CHUNK_SIZE_CHARS: int = Field(default=10000)
+    SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = Field(default=500)
 
-        # Additional configurations to avoid hard-coding
-        self.RETRIEVAL_TIMEOUT: int = int(os.getenv("RETRIEVAL_TIMEOUT", 15))
-        self.USER_AGENT: str = os.getenv("USER_AGENT", "DeepResearchBot/1.0")
-        self.SEARXNG_LANGUAGE: str = os.getenv("SEARXNG_LANGUAGE", "ja")
-        self.SEARXNG_SAFESEARCH: int = int(os.getenv("SEARXNG_SAFESEARCH", 1))
-        self.SEARXNG_CATEGORIES: str = os.getenv("SEARXNG_CATEGORIES", "general")
-        self.RESEARCH_PLAN_MIN_SECTIONS: int = int(os.getenv("RESEARCH_PLAN_MIN_SECTIONS", 3))
-        self.RESEARCH_PLAN_MAX_SECTIONS: int = int(os.getenv("RESEARCH_PLAN_MAX_SECTIONS", 5))
-        self.MAX_QUERY_WORDS: int = int(os.getenv("MAX_QUERY_WORDS", 12))
-        self.REPORT_DIR: str = os.getenv("REPORT_DIR", "temp_reports")
-        self.CLEANUP_AGE_SECONDS: int = int(os.getenv("CLEANUP_AGE_SECONDS", 3600))
-        self.DEFAULT_LANGUAGE: str = os.getenv("DEFAULT_LANGUAGE", "Japanese")
+    # Optimization Configuration
+    MAX_CONCURRENT_CHUNKS: int = Field(default=5)
+    LLM_RATE_LIMIT_RPM: int = Field(default=60)
+
+    USE_SNIPPETS_ONLY_MODE: bool = Field(default=False)
+    MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = Field(default=0)
+    PROCESS_PDF_FILES: bool = Field(default=True)
+
+    # Additional configurations
+    RETRIEVAL_TIMEOUT: int = Field(default=15)
+    USER_AGENT: str = Field(default="DeepResearchBot/1.0")
+    SEARXNG_LANGUAGE: str = Field(default="ja")
+    SEARXNG_SAFESEARCH: int = Field(default=1)
+    SEARXNG_CATEGORIES: str = Field(default="general")
+    RESEARCH_PLAN_MIN_SECTIONS: int = Field(default=3)
+    RESEARCH_PLAN_MAX_SECTIONS: int = Field(default=5)
+    MAX_QUERY_WORDS: int = Field(default=12)
+    REPORT_DIR: str = Field(default="temp_reports")
+    CLEANUP_AGE_SECONDS: int = Field(default=3600)
+    DEFAULT_LANGUAGE: str = Field(default="Japanese")
+
+    @model_validator(mode='after')
+    def validate_config(self):
+        # Normalize LOG_LEVEL to uppercase
+        self.LOG_LEVEL = self.LOG_LEVEL.upper()
+
+        if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY and not self.OPENAI_API_BASE_URL:
+            # If using default OpenAI provider and no custom base URL, API key is essential.
+            # If OPENAI_API_BASE_URL is set, it might be a proxy or local LLM not requiring a key.
+            # However, for now we just log a warning instead of raising to be more flexible (placeholder behavior)
+            logger.warning("LLM_PROVIDER is 'openai' but OPENAI_API_KEY is missing. Ensure you have set it or use a local gateway.")
+
+        if self.SUMMARIZATION_CHUNK_OVERLAP_CHARS >= self.SUMMARIZATION_CHUNK_SIZE_CHARS:
+             raise ValueError("SUMMARIZATION_CHUNK_OVERLAP_CHARS must be less than SUMMARIZATION_CHUNK_SIZE_CHARS.")
+
+        return self
 
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY and not self.OPENAI_API_BASE_URL:

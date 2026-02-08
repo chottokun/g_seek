@@ -69,9 +69,9 @@ class TestSearchClient(unittest.IsolatedAsyncioTestCase):
             results = await client.search("test query", num_results=2)
 
             self.assertEqual(len(results), 1)
-            self.assertEqual(results[0]['title'], "Test Title")
-            self.assertEqual(results[0]['link'], "http://test.com")
-            self.assertEqual(results[0]['snippet'], "Test Snippet")
+            self.assertEqual(results[0].title, "Test Title")
+            self.assertEqual(results[0].link, "http://test.com")
+            self.assertEqual(results[0].snippet, "Test Snippet")
             mock_tool.results.assert_called_once_with(query="test query", max_results=2)
 
     async def test_search_searxng(self):
@@ -86,7 +86,7 @@ class TestSearchClient(unittest.IsolatedAsyncioTestCase):
             results = await client.search("test query", num_results=2)
 
             self.assertEqual(len(results), 1)
-            self.assertEqual(results[0]['title'], "Searx Title")
+            self.assertEqual(results[0].title, "Searx Title")
             mock_tool.results.assert_called_once_with("test query", num_results=2)
 
     async def test_search_searxng_fallback(self):
@@ -106,7 +106,7 @@ class TestSearchClient(unittest.IsolatedAsyncioTestCase):
             results = await client.search("test query", num_results=2)
 
             self.assertEqual(len(results), 1)
-            self.assertEqual(results[0]['title'], "Fallback Title")
+            self.assertEqual(results[0].title, "Fallback Title")
 
             # Check calls
             # 1. Called with num_results (failed)
