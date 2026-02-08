@@ -57,6 +57,9 @@ class Configuration:
         # Interactive Mode Configuration
         self.INTERACTIVE_MODE = os.getenv("INTERACTIVE_MODE", "False").lower() == "true"
 
+        # Security Configuration
+        self.BLOCK_LOCAL_IP_ACCESS: bool = os.getenv("BLOCK_LOCAL_IP_ACCESS", "False").lower() == 'true'
+
         # Summarization Configuration
         self.SUMMARIZATION_CHUNK_SIZE_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_SIZE_CHARS", 10000))
         self.SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = int(os.getenv("SUMMARIZATION_CHUNK_OVERLAP_CHARS", 500))
