@@ -1,10 +1,11 @@
-from typing import List, Dict, Optional, TypedDict
+from typing import List, Dict, Optional, TypedDict, Set
 from pydantic import BaseModel, Field
 
 class SearchResult(BaseModel):
     title: str
     link: str
     snippet: str # Or any other relevant fields from search API
+    relevance_score: Optional[float] = None  # Added for relevance filtering
 
 class Source(BaseModel):
     title: str
@@ -67,6 +68,9 @@ class ResearchState:
         self.current_section_index: int = -1 # -1 means plan not yet generated
         self.plan_approved: bool = False
         self.is_interrupted: bool = False
+        
+        # Relevance filtering fields (Phase 6)
+        self.regenerated_queries: Set[str] = set()  # Track regenerated queries to prevent infinite loops
 
     def __str__(self):
         plan_status = f"{len(self.research_plan)} sections" if self.research_plan else "Not generated"

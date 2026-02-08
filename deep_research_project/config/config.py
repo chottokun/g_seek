@@ -77,6 +77,19 @@ class Configuration(BaseSettings):
     REPORT_DIR: str = Field(default="temp_reports")
     CLEANUP_AGE_SECONDS: int = Field(default=3600)
     DEFAULT_LANGUAGE: str = Field(default="Japanese")
+    
+    # Relevance Filtering Configuration (Phase 6)
+    ENABLE_RELEVANCE_FILTERING: bool = Field(default=True, description="Enable relevance filtering for search results")
+    RELEVANCE_FILTER_MODE: str = Field(
+        default="snippet",
+        description="Relevance filtering mode: 'snippet' (pre-filter with snippets), 'full_content' (filter after retrieval), 'disabled' (no filtering)"
+    )
+    RELEVANCE_THRESHOLD: float = Field(default=0.6, ge=0.0, le=1.0, description="Minimum relevance score (0.0-1.0)")
+    MAX_RELEVANT_RESULTS: int = Field(default=5, ge=1, description="Maximum number of results after filtering")
+    ENABLE_QUERY_REGENERATION: bool = Field(
+        default=True,
+        description="Enable automatic query regeneration when no relevant results are found"
+    )
 
     @model_validator(mode='after')
     def validate_config(self):
@@ -91,6 +104,13 @@ class Configuration(BaseSettings):
 
         if self.SUMMARIZATION_CHUNK_OVERLAP_CHARS >= self.SUMMARIZATION_CHUNK_SIZE_CHARS:
              raise ValueError("SUMMARIZATION_CHUNK_OVERLAP_CHARS must be less than SUMMARIZATION_CHUNK_SIZE_CHARS.")
+        
+        # Validate relevance filtering settings
+        if self.RELEVANCE_FILTER_MODE not in ["snippet", "full_content", "disabled"]:
+            raise ValueError("RELEVANCE_FILTER_MODE must be one of: 'snippet', 'full_content', 'disabled'")
+        
+        if self.RELEVANCE_THRESHOLD < 0.0 or self.RELEVANCE_THRESHOLD > 1.0:
+            raise ValueError("RELEVANCE_THRESHOLD must be between 0.0 and 1.0")
 
         return self
 
@@ -167,6 +187,11 @@ class Configuration(BaseSettings):
             f"  Cleanup Age (Seconds): {self.CLEANUP_AGE_SECONDS}",
             f"  Default Language: {self.DEFAULT_LANGUAGE}",
             f"  Log Level: {self.LOG_LEVEL}",
+            f"  Relevance Filtering Enabled: {self.ENABLE_RELEVANCE_FILTERING}",
+            f"  Relevance Filter Mode: {self.RELEVANCE_FILTER_MODE}",
+            f"  Relevance Threshold: {self.RELEVANCE_THRESHOLD}",
+            f"  Max Relevant Results: {self.MAX_RELEVANT_RESULTS}",
+            f"  Query Regeneration Enabled: {self.ENABLE_QUERY_REGENERATION}",
         ])
         return "Configuration:\n" + "\n".join(config_details)
 

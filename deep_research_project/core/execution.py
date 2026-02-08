@@ -78,3 +78,89 @@ class ResearchExecutor:
             prompt = f"Combine these summaries into one coherent summary for query: '{query}'.\n\nSummaries:\n{combined}"
         
         return await self.llm_client.generate_text(prompt=prompt)
+
+    async def score_relevance(self, query: str, result: SearchResult, language: str) -> float:
+        """
+        Scores the relevance of a search result to the query using LLM.
+        Returns a score between 0.0 (not relevant) and 1.0 (highly relevant).
+        """
+        if language == "Japanese":
+            prompt = f"""クエリ: {query}
+
+検索結果:
+タイトル: {result.title}
+スニペット: {result.snippet}
+
+このページがクエリに関連しているかを 0.0〜1.0 でスコアリングしてください。
+- 1.0: 非常に関連性が高い
+- 0.5: やや関連性がある
+- 0.0: 全く関連性がない
+
+スコアのみを数値で回答してください（例: 0.8）
+"""
+        else:
+            prompt = f"""Query: {query}
+
+Search Result:
+Title: {result.title}
+Snippet: {result.snippet}
+
+Score the relevance of this page to the query on a scale of 0.0 to 1.0.
+- 1.0: Highly relevant
+- 0.5: Somewhat relevant
+- 0.0: Not relevant
+
+Respond with only the numeric score (e.g., 0.8)
+"""
+        
+        try:
+            response = await self.llm_client.generate_text(prompt=prompt)
+            # Extract numeric value from response
+            score_str = response.strip().split()[0]  # Get first token
+            score = float(score_str)
+            return max(0.0, min(1.0, score))  # Clamp to [0.0, 1.0]
+        except (ValueError, IndexError) as e:
+            logger.warning(f"Failed to parse relevance score from LLM response: {response}. Error: {e}. Defaulting to 0.5")
+            return 0.5  # Default to neutral score on parse failure
+
+    async def filter_by_relevance(self, query: str, results: List[SearchResult], 
+                                   language: str, use_snippet: bool = True,
+                                   threshold: Optional[float] = None) -> List[SearchResult]:
+        """
+        Filters search results by relevance score.
+        
+        Args:
+            query: The search query
+            results: List of search results to filter
+            language: Language for LLM prompts
+            use_snippet: If True, score based on snippet; if False, score based on full content
+            threshold: Optional custom threshold (overrides config)
+        
+        Returns:
+            Filtered list of search results, sorted by relevance score (descending)
+        """
+        if not results:
+            return []
+        
+        # Use custom threshold or fall back to config
+        relevance_threshold = threshold if threshold is not None else self.config.RELEVANCE_THRESHOLD
+        
+        # Parallel scoring of all results
+        async def score_result(result: SearchResult) -> SearchResult:
+            score = await self.score_relevance(query, result, language)
+            result.relevance_score = score
+            logger.debug(f"Relevance score for '{result.title}': {score:.2f}")
+            return result
+        
+        logger.info(f"Scoring {len(results)} search results for relevance...")
+        scored_results = await asyncio.gather(*[score_result(r) for r in results])
+        
+        # Filter by threshold
+        relevant = [r for r in scored_results if r.relevance_score >= relevance_threshold]
+        logger.info(f"Found {len(relevant)}/{len(results)} results above threshold {relevance_threshold:.2f}")
+        
+        # Sort by relevance score (descending) and take top MAX_RELEVANT_RESULTS
+        filtered = sorted(relevant, key=lambda r: r.relevance_score, reverse=True)
+        filtered = filtered[:self.config.MAX_RELEVANT_RESULTS]
+        
+        return filtered
