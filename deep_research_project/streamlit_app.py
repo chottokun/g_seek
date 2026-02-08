@@ -188,6 +188,7 @@ def main():
                         node_size = 20 + min(mention_count * 5, 40)
                         
                         # Build detailed title for hover
+                        # NOTE: streamlit-agraph also does NOT render HTML in tooltips
                         hover_info = f"{n['label']} ({n['type']})\n"
                         for k, v in props.items():
                             if k not in ['mention_count', 'section']:

@@ -265,18 +265,20 @@ async def display_final_report(final_report: str, state: ResearchState):
                 
                 for node in state.knowledge_graph_nodes:
                     # Enhanced properties display for hover (title)
+                    # NOTE: Pyvis/vis.js does NOT render HTML in title tooltips, only plain text
                     props = node.get('properties', {})
                     mention_count = int(props.get('mention_count', 1))
                     node_size = 15 + min(mention_count * 5, 50) # Scale size by mention count
                     
-                    hover_info = f"<b>{node['label']}</b> ({node['type']})<br/>"
+                    # Build plain text hover info (no HTML tags)
+                    hover_info = f"{node['label']} ({node['type']})\n"
                     for k, v in props.items():
                         if k not in ['mention_count', 'section']:
-                            hover_info += f"{k}: {v}<br/>"
+                            hover_info += f"{k}: {v}\n"
                     
                     source_urls = node.get('source_urls', [])
                     if source_urls:
-                        hover_info += "<br/><b>Sources:</b><br/>" + "<br/>".join([f"- {url}" for url in source_urls])
+                        hover_info += "\nSources:\n" + "\n".join([f"• {url}" for url in source_urls])
                     
                     color = type_colors.get(node['type'], "#CCCCCC")
                     
@@ -291,22 +293,23 @@ async def display_final_report(final_report: str, state: ResearchState):
                     
                 for edge in state.knowledge_graph_edges:
                     edge_props = edge.get('properties', {})
-                    edge_hover = f"Relationship: {edge['label']}<br/>"
+                    # Build plain text hover info (no HTML tags)
+                    edge_hover = f"Relationship: {edge['label']}\n"
                     for k, v in edge_props.items():
-                         edge_hover += f"{k}: {v}<br/>"
+                         edge_hover += f"{k}: {v}\n"
                     
                     net.add_edge(edge['source'], edge['target'], label=edge['label'], title=edge_hover)
                 
                 # Dynamic interaction: Click to open URL
-                script = """
+                # NOTE: Use raw string to avoid Python escaping issues with regex
+                script = r"""
                 var container = document.getElementById('mynetwork');
                 network.on("click", function (params) {
                     if (params.nodes.length > 0) {
                         var nodeId = params.nodes[0];
                         var node = nodes.get(nodeId);
-                        // Extract URL from title if present or use first source_url
-                        // For simplicity in this implementation, we look for first URL in hover text
-                        var match = node.title.match(/https?:\/\/[^\\s<]+/);
+                        // Extract URL from title (plain text now, no HTML tags)
+                        var match = node.title.match(/https?:\/\/[^\s]+/);
                         if (match) {
                             window.open(match[0], '_blank');
                         }
