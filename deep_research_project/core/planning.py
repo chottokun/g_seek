@@ -81,3 +81,50 @@ class ResearchPlanner:
         if len(clean) > 100:
             clean = clean[:100].rsplit(' ', 1)[0] # Try to cut at word boundary
         return clean
+
+    async def regenerate_query(self, original_query: str, topic: str, 
+                               section_title: str, language: str) -> str:
+        """
+        Regenerates a search query when the original query yields no relevant results.
+        
+        Args:
+            original_query: The query that failed to yield relevant results
+            topic: The overall research topic
+            section_title: The current section being researched
+            language: Language for the prompt
+        
+        Returns:
+            A new, potentially more effective search query
+        """
+        if language == "Japanese":
+            prompt = f"""トピック: {topic}
+セクション: {section_title}
+元のクエリ: {original_query}
+
+このクエリでは関連性の高い検索結果が見つかりませんでした。
+より適切な検索クエリを生成してください。以下の点を考慮してください:
+- より具体的なキーワードを使用
+- 別の表現や類義語を試す
+- 検索範囲を広げる（または狭める）
+
+新しい検索クエリのみを出力してください（説明不要）。
+"""
+        else:
+            prompt = f"""Topic: {topic}
+Section: {section_title}
+Original Query: {original_query}
+
+This query did not yield any relevant search results.
+Generate a more appropriate search query. Consider:
+- Using more specific keywords
+- Trying alternative expressions or synonyms
+- Broadening (or narrowing) the search scope
+
+Output only the new search query (no explanation needed).
+"""
+        
+        logger.info(f"Regenerating query for: '{original_query}'")
+        raw_query = await self.llm_client.generate_text(prompt=prompt)
+        new_query = self._sanitize_query(raw_query)
+        logger.info(f"Regenerated query: '{new_query}'")
+        return new_query

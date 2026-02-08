@@ -60,20 +60,100 @@ class ResearchLoop:
             await self.progress_callback(f"Initial query: {self.state.current_query}")
 
     async def _web_search(self):
-        """Delegates web search to the execution module."""
+        """Delegates web search to the execution module with relevance filtering."""
         if not self.state.current_query: return
         
-        self.state.search_results = await self.executor.search(
+        # Perform initial search
+        results = await self.executor.search(
             self.state.current_query, self.config.MAX_SEARCH_RESULTS_PER_QUERY
         )
+        
+        # Apply relevance filtering if enabled
+        if self.config.ENABLE_RELEVANCE_FILTERING and self.config.RELEVANCE_FILTER_MODE != "disabled":
+            if self.config.RELEVANCE_FILTER_MODE == "snippet":
+                # Mode A: Snippet-based pre-filtering (default, recommended)
+                results = await self.executor.filter_by_relevance(
+                    self.state.current_query, results, self.state.language, use_snippet=True
+                )
+                logger.info(f"Pre-filtered to {len(results)} relevant results (snippet-based)")
+                
+                # Zero-result fallback strategy with infinite loop prevention
+                if len(results) == 0 and self.config.ENABLE_QUERY_REGENERATION:
+                    logger.warning(f"No relevant results found for query: '{self.state.current_query}'. Applying fallback strategy...")
+                    
+                    # Check if query was already regenerated (infinite loop prevention)
+                    if self.state.current_query not in self.state.regenerated_queries:
+                        # Stage 1: Query regeneration (max 1 time)
+                        current_section = self._get_current_section()
+                        section_title = current_section['title'] if current_section else "General"
+                        
+                        new_query = await self.planner.regenerate_query(
+                            original_query=self.state.current_query,
+                            topic=self.state.research_topic,
+                            section_title=section_title,
+                            language=self.state.language
+                        )
+                        logger.info(f"Regenerated query: '{new_query}'")
+                        
+                        # Track regenerated queries to prevent infinite loops
+                        self.state.regenerated_queries.add(self.state.current_query)
+                        self.state.regenerated_queries.add(new_query)
+                        
+                        # Re-search with new query
+                        results = await self.executor.search(new_query, self.config.MAX_SEARCH_RESULTS_PER_QUERY)
+                        results = await self.executor.filter_by_relevance(
+                            new_query, results, self.state.language, use_snippet=True
+                        )
+                        logger.info(f"Re-filtered to {len(results)} relevant results with new query")
+                        
+                        # Update current query to the regenerated one
+                        self.state.current_query = new_query
+                    else:
+                        logger.warning(f"Query '{self.state.current_query}' already regenerated. Skipping to fallback.")
+                    
+                    # Stage 2: Lowered threshold fallback
+                    if len(results) == 0:
+                        logger.warning("Still no relevant results after query regeneration. Lowering threshold...")
+                        results = await self.executor.search(self.state.current_query, self.config.MAX_SEARCH_RESULTS_PER_QUERY)
+                        results = await self.executor.filter_by_relevance(
+                            self.state.current_query, results, self.state.language, use_snippet=True,
+                            threshold=self.config.RELEVANCE_THRESHOLD * 0.5  # Lower threshold by 50%
+                        )
+                        logger.info(f"Fallback: Filtered to {len(results)} results with lowered threshold")
+                    
+                    # Stage 3: Mark as "no results found" (do NOT use unfiltered results)
+                    if len(results) == 0:
+                        logger.warning(f"No relevant results found for query '{self.state.current_query}' even with lowered threshold. Marking as 'no results found'.")
+                        # Empty results list will be handled downstream
+                        # The summarization step will generate a "no information found" message
+            
+            elif self.config.RELEVANCE_FILTER_MODE == "full_content":
+                # Mode B: Full-content-based filtering (not implemented in this phase)
+                # Would require retrieving full content first, then filtering
+                # For now, fall back to snippet mode
+                logger.warning("RELEVANCE_FILTER_MODE='full_content' not yet implemented. Falling back to snippet mode.")
+                results = await self.executor.filter_by_relevance(
+                    self.state.current_query, results, self.state.language, use_snippet=True
+                )
+        
+        self.state.search_results = results
         self.state.pending_source_selection = True
         
         if self.progress_callback:
-            await self.progress_callback(f"Found {len(self.state.search_results)} results.")
+            await self.progress_callback(f"Found {len(results)} relevant results.")
 
     async def _summarize_sources(self, selected_results: List[SearchResult]):
         """Delegates retrieval and summarization to the execution module."""
-        if not selected_results: return
+        # Handle empty results (from relevance filtering)
+        if not selected_results:
+            if self.state.language == "Japanese":
+                self.state.new_information = f"クエリ「{self.state.current_query}」に関連する情報が見つかりませんでした。"
+            else:
+                self.state.new_information = f"No relevant information found for query: '{self.state.current_query}'"
+            
+            logger.info(f"No results to summarize for query: '{self.state.current_query}'")
+            self.state.pending_source_selection = False
+            return
         
         self.state.new_information = await self.executor.retrieve_and_summarize(
             selected_results, self.state.current_query, self.state.language,
