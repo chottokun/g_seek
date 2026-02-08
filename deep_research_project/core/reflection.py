@@ -38,35 +38,54 @@ class ResearchReflector:
             logger.error(f"KG extraction or merge failed: {e}")
 
     def _merge_knowledge_graph(self, kg_model: KnowledgeGraphModel, 
-                               existing_nodes: List[dict], existing_edges: List[dict]):
-        """Internal logic to merge newly extracted graph data into state."""
+                                existing_nodes: List[dict], existing_edges: List[dict]):
+        """Internal logic to merge newly extracted graph data into state using O(N) indexing."""
+        # Index existing nodes by ID for O(1) lookup
+        node_map = {n['id']: n for n in existing_nodes}
+        
         # Merge Nodes
         for new_node in kg_model.nodes:
-            existing_node = next((n for n in existing_nodes if n['id'] == new_node.id), None)
-            if existing_node:
+            if new_node.id in node_map:
+                existing_node = node_map[new_node.id]
                 existing_node.setdefault('properties', {}).update(new_node.properties)
+                
+                # Merge source URLs (unique)
                 existing_urls = set(existing_node.get('source_urls', []))
                 existing_urls.update(new_node.source_urls)
                 existing_node['source_urls'] = list(existing_urls)
-                # Centarity
+                
+                # Update Centrality (mention_count)
                 props = existing_node['properties']
-                props['mention_count'] = str(int(props.get('mention_count', 1)) + 1)
+                try:
+                    current_count = int(props.get('mention_count', 1))
+                    props['mention_count'] = str(current_count + 1)
+                except (ValueError, TypeError):
+                    props['mention_count'] = "2"
             else:
                 node_data = new_node.model_dump()
-                node_data['properties']['mention_count'] = "1"
+                node_data.setdefault('properties', {})['mention_count'] = "1"
                 existing_nodes.append(node_data)
+                node_map[new_node.id] = node_data # Update index for subsequent new nodes in same batch
 
+        # Index existing edges by key for O(1) lookup
+        # Key: (source, target, label)
+        edge_map = {(e['source'], e['target'], e.get('label')): e for e in existing_edges}
+        
         # Merge Edges
         for new_edge in kg_model.edges:
             edge_key = (new_edge.source, new_edge.target, new_edge.label)
-            existing_edge = next((e for e in existing_edges if (e['source'], e['target'], e.get('label')) == edge_key), None)
-            if existing_edge:
+            if edge_key in edge_map:
+                existing_edge = edge_map[edge_key]
                 existing_edge.setdefault('properties', {}).update(new_edge.properties)
+                
+                # Merge source URLs
                 existing_urls = set(existing_edge.get('source_urls', []))
                 existing_urls.update(new_edge.source_urls)
                 existing_edge['source_urls'] = list(existing_urls)
             else:
-                existing_edges.append(new_edge.model_dump())
+                edge_data = new_edge.model_dump()
+                existing_edges.append(edge_data)
+                edge_map[edge_key] = edge_data
 
     async def reflect_and_decide(self, topic: str, section_title: str, 
                                  accumulated_summary: str, language: str) -> Tuple[str, Optional[str]]:

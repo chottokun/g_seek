@@ -95,45 +95,64 @@ class LLMClient:
                 await asyncio.sleep(limit_interval - time_since_last)
             self._last_request_time = asyncio.get_event_loop().time()
 
-    async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
-        """Asynchronously generates text from a prompt."""
-        await self._wait_for_rate_limit()
+    async def _invoke_with_retry(self, func, *args, **kwargs):
+        """Helper to invoke an async LLM function with exponential backoff retry logic."""
+        max_retries = 3
+        base_delay = 2.0
+        
+        for attempt in range(max_retries + 1):
+            try:
+                # Always respect the base rate limit before any call
+                await self._wait_for_rate_limit()
+                return await func(*args, **kwargs)
+            except Exception as e:
+                error_str = str(e).lower()
+                is_rate_limit = "rate limit" in error_str or "429" in error_str
+                
+                if attempt < max_retries and (is_rate_limit or "timeout" in error_str or "connection" in error_str):
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(f"LLM call failed (attempt {attempt+1}/{max_retries+1}): {e}. Retrying in {delay:.1f}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    if attempt == max_retries:
+                        logger.error(f"LLM call failed after {max_retries+1} attempts: {e}")
+                    raise
 
+    async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
+        """Asynchronously generates text from a prompt with retry logic."""
         if self.llm == "PlaceholderLLMInstance":
             return self._simulate_placeholder(prompt)
 
-        try:
-            # temperature override if provided
+        async def _call():
             llm_to_call = self.llm
             if temperature is not None and hasattr(self.llm, "bind"):
-                # Use bind to override parameters for this specific call
                 llm_to_call = self.llm.bind(temperature=temperature)
-
+            
             response = await llm_to_call.ainvoke(prompt)
             if hasattr(response, 'content'):
                 return response.content
             return str(response)
-        except Exception as e:
-            logger.error(f"Error during LLM ainvoke: {e}", exc_info=True)
-            raise
+
+        return await self._invoke_with_retry(_call)
 
     async def generate_structured(self, prompt: str, response_model: Type[T]) -> T:
-        """Asynchronously generates structured output using LangChain's with_structured_output with robust fallbacks."""
-        await self._wait_for_rate_limit()
-
+        """Asynchronously generates structured output using LangChain's with_structured_output with robust fallbacks and retries."""
         if self.llm == "PlaceholderLLMInstance":
             return self._simulate_placeholder_structured(prompt, response_model)
 
-        try:
-            # Try native structured output first
+        async def _call_native():
             structured_llm = self.llm.with_structured_output(response_model)
             result = await structured_llm.ainvoke(prompt)
             if result:
                 return result
             else:
                 raise ValueError("LLM returned empty structured output")
+
+        try:
+            # Try native structured output with retry
+            return await self._invoke_with_retry(_call_native)
         except Exception as e:
-            logger.warning(f"Native structured output failed, falling back to PydanticOutputParser and robust extraction: {e}")
+            logger.warning(f"Native structured output failed even with retries, falling back to PydanticOutputParser: {e}")
             return await self._generate_structured_fallback(prompt, response_model)
 
     async def _generate_structured_fallback(self, prompt: str, response_model: Type[T]) -> T:
