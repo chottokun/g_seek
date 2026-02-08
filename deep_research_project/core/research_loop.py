@@ -51,10 +51,22 @@ class ResearchLoop:
     async def _generate_initial_query(self):
         """Delegates initial query generation to the planner module."""
         current_section = self._get_current_section()
-        topic = current_section['title'] if current_section else self.state.research_topic
+        if not current_section:
+            # Fallback if no section is available
+            topic = self.state.research_topic
+            section_title = "General"
+            section_description = f"Research on {topic}"
+        else:
+            topic = self.state.research_topic
+            section_title = current_section['title']
+            section_description = current_section.get('description', section_title)
         
         self.state.current_query = await self.planner.generate_initial_query(
-            topic, self.state.language, self.progress_callback
+            topic=topic,
+            section_title=section_title,
+            section_description=section_description,
+            language=self.state.language,
+            progress_callback=self.progress_callback
         )
         if self.progress_callback: 
             await self.progress_callback(f"Initial query: {self.state.current_query}")
@@ -187,10 +199,19 @@ class ResearchLoop:
     async def _reflect_on_summary(self):
         """Delegates reflection and decision making to the reflection module."""
         section = self._get_current_section()
-        title = section['title'] if section else "General"
+        if not section:
+            title = "General"
+            description = f"Research on {self.state.research_topic}"
+        else:
+            title = section['title']
+            description = section.get('description', title)
 
         evaluation, next_query = await self.reflector.reflect_and_decide(
-            self.state.research_topic, title, self.state.accumulated_summary, self.state.language
+            topic=self.state.research_topic,
+            section_title=title,
+            section_description=description,
+            accumulated_summary=self.state.accumulated_summary,
+            language=self.state.language
         )
 
         if "CONCLUDE" in evaluation:

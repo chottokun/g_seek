@@ -88,22 +88,37 @@ class ResearchReflector:
                 edge_map[edge_key] = edge_data
 
     async def reflect_and_decide(self, topic: str, section_title: str, 
-                                 accumulated_summary: str, language: str) -> Tuple[str, Optional[str]]:
+                                 section_description: str, accumulated_summary: str, 
+                                 language: str) -> Tuple[str, Optional[str]]:
         """Evaluates if more research is needed for the current context."""
         if language == "Japanese":
             prompt = (
-                f"トピック: {topic}\n"
+                f"リサーチトピック: {topic}\n"
                 f"セクション: {section_title}\n"
+                f"セクションの目的: {section_description}\n"
                 f"現在の要約:\n{accumulated_summary}\n\n"
-                f"このセクションにさらなる調査が必要かどうかを評価してください。"
+                f"このセクションにさらなる調査が必要かどうかを評価してください。\n"
+                f"必要な場合、次に調査すべき具体的な検索クエリを生成してください。\n"
+                f"クエリは以下の条件を満たす必要があります:\n"
+                f"- リサーチトピック '{topic}' との関連性を保つ\n"
+                f"- セクション '{section_title}' の目的に直接関連する\n"
+                f"- これまでの要約で既にカバーされていない新しい側面を探る\n"
+                f"- 具体的で検索エンジンで有効な形式\n\n"
                 f"フォーマット: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <次の検索クエリまたは None>"
             )
         else:
             prompt = (
-                f"Topic: {topic}\n"
+                f"Research Topic: {topic}\n"
                 f"Section: {section_title}\n"
+                f"Section Purpose: {section_description}\n"
                 f"Current Summary:\n{accumulated_summary}\n\n"
-                f"Evaluate if more research is needed for this section. "
+                f"Evaluate if more research is needed for this section.\n"
+                f"If needed, generate a specific search query for the next investigation.\n"
+                f"The query must meet the following criteria:\n"
+                f"- Maintain relevance to the research topic '{topic}'\n"
+                f"- Directly relate to the section '{section_title}' purpose\n"
+                f"- Explore new aspects not already covered in the summary\n"
+                f"- Be specific and effective for search engines\n\n"
                 f"Format: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <Next search query or None>"
             )
 

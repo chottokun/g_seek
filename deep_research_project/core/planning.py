@@ -56,13 +56,22 @@ class ResearchPlanner:
                 "sources": []
             }]
 
-    async def generate_initial_query(self, topic: str, language: str,
+    async def generate_initial_query(self, topic: str, section_title: str,
+                                     section_description: str, language: str,
                                      progress_callback: Optional[Callable] = None) -> str:
-        """Generates the first search query to start research."""
+        """Generates the first search query to start research for a specific section."""
         if language == "Japanese":
-            prompt = INITIAL_QUERY_PROMPT_JA.format(topic=topic)
+            prompt = INITIAL_QUERY_PROMPT_JA.format(
+                topic=topic,
+                section_title=section_title,
+                section_description=section_description
+            )
         else:
-            prompt = INITIAL_QUERY_PROMPT_EN.format(topic=topic)
+            prompt = INITIAL_QUERY_PROMPT_EN.format(
+                topic=topic,
+                section_title=section_title,
+                section_description=section_description
+            )
             
         logger.info("Generating initial query.")
         if progress_callback: await progress_callback("Generating initial search query...")
