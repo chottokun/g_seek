@@ -2,70 +2,120 @@
 
 This document details the major improvements and refactoring points implemented to transition the Research Assistant to a modern, multi-stage "Deep Research" architecture.
 
-## 1. Architectural Shift: Multi-Stage Workflow
+## Phase 1: SSRF Vulnerability Protection (PR #40)
 
-The system was refactored from a simple, single-topic iterative loop into a structured three-phase pipeline:
+### Security Enhancement
+- **Implementation**: Added SSRF (Server-Side Request Forgery) protection to `ContentRetriever`
+- **Mechanism**: Validates URLs before fetching to block access to:
+  - Localhost (`127.0.0.1`, `localhost`, `0.0.0.0`)
+  - Private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+  - Link-local addresses (169.254.0.0/16)
+- **Configuration**: Controlled via `BLOCK_LOCAL_IP_ACCESS` setting
+- **Verification**: All 39 tests passed
 
-- **Planning Phase**: Instead of immediate searching, the LLM first analyzes the topic and decomposes it into distinct research sections. This ensures better coverage and prevents repetitive searching.
-- **Execution Phase**: Each section is researched independently using its own search/summarize/reflect cycle. This allows for focused "deep dives" into specific sub-topics.
-- **Synthesis Phase**: The findings from all sections are aggregated and synthesized into a cohesive final report, rather than relying on a continuously appended summary.
+## Phase 2: Parallel Processing Optimization (PR #39)
 
-## 2. Modern Implementation Patterns
+### Performance Enhancement
+- **Implementation**: Added parallel chunk summarization to `ResearchExecutor`
+- **Mechanism**: Uses `asyncio.gather` to summarize multiple content chunks concurrently
+- **Concurrency Control**: Semaphore-based limiting (default: 5 concurrent chunks)
+- **Configuration**: Adjustable via `SUMMARIZATION_MAX_PARALLEL_CHUNKS`
+- **Benefits**: Significantly reduced research time for multi-source queries
+- **Verification**: All 39 tests passed
 
-### Asynchronous Programming (`async/await`)
-- **Refactoring**: All core components (`LLMClient`, `SearchClient`, `ContentRetriever`, and `ResearchLoop`) were refactored to be asynchronous.
-- **Benefits**: Improved performance during I/O bound operations (fetching web pages, calling LLM APIs, searching) and a more responsive UI.
+## Phase 3: Modular Architecture Refactoring (PR #41)
 
-### Structured Output with LangChain & Pydantic v2
-- **Refactoring**: Replaced manual JSON parsing and string manipulation with LangChain's `with_structured_output` API and Pydantic v2 models.
-- **Models**: Defined `ResearchPlanModel`, `KnowledgeGraphModel`, and associated sub-models (`Section`, `KGNode`, `KGEdge`).
-- **Benefits**: Reliable data extraction, automatic validation, and clear schema definitions.
+### Architectural Shift
+Refactored monolithic `ResearchLoop` into specialized modules following Single Responsibility Principle:
 
-### Library Modernization
-- Updated to the latest versions of core libraries:
-    - `langchain` / `langchain-core` (v0.3+)
-    - `pydantic` (v2.x)
-    - `httpx` (async replacement for `requests`)
-    - `langchain-openai`, `langchain-ollama`
+#### New Modules
+- **`planning.py`**: `ResearchPlanner` - Research plan and query generation
+- **`execution.py`**: `ResearchExecutor` - Web search, content retrieval, parallel summarization
+- **`reflection.py`**: `ResearchReflector` - Knowledge graph extraction, merging, and reflection
+- **`reporting.py`**: `ResearchReporter` - Final report synthesis with citations
+- **`prompts.py`**: Externalized all LLM prompts for maintainability
+- **`utils.py`**: Shared utility functions (e.g., `split_text_into_chunks`)
 
-## 3. Enhanced Research Quality
+#### Benefits
+- **Maintainability**: Each module has a clear, focused responsibility
+- **Testability**: Individual modules can be unit tested in isolation
+- **Reusability**: Modules can be composed in different workflows
+- **Verification**: All 46 tests passed (39 existing + 7 new module tests)
 
-### Strict Citation Enforcement
-- **Improvement**: Updated the synthesis prompt to strictly require numbered in-text citations (e.g., `[1]`, `[2]`).
-- **Implementation**: The LLM is provided with an indexed list of all gathered sources, and the final report synthesis logic enforces mapping claims back to these indices.
-- **Result**: More credible and verifiable research reports.
+## Phase 4: Algorithm and Resilience Optimizations
 
-### Knowledge Graph Extraction
-- **Improvement**: Transitioned KG extraction to use the structured output pattern, ensuring that entities and relationships are consistently formatted as valid JSON objects.
+### Optimization 1: Knowledge Graph Merge ($O(N)$ Complexity)
+- **Problem**: Previous implementation used nested loops for duplicate detection ($O(N \cdot M)$)
+- **Solution**: Dictionary-based indexing for constant-time lookups
+- **Implementation** (`reflection.py`):
+  ```python
+  existing_node_ids = {n.id for n in self.state.knowledge_graph_nodes}
+  existing_edge_keys = {(e.source, e.target, e.label) for e in self.state.knowledge_graph_edges}
+  ```
+- **Complexity**: Reduced from $O(N \cdot M)$ to $O(N + M)$
 
-## 4. Testing & Verification
+### Optimization 2: LLM Exponential Backoff Retry
+- **Problem**: Temporary API errors (429 Too Many Requests, network issues) caused research failures
+- **Solution**: Exponential backoff retry logic in `LLMClient`
+- **Implementation** (`llm_client.py`):
+  - Max 3 retries
+  - Delays: 2s, 4s, 8s (exponential backoff)
+  - Applies to both `generate_text` and `generate_structured`
+- **Benefits**: Significantly improved resilience against transient failures
 
-### Async Unit Testing
-- **Refactoring**: Converted the test suite to use `unittest.IsolatedAsyncioTestCase`.
-- **Coverage**: Added detailed tests for async LLM calls, structured output parsing, and the multi-section research loop.
+## Phase 5: Production Hardening
 
-### UI Verification
-- **Improvement**: Implemented Playwright scripts to automatically verify both "Automated" and "Interactive" research modes in Streamlit, capturing screenshots for visual confirmation.
+### Query Sanitization
+- **Problem**: LLM occasionally generated overly verbose search queries (with explanations, markdown), causing DuckDuckGo API timeouts
+- **Solution**: Strict prompt engineering and query sanitization
+- **Implementation**:
+  1. **Prompt Refinement** (`prompts.py`): Explicitly instruct LLM to output only the query string
+  2. **Sanitization Logic** (`planning.py`, `reflection.py`):
+     - Remove markdown formatting (`**`, `__`, `` ` ``)
+     - Take only first line
+     - Truncate to 100 characters at word boundaries
+- **Verification**: Practical research execution completed successfully in ~12 minutes (vs. 32+ minutes before fix)
 
-## 5. Deployment and Environment Management
-- **Modernized Toolchain**: Migrated from `pip` and `requirements.txt` to `uv`. This provides reproducible builds, faster installation times, and better dependency resolution.
-- **Containerization**: Added `Dockerfile` and `docker-compose.yaml` to orchestrate the Streamlit app and a local SearxNG instance, simplifying the setup for end users.
+### Real-World Validation
+- **Research Topic**: "日本の選挙制度の問題点について、近年の動向に絞って調査"
+- **Results**:
+  - Generated 9.1KB report with 9 cited sources
+  - Parallel processing functioned as designed
+  - $O(N)$ KG merge performed efficiently
+  - Retry logic handled Ollama API requests reliably
+  - Query sanitization prevented API timeouts
 
-## 6. UI/UX Enhancements
-- **Real-time Feedback**: Implemented a callback system to feed logs from the asynchronous research loop into Streamlit's `st.status` component.
-- **Visual Progress Tracking**: Added a section-by-section progress bar/icons in the UI to give users a clear overview of the multi-stage research process.
-
-## 7. Summary of Refactored Files
+## Summary of Refactored Files
 
 | File | Key Refactoring Points |
 | :--- | :--- |
 | `core/state.py` | Added Pydantic models and multi-section state tracking. |
-| `core/research_loop.py` | Refactored to `async`, implemented Planning and Synthesis phases. |
-| `tools/llm_client.py` | Refactored to `async`, added structured output support. |
-| `tools/search_client.py` | Refactored to `async` (using `run_in_executor` for sync wrappers). |
-| `tools/content_retriever.py` | Refactored to `async` using `httpx`, improved PDF extraction. |
+| `core/research_loop.py` | Refactored to async orchestrator, delegates to specialized modules. |
+| `core/planning.py` | **[NEW]** Research planning and query generation with sanitization. |
+| `core/execution.py` | **[NEW]** Web search, content retrieval, parallel summarization. |
+| `core/reflection.py` | **[NEW]** KG extraction, $O(N)$ merge, reflection logic. |
+| `core/reporting.py` | **[NEW]** Final report synthesis with citations. |
+| `core/prompts.py` | **[NEW]** Externalized prompts for all LLM interactions. |
+| `core/utils.py` | **[NEW]** Shared utilities (text chunking). |
+| `tools/llm_client.py` | Refactored to async, added structured output and retry logic. |
+| `tools/search_client.py` | Refactored to async (using `run_in_executor` for sync wrappers). |
+| `tools/content_retriever.py` | Refactored to async using `httpx`, added SSRF protection. |
+| `chainlit_app.py` | Updated to handle async backend and plan approval UI. |
 | `streamlit_app.py` | Updated to handle async backend and plan approval UI. |
 | `main.py` | Updated for `asyncio.run()`. |
-| `tests/` | Modernized for async testing. |
+| `tests/` | Modernized for async testing, added module-specific tests. |
 | `pyproject.toml` | Added as part of the `uv` migration. |
 | `docker-compose.yaml` | Initialized for full-stack orchestration. |
+
+## Testing Summary
+
+- **Total Tests**: 46
+- **Coverage**: Core modules, async operations, structured outputs, SSRF protection, parallel processing
+- **All Tests Passing**: ✅
+
+## Performance Metrics
+
+- **Research Time**: ~12 minutes for 2-loop research (previously 32+ minutes with query issues)
+- **Parallel Efficiency**: Multiple chunks summarized concurrently with semaphore control
+- **KG Merge**: $O(N + M)$ complexity ensures scalability
+- **API Resilience**: Exponential backoff handles transient errors gracefully

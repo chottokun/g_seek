@@ -9,6 +9,11 @@ Google社のAIコーディングアシスタント[Jules](https://jules.google.c
 ## 特徴
 
 - **三段階のリサーチプロセス**: 計画（Planning）→ 実行（Execution）→ 統合（Synthesis）のステップによる高度なレポート作成
+- **モジュール化されたアーキテクチャ**: 単一責任原則（SRP）に基づき、Planning、Execution、Reflection、Reporting の各モジュールに分離
+- **並列処理による高速化**: 複数のコンテンツチャンクを並列に要約し、リサーチ時間を大幅に短縮
+- **$O(N)$ ナレッジグラフマージ**: 辞書インデックスを活用した高速なグラフマージアルゴリズム
+- **堅牢なエラーハンドリング**: LLM API の一時的なエラーに対する指数バックオフ・リトライロジック
+- **SSRF 脆弱性対策**: ローカル IP アドレスへのアクセスをブロックし、セキュリティを強化
 - **インタラクティブ・モード**: リサーチ計画の修正や、検索結果の取捨選択を人間が介在して調整可能
 - **マルチプロバイダー対応**: Ollama, OpenAI, Azure OpenAI 等のLLM、SearxNG, DuckDuckGo 等の検索エンジンを切り替え可能
 - **高速な環境構築**: `uv` による決定論的で高速なパッケージ管理
@@ -127,6 +132,9 @@ docker-compose up -d
 - [Architecture.md](./Architecture.md): システム構成とワークフローの詳細
 - [tips.md](./tips.md): 開発・デバッグ時の知見
 - [docs/improvements_and_refactoring.md](./docs/improvements_and_refactoring.md): リファクタリングの履歴と改善点
+
+### 開発履歴
+- Phase 1〜5 の詳細な実装履歴と検証結果については、[ウォークスルー](https://github.com/yourusername/g_seek/blob/main/docs/walkthrough.md) を参照してください
 
 ---
 
