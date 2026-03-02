@@ -29,6 +29,10 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.mock_config.RESEARCH_PLAN_MIN_SECTIONS = 3
         self.mock_config.RESEARCH_PLAN_MAX_SECTIONS = 5
         self.mock_config.MAX_QUERY_WORDS = 10
+        self.mock_config.ENABLE_RELEVANCE_FILTERING = False
+        self.mock_config.RELEVANCE_FILTER_MODE = "disabled"
+        self.mock_config.ENABLE_RELEVANCE_FILTERING = False
+        self.mock_config.RELEVANCE_FILTER_MODE = "disabled"
 
         self.state = ResearchState(research_topic="AI in Healthcare")
 
