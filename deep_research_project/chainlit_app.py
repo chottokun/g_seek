@@ -47,12 +47,17 @@ def cleanup_old_reports(report_dir: pathlib.Path, cleanup_age: int):
 @cl.on_chat_start
 async def start():
     try:
-        config = Configuration()
+        config = cl.user_session.get("config")
+        if not config:
+            config = Configuration()
+            cl.user_session.set("config", config)
+
+        # Ensure current language is tracked separately for state initialization
+        cl.user_session.set("language", config.DEFAULT_LANGUAGE)
+
         # Run cleanup occasionally on startup
         cleanup_old_reports(pathlib.Path(config.REPORT_DIR), config.CLEANUP_AGE_SECONDS)
         
-        cl.user_session.set("config", config)
-
         await cl.ChatSettings([
             Select(id="language", label="Language", values=["Japanese", "English"], initial_value=config.DEFAULT_LANGUAGE),
             Select(id="search_api", label="Search Engine", values=["duckduckgo", "searxng", "tavily"], initial_value=config.SEARCH_API),
@@ -349,7 +354,15 @@ async def display_final_report(final_report: str, state: ResearchState):
         logger.error(f"Failed to save results: {e}")
         await cl.Message(content="Failed to save the result files locally, but you can see the report above.").send()
 
-    await cl.Message(content="You can ask follow-up questions about the report above.").send()
+    new_res_action = cl.Action(name="new_research", payload={"value": "new"}, label="🔄 New Research", description="Start a new research topic with current settings")
+    await cl.Message(content="You can ask follow-up questions about the report above, or start a new research.", actions=[new_res_action]).send()
+
+@cl.action_callback("new_research")
+async def on_new_research(action: cl.Action):
+    cl.user_session.set("state", None)
+    cl.user_session.set("loop", None)
+    await cl.Message(content="## New Research Started\nPlease enter your research topic.").send()
+    await action.remove()
 
 @cl.action_callback("switch_to_auto")
 async def on_switch_to_auto(action: cl.Action):
