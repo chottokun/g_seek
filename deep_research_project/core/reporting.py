@@ -14,12 +14,14 @@ class ResearchReporter:
         
         full_context = ""
         all_sources = []
+        seen_links = set()
         for sec in research_plan:
             if sec['summary']:
                 full_context += f"\n\n### {sec['title']}\n{sec['summary']}"
             for s in sec['sources']:
-                if s.link not in [src.link for src in all_sources]:
+                if s.link not in seen_links:
                     all_sources.append(s)
+                    seen_links.add(s.link)
 
         source_list_str = "\n".join([f"[{i+1}] {s.title} ({s.link})" for i, s in enumerate(all_sources)])
 

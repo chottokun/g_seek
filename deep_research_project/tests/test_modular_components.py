@@ -111,7 +111,8 @@ class TestModularComponents(unittest.IsolatedAsyncioTestCase):
         reflector = ResearchReflector(self.config, self.mock_llm)
         self.mock_llm.generate_text = AsyncMock(return_value="EVALUATION: CONTINUE\nQUERY: Next specific query")
         
-        eval_res, next_q = await reflector.reflect_and_decide("Topic", "Sec1", "Desc", "Summary", "English")
+        # Fixed signature: reflect_and_decide(topic, section_title, section_description, accumulated_summary, language)
+        eval_res, next_q = await reflector.reflect_and_decide("Topic", "Sec1", "Desc1", "Summary", "English")
         self.assertEqual(eval_res, "CONTINUE")
         self.assertEqual(next_q, "Next specific query")
 
