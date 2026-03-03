@@ -22,17 +22,15 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.mock_config.SUMMARIZATION_CHUNK_SIZE_CHARS = 1000
         self.mock_config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = 100
         self.mock_config.LOG_LEVEL = "INFO"
-        
+
         # New configs
         self.mock_config.MAX_CONCURRENT_CHUNKS = 5
         self.mock_config.LLM_RATE_LIMIT_RPM = 60
         self.mock_config.RESEARCH_PLAN_MIN_SECTIONS = 3
         self.mock_config.RESEARCH_PLAN_MAX_SECTIONS = 5
         self.mock_config.MAX_QUERY_WORDS = 10
-        self.mock_config.ENABLE_RELEVANCE_FILTERING = False
-        self.mock_config.RELEVANCE_FILTER_MODE = "disabled"
-        self.mock_config.ENABLE_RELEVANCE_FILTERING = False
-        self.mock_config.RELEVANCE_FILTER_MODE = "disabled"
+        self.mock_config.ENABLE_RELEVANCE_FILTERING = True
+        self.mock_config.RELEVANCE_FILTER_MODE = "enabled"
 
         self.state = ResearchState(research_topic="AI in Healthcare")
 
