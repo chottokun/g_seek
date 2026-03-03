@@ -5,6 +5,7 @@ import asyncio
 import json
 import re
 from pydantic import BaseModel, ValidationError
+from deep_research_project.tools.cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class LLMClient:
         self.llm = None
         self._rate_limit_lock = asyncio.Lock()
         self._last_request_time = 0.0
+        self.cache_manager = CacheManager(cache_dir=self.config.CACHE_DIR, enabled=self.config.ENABLE_CACHING)
 
         if self.config.LLM_PROVIDER == "openai":
             try:
@@ -118,42 +120,69 @@ class LLMClient:
                         logger.error(f"LLM call failed after {max_retries+1} attempts: {e}")
                     raise
 
-    async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
-        """Asynchronously generates text from a prompt with retry logic."""
-        if self.llm == "PlaceholderLLMInstance":
-            return self._simulate_placeholder(prompt)
-
-        async def _call():
-            llm_to_call = self.llm
-            if temperature is not None and hasattr(self.llm, "bind"):
-                llm_to_call = self.llm.bind(temperature=temperature)
-            
-            response = await llm_to_call.ainvoke(prompt)
-            if hasattr(response, 'content'):
-                return response.content
-            return str(response)
-
         return await self._invoke_with_retry(_call)
 
-    async def generate_structured(self, prompt: str, response_model: Type[T]) -> T:
-        """Asynchronously generates structured output using LangChain's with_structured_output with robust fallbacks and retries."""
+    async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
+        """Asynchronously generates text from a prompt with retry logic and caching."""
+        if self.config.ENABLE_CACHING:
+            cached = await self.cache_manager.get_llm_cache(prompt)
+            if cached:
+                logger.info("LLM result retrieved from cache.")
+                return cached
+
         if self.llm == "PlaceholderLLMInstance":
-            return self._simulate_placeholder_structured(prompt, response_model)
+            result = self._simulate_placeholder(prompt)
+        else:
+            async def _call():
+                llm_to_call = self.llm
+                if temperature is not None and hasattr(self.llm, "bind"):
+                    llm_to_call = self.llm.bind(temperature=temperature)
+                
+                response = await llm_to_call.ainvoke(prompt)
+                if hasattr(response, 'content'):
+                    return response.content
+                return str(response)
 
-        async def _call_native():
-            structured_llm = self.llm.with_structured_output(response_model)
-            result = await structured_llm.ainvoke(prompt)
-            if result:
-                return result
-            else:
-                raise ValueError("LLM returned empty structured output")
+            result = await self._invoke_with_retry(_call)
+        
+        if self.config.ENABLE_CACHING and result:
+            await self.cache_manager.set_llm_cache(prompt, result)
+        
+        return result
 
-        try:
-            # Try native structured output with retry
-            return await self._invoke_with_retry(_call_native)
-        except Exception as e:
-            logger.warning(f"Native structured output failed even with retries, falling back to PydanticOutputParser: {e}")
-            return await self._generate_structured_fallback(prompt, response_model)
+    async def generate_structured(self, prompt: str, response_model: Type[T]) -> T:
+        """Asynchronously generates structured output using LangChain's with_structured_output with robust fallbacks, retries, and caching."""
+        if self.config.ENABLE_CACHING:
+            cached_json = await self.cache_manager.get_llm_cache(prompt)
+            if cached_json:
+                try:
+                    logger.info(f"Structured result for {response_model.__name__} retrieved from cache.")
+                    return response_model.model_validate_json(cached_json)
+                except Exception as e:
+                    logger.warning(f"Failed to validate cached JSON for {response_model.__name__}: {e}")
+
+        if self.llm == "PlaceholderLLMInstance":
+            result = self._simulate_placeholder_structured(prompt, response_model)
+        else:
+            async def _call_native():
+                structured_llm = self.llm.with_structured_output(response_model)
+                result = await structured_llm.ainvoke(prompt)
+                if result:
+                    return result
+                else:
+                    raise ValueError("LLM returned empty structured output")
+
+            try:
+                # Try native structured output with retry
+                result = await self._invoke_with_retry(_call_native)
+            except Exception as e:
+                logger.warning(f"Native structured output failed even with retries, falling back to PydanticOutputParser: {e}")
+                result = await self._generate_structured_fallback(prompt, response_model)
+        
+        if self.config.ENABLE_CACHING and result:
+            await self.cache_manager.set_llm_cache(prompt, result.model_dump_json())
+        
+        return result
 
     async def _generate_structured_fallback(self, prompt: str, response_model: Type[T]) -> T:
         """Fallback that uses PydanticOutputParser and custom robust JSON extraction if parsing fails."""

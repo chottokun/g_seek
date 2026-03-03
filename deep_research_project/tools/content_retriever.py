@@ -9,6 +9,7 @@ from pypdf import PdfReader
 from urllib.parse import urlparse, urljoin
 from deep_research_project.config.config import Configuration
 from typing import Optional, Callable
+from deep_research_project.tools.cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class ContentRetriever:
         self.user_agent = user_agent or getattr(config, "USER_AGENT", "DeepResearchBot/1.0")
         self.progress_callback = progress_callback
         self.headers = {"User-Agent": self.user_agent}
+        self.cache_manager = CacheManager(cache_dir=self.config.CACHE_DIR, enabled=self.config.ENABLE_CACHING)
 
     def extract_text(self, html_content: str, url: str = "") -> str:
         """Extracts and cleans text content from HTML using BeautifulSoup."""
@@ -90,9 +92,14 @@ class ContentRetriever:
             raise ValueError(f"Error validating URL {url}: {e}")
 
     async def retrieve_and_extract(self, url: str, timeout: Optional[int] = None) -> str:
-        """Asynchronously fetches content from a URL and extracts clean text."""
-        logger.info(f"Attempting to retrieve and extract content from: {url}")
+        """Asynchronously fetches content from a URL and extracts clean text with caching."""
+        if self.config.ENABLE_CACHING:
+            cached = await self.cache_manager.get_content_cache(url)
+            if cached:
+                logger.info(f"Content for {url} retrieved from cache.")
+                return cached
 
+        logger.info(f"Attempting to retrieve and extract content from: {url}")
         request_timeout = timeout or getattr(self.config, "RETRIEVAL_TIMEOUT", 15)
 
         try:
@@ -149,9 +156,12 @@ class ContentRetriever:
                 elif "text/" in content_type:
                     return self._apply_truncation(response.text.strip(), current_url)
 
-                else:
                     logger.warning(f"Unsupported content type '{content_type}' for {current_url}.")
                     return ""
+
+                if self.config.ENABLE_CACHING and result:
+                    await self.cache_manager.set_content_cache(url, result)
+                return result
 
         except Exception as e:
             logger.error(f"Error retrieving {url}: {e}")

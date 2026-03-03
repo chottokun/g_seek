@@ -16,7 +16,8 @@ class ResearchExecutor:
         self.llm_client = llm_client
         self.search_client = search_client
         self.content_retriever = content_retriever
-        self.semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_CHUNKS)
+        self.chunk_semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_CHUNKS)
+        self.retrieval_semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_RETRIEVALS)
 
     async def search(self, query: str, num_results: int) -> List[SearchResult]:
         """Performs web search and returns results."""
@@ -34,17 +35,24 @@ class ResearchExecutor:
         
         all_chunks_info = []
         
-        for res in results:
+        async def get_content(res):
             url = res.link
             if url not in fetched_content:
-                if progress_callback: await progress_callback(f"Retrieving: {url}")
-                if self.config.USE_SNIPPETS_ONLY_MODE:
-                    content = res.snippet
-                else:
-                    content = await self.content_retriever.retrieve_and_extract(url)
-                    if not content: content = res.snippet
-                fetched_content[url] = content
+                async with self.retrieval_semaphore:
+                    if progress_callback: await progress_callback(f"Retrieving: {url}")
+                    if self.config.USE_SNIPPETS_ONLY_MODE:
+                        content = res.snippet
+                    else:
+                        content = await self.content_retriever.retrieve_and_extract(url)
+                        if not content: content = res.snippet
+                    fetched_content[url] = content
+            return url, fetched_content[url]
 
+        # Parallel retrieval
+        await asyncio.gather(*[get_content(res) for res in results])
+
+        for res in results:
+            url = res.link
             content = fetched_content[url]
             chunks = split_text_into_chunks(content, 
                                             self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, 
@@ -56,7 +64,7 @@ class ResearchExecutor:
 
         # Parallel summarization of chunks
         async def summarize_chunk(chunk, url):
-            async with self.semaphore:
+            async with self.chunk_semaphore:
                 if progress_callback: await progress_callback(f"Summarizing chunk from {url}...")
                 if language == "Japanese":
                     prompt = f"リサーチクエリ: '{query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
@@ -78,6 +86,68 @@ class ResearchExecutor:
             prompt = f"Combine these summaries into one coherent summary for query: '{query}'.\n\nSummaries:\n{combined}"
         
         return await self.llm_client.generate_text(prompt=prompt)
+
+    async def score_relevance_batch(self, query: str, results: List[SearchResult], language: str) -> List[float]:
+        """
+        Scores the relevance of multiple search results to the query in a single LLM call to save RPM.
+        Returns a list of scores between 0.0 and 1.0.
+        """
+        if not results:
+            return []
+
+        # Construct a batch prompt
+        items_text = ""
+        for i, res in enumerate(results):
+            items_text += f"\n---\nRESULT ID: {i}\nTITLE: {res.title}\nSNIPPET: {res.snippet}\n"
+
+        if language == "Japanese":
+            prompt = f"""クエリ: {query}
+
+以下の検索結果（複数）について、それぞれクエリへの関連性を 0.0〜1.0 でスコアリングしてください。
+- 1.0: 非常に関連性が高い
+- 0.5: やや関連性がある
+- 0.0: 全く関連性がない
+
+回答は以下のJSON形式のみで返してください：
+{{"scores": [スコア0, スコア1, ...]}}
+
+検索結果リスト:{items_text}
+"""
+        else:
+            prompt = f"""Query: {query}
+
+Score the relevance of each of the following search results to the query on a scale of 0.0 to 1.0.
+- 1.0: Highly relevant
+- 0.5: Somewhat relevant
+- 0.0: Not relevant
+
+Respond ONLY with a JSON object in this format:
+{{"scores": [score0, score1, ...]}}
+
+Search Results:{items_text}
+"""
+        
+        try:
+            class ScoreBatch(BaseModel):
+                scores: List[float]
+            
+            response = await self.llm_client.generate_structured(prompt, ScoreBatch)
+            scores = [max(0.0, min(1.0, s)) for s in response.scores]
+            
+            # Ensure we have the same number of scores as results
+            if len(scores) != len(results):
+                logger.warning(f"Batch score count mismatch: expected {len(results)}, got {len(scores)}. Padding/truncating.")
+                if len(scores) < len(results):
+                    scores.extend([0.5] * (len(results) - len(scores)))
+                else:
+                    scores = scores[:len(results)]
+            
+            return scores
+        except Exception as e:
+            logger.warning(f"Failed batch relevance scoring: {e}. Falling back to individual scoring.")
+            # Fallback to individual scoring if batch fails
+            individual_scores = await asyncio.gather(*[self.score_relevance(query, r, language) for r in results])
+            return list(individual_scores)
 
     async def score_relevance(self, query: str, result: SearchResult, language: str) -> float:
         """
@@ -125,7 +195,8 @@ Respond with only the numeric score (e.g., 0.8)
 
     async def filter_by_relevance(self, query: str, results: List[SearchResult], 
                                    language: str, use_snippet: bool = True,
-                                   threshold: Optional[float] = None) -> List[SearchResult]:
+                                   threshold: Optional[float] = None,
+                                   progress_callback: Optional[Callable] = None) -> List[SearchResult]:
         """
         Filters search results by relevance score.
         
@@ -135,6 +206,7 @@ Respond with only the numeric score (e.g., 0.8)
             language: Language for LLM prompts
             use_snippet: If True, score based on snippet; if False, score based on full content
             threshold: Optional custom threshold (overrides config)
+            progress_callback: Optional callback for progress reporting
         
         Returns:
             Filtered list of search results, sorted by relevance score (descending)
@@ -145,15 +217,21 @@ Respond with only the numeric score (e.g., 0.8)
         # Use custom threshold or fall back to config
         relevance_threshold = threshold if threshold is not None else self.config.RELEVANCE_THRESHOLD
         
-        # Parallel scoring of all results
-        async def score_result(result: SearchResult) -> SearchResult:
-            score = await self.score_relevance(query, result, language)
-            result.relevance_score = score
-            logger.debug(f"Relevance score for '{result.title}': {score:.2f}")
-            return result
+        # Batch scoring to save RPM
+        batch_size = self.config.BATCH_SIZE_RELEVANCE
+        scored_results = []
         
-        logger.info(f"Scoring {len(results)} search results for relevance...")
-        scored_results = await asyncio.gather(*[score_result(r) for r in results])
+        logger.info(f"Scoring {len(results)} search results for relevance (batch size: {batch_size})...")
+        
+        for i in range(0, len(results), batch_size):
+            batch = results[i:i + batch_size]
+            if progress_callback: await progress_callback(f"Scoring batch {i//batch_size + 1} ({len(batch)} results)...")
+            
+            batch_scores = await self.score_relevance_batch(query, batch, language)
+            for result, score in zip(batch, batch_scores):
+                result.relevance_score = score
+                logger.debug(f"Relevance score for '{result.title}': {score:.2f}")
+                scored_results.append(result)
         
         # Filter by threshold
         relevant = [r for r in scored_results if r.relevance_score >= relevance_threshold]
