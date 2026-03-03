@@ -227,9 +227,12 @@ def main():
                         clicked_node = next((n for n in state.knowledge_graph_nodes if n['id'] == return_value), None)
                         if clicked_node and clicked_node.get('source_urls'):
                             url_to_open = clicked_node['source_urls'][0]
-                            st.info(f"Opening source: {url_to_open}")
-                            # Streamlit doesn't have a direct "open in new tab" cmd, but we can use a link
-                            st.markdown(f'<a href="{url_to_open}" target="_blank">Click here to open the source in a new tab</a>', unsafe_allow_html=True)
+                            # Security: Validate URL to prevent XSS (e.g., javascript: links)
+                            if url_to_open.startswith(("http://", "https://")):
+                                st.info(f"Opening source: {url_to_open}")
+                                st.link_button("Click here to open the source in a new tab", url_to_open)
+                            else:
+                                st.error(f"Invalid or unsafe source URL: {url_to_open}")
 
                 except Exception as e:
                     st.error(f"Error rendering graph: {e}")
