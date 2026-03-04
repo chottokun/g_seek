@@ -128,9 +128,9 @@ class ResearchReflector:
         next_query = None
         for line in lines:
             if "EVALUATION:" in line.upper(): 
-                evaluation = line.split(":")[-1].strip().upper()
+                evaluation = line.split(":", 1)[-1].strip().upper()
             if "QUERY:" in line.upper():
-                q = line.split(":")[-1].strip()
+                q = line.split(":", 1)[-1].strip()
                 if q.lower() != "none": 
                     # Sanitize the reflected query similarly to the initial query
                     q = q.replace("**", "").replace("__", "").replace("`", "").replace('"', '')
