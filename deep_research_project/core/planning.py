@@ -7,6 +7,7 @@ from deep_research_project.core.prompts import (
     RESEARCH_PLAN_PROMPT_JA, RESEARCH_PLAN_PROMPT_EN,
     INITIAL_QUERY_PROMPT_JA, INITIAL_QUERY_PROMPT_EN
 )
+from deep_research_project.core.utils import sanitize_query
 
 logger = logging.getLogger(__name__)
 
@@ -81,15 +82,7 @@ class ResearchPlanner:
 
     def _sanitize_query(self, query: str) -> str:
         """Cleans and truncates the query to prevent API errors."""
-        if not query: return ""
-        # Remove markdown bold/italic/code fences
-        clean = query.strip().replace("**", "").replace("__", "").replace("`", "").replace('"', '')
-        # Take only the first line if multiple lines returned
-        clean = clean.split('\n')[0].strip()
-        # Truncate to a reasonable character length (e.g., 100 characters)
-        if len(clean) > 100:
-            clean = clean[:100].rsplit(' ', 1)[0] # Try to cut at word boundary
-        return clean
+        return sanitize_query(query)
 
     async def regenerate_query(self, original_query: str, topic: str, 
                                section_title: str, language: str) -> str:

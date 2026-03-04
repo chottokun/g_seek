@@ -5,6 +5,7 @@ from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.state import KnowledgeGraphModel, Source
 from deep_research_project.core.prompts import KG_EXTRACTION_PROMPT_JA, KG_EXTRACTION_PROMPT_EN
+from deep_research_project.core.utils import sanitize_query
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +134,6 @@ class ResearchReflector:
                 q = line.split(":")[-1].strip()
                 if q.lower() != "none": 
                     # Sanitize the reflected query similarly to the initial query
-                    q = q.replace("**", "").replace("__", "").replace("`", "").replace('"', '')
-                    if len(q) > 100: q = q[:100]
-                    next_query = q
+                    next_query = sanitize_query(q)
         
         return evaluation, next_query
