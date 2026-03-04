@@ -54,7 +54,60 @@ OpenAI以外のサービス（例: vLLM, OllamaのOpenAI互換API, LiteLLM）を
 2. `OPENAI_BASE_URL` にサービスのURL（例: `http://localhost:8000/v1`）を設定。
 3. 必要に応じて `LLM_MODEL` をサービスのモデル名に合わせて設定。
 
-## 実行方法
+### Ollamaの設定（Docker環境）
+
+OllamaをDockerコンテナで起動している場合、以下の点に注意してください。
+
+**基本設定:**
+`.env` ファイルにコンテナのIPアドレスを指定してください。
+
+```bash
+OLLAMA_BASE_URL=http://<OllamaコンテナのIP>:11434
+```
+
+**コンテナIPアドレスの確認方法:**
+```bash
+docker inspect ollama --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+```
+
+> [!WARNING]
+> DockerコンテナはOSの再起動やDockerデーモンの再起動で**IPアドレスが変わる**ことがあります。
+> 接続エラー（`httpx.ConnectError: All connection attempts failed`）が発生した場合は、
+> この方法で現在のIPを確認し、`.env` を更新してください。
+
+**🔧 根本的な解決策（IPを固定にする方法）:**
+
+`docker-compose.yml` でOllamaコンテナに固定IPを割り当てる:
+
+```yaml
+services:
+  ollama:
+    image: ollama/ollama
+    networks:
+      research_net:
+        ipv4_address: 172.22.0.2  # 固定IP
+
+networks:
+  research_net:
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24
+```
+
+または、`host` ネットワークを使ってホストのlocalhostから接続する:
+
+```yaml
+services:
+  ollama:
+    image: ollama/ollama
+    network_mode: host
+```
+
+```bash
+# この場合 .env は以下のように設定
+OLLAMA_BASE_URL=http://localhost:11434
+```
+
 
 ### Chainlit UI (推奨)
 新しく追加されたモダンなUIです。リサーチの中断、設定画面（Chat Settings）からのモード切り替え、および実行中の対話モードから自動モードへの切り替え（⚡ Switch to Automatic）が可能です。
