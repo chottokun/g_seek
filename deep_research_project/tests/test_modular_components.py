@@ -3,9 +3,9 @@ import asyncio
 from unittest.mock import MagicMock, AsyncMock, patch
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
-from deep_research_project.tools.search_client import SearchClient, SearchResult
+from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
-from deep_research_project.core.state import ResearchPlanModel, Section, Source, KnowledgeGraphModel
+from deep_research_project.core.state import SearchResult, ResearchPlanModel, Section, Source, KnowledgeGraphModel
 
 # Modules to test
 from deep_research_project.core.planning import ResearchPlanner
