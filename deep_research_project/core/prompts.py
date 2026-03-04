@@ -60,3 +60,101 @@ KG_EXTRACTION_PROMPT_EN = (
     "{urls}\n"
     "4. In properties, always include 'section': '{section_title}'."
 )
+
+REFLECTION_PROMPT_JA = (
+    "リサーチトピック: {topic}\n"
+    "セクション: {section_title}\n"
+    "セクションの目的: {section_description}\n"
+    "現在の要約:\n{accumulated_summary}\n\n"
+    "このセクションにさらなる調査が必要かどうかを評価してください。\n"
+    "必要な場合、次に調査すべき具体的な検索クエリを生成してください。\n"
+    "クエリは以下の条件を満たす必要があります:\n"
+    "- リサーチトピック '{topic}' との関連性を保つ\n"
+    "- セクション '{section_title}' の目的に直接関連する\n"
+    "- これまでの要約で既にカバーされていない新しい側面を探る\n"
+    "- 具体的で検索エンジンで有効な形式\n\n"
+    "フォーマット: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <次の検索クエリまたは None>"
+)
+
+REFLECTION_PROMPT_EN = (
+    "Research Topic: {topic}\n"
+    "Section: {section_title}\n"
+    "Section Purpose: {section_description}\n"
+    "Current Summary:\n{accumulated_summary}\n\n"
+    "Evaluate if more research is needed for this section.\n"
+    "If needed, generate a specific search query for the next investigation.\n"
+    "The query must meet the following criteria:\n"
+    "- Maintain relevance to the research topic '{topic}'\n"
+    "- Directly relate to the section '{section_title}' purpose\n"
+    "- Explore new aspects not already covered in the summary\n"
+    "- Be specific and effective for search engines\n\n"
+    "Format: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <Next search query or None>"
+)
+
+REGENERATE_QUERY_PROMPT_JA = (
+    "トピック: {topic}\n"
+    "セクション: {section_title}\n"
+    "元のクエリ: {original_query}\n\n"
+    "このクエリでは関連性の高い検索結果が見つかりませんでした。\n"
+    "より適切な検索クエリを生成してください。以下の点を考慮してください:\n"
+    "- より具体的なキーワードを使用\n"
+    "- 別の表現や類義語を試す\n"
+    "- 検索範囲を広げる（または狭める）\n\n"
+    "新しい検索クエリのみを出力してください（説明不要）。"
+)
+
+REGENERATE_QUERY_PROMPT_EN = (
+    "Topic: {topic}\n"
+    "Section: {section_title}\n"
+    "Original Query: {original_query}\n\n"
+    "This query did not yield any relevant search results.\n"
+    "Generate a more appropriate search query. Consider:\n"
+    "- Using more specific keywords\n"
+    "- Trying alternative expressions or synonyms\n"
+    "- Broadening (or narrowing) the search scope\n\n"
+    "Output only the new search query (no explanation needed)."
+)
+
+SUMMARIZE_CHUNK_PROMPT_JA = "リサーチクエリ: '{query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
+SUMMARIZE_CHUNK_PROMPT_EN = "Summarize this segment for the research query: '{query}'.\n\nSegment:\n{chunk}"
+
+COMBINE_SUMMARIES_PROMPT_JA = "これらの要約を、クエリ: '{query}' に関する一つの首尾一貫した要約にまとめてください。\n\n要約群:\n{combined}"
+COMBINE_SUMMARIES_PROMPT_EN = "Combine these summaries into one coherent summary for query: '{query}'.\n\nSummaries:\n{combined}"
+
+RELEVANCE_SCORE_PROMPT_JA = (
+    "クエリ: {query}\n\n"
+    "検索結果:\n"
+    "タイトル: {title}\n"
+    "スニペット: {snippet}\n\n"
+    "このページがクエリに関連しているかを 0.0〜1.0 でスコアリングしてください。\n"
+    "- 1.0: 非常に関連性が高い\n"
+    "- 0.5: やや関連性がある\n"
+    "- 0.0: 全く関連性がない\n\n"
+    "スコアのみを数値で回答してください（例: 0.8）"
+)
+
+RELEVANCE_SCORE_PROMPT_EN = (
+    "Query: {query}\n\n"
+    "Search Result:\n"
+    "Title: {title}\n"
+    "Snippet: {snippet}\n\n"
+    "Score the relevance of this page to the query on a scale of 0.0 to 1.0.\n"
+    "- 1.0: Highly relevant\n"
+    "- 0.5: Somewhat relevant\n"
+    "- 0.0: Not relevant\n\n"
+    "Respond with only the numeric score (e.g., 0.8)"
+)
+
+FINAL_REPORT_PROMPT_JA = (
+    "トピック: {topic} に関する最終リサーチレポートを作成してください。\n\n"
+    "コンテキスト:\n{full_context}\n\n"
+    "{source_info}\n\n"
+    "指示: 包括的で専門的な構成（日本語）にしてください。{citation_instruction}"
+)
+
+FINAL_REPORT_PROMPT_EN = (
+    "Synthesize a final report for: {topic}\n\n"
+    "Context:\n{full_context}\n\n"
+    "{source_info}\n\n"
+    "Instruction: Professional structure. {citation_instruction}"
+)
