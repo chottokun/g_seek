@@ -60,6 +60,13 @@ class Configuration(BaseSettings):
     # Optimization Configuration
     MAX_CONCURRENT_CHUNKS: int = Field(default=5)
     LLM_RATE_LIMIT_RPM: int = Field(default=60)
+    LLM_RATE_LIMIT_TPM: int = Field(default=40000, description="Tokens Per Minute limit")
+
+    ENABLE_CACHING: bool = Field(default=True, description="Enable persistent caching")
+    CACHE_DIR: str = Field(default=".cache", description="Directory for cache files")
+    
+    MAX_CONCURRENT_RETRIEVALS: int = Field(default=5, description="Maximum concurrent web content retrievals")
+    BATCH_SIZE_RELEVANCE: int = Field(default=5, description="Number of results to score in one LLM call")
 
     USE_SNIPPETS_ONLY_MODE: bool = Field(default=False)
     MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = Field(default=0)
@@ -173,6 +180,11 @@ class Configuration(BaseSettings):
             f"  Summarization Chunk Overlap Chars: {self.SUMMARIZATION_CHUNK_OVERLAP_CHARS}",
             f"  Max Concurrent Chunks: {self.MAX_CONCURRENT_CHUNKS}",
             f"  LLM Rate Limit RPM: {self.LLM_RATE_LIMIT_RPM}",
+            f"  LLM Rate Limit TPM: {self.LLM_RATE_LIMIT_TPM}",
+            f"  Enable Caching: {self.ENABLE_CACHING}",
+            f"  Cache Dir: {self.CACHE_DIR}",
+            f"  Max Concurrent Retrievals: {self.MAX_CONCURRENT_RETRIEVALS}",
+            f"  Batch Size Relevance: {self.BATCH_SIZE_RELEVANCE}",
             f"  Use Snippets Only Mode: {self.USE_SNIPPETS_ONLY_MODE}",
             f"  Max Text Length per Source (Chars): {self.MAX_TEXT_LENGTH_PER_SOURCE_CHARS}",
             f"  Process PDF Files: {self.PROCESS_PDF_FILES}",
