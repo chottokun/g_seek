@@ -30,7 +30,10 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         await retriever._call_progress("test message")
         async_callback.assert_awaited_once_with("test message")
 
-    async def test_retrieve_and_extract_html(self):
+    @patch("socket.getaddrinfo")
+    async def test_retrieve_and_extract_html(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(None, None, None, None, ("127.0.0.1", 80))]
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {"Content-Type": "text/html"}
@@ -41,16 +44,19 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         # We need to mock AsyncClient as a whole or mock the context manager
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_client.get.return_value = mock_response
+            mock_client.send.return_value = mock_response
             mock_client.__aenter__.return_value = mock_client
             mock_client_class.return_value = mock_client
 
             text = await retriever.retrieve_and_extract("http://example.com")
             self.assertEqual(text, "Content")
 
+    @patch("socket.getaddrinfo")
     @patch("deep_research_project.tools.content_retriever.PdfReader")
     @patch("httpx.AsyncClient")
-    async def test_retrieve_and_extract_pdf(self, mock_client_class, mock_pdf_reader):
+    async def test_retrieve_and_extract_pdf(self, mock_client_class, mock_pdf_reader, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(None, None, None, None, ("127.0.0.1", 80))]
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.headers = {"Content-Type": "application/pdf"}
@@ -58,7 +64,7 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
+        mock_client.send.return_value = mock_response
         mock_client.__aenter__.return_value = mock_client
         mock_client_class.return_value = mock_client
 

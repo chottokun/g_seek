@@ -55,39 +55,44 @@ class ContentRetriever:
         except Exception as e:
             logger.error(f"Error in progress_callback: {e}")
 
-    async def _validate_url(self, url: str):
-        """Validates that the URL does not point to a private or restricted IP address if configured."""
-        if not getattr(self.config, "BLOCK_LOCAL_IP_ACCESS", False):
-            return
+    async def _resolve_and_validate_url(self, url: str) -> str:
+        """
+        Resolves the hostname in the URL and validates that it does not point
+        to a private or restricted IP address if configured.
+        Returns the resolved IP address.
+        """
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            raise ValueError(f"Invalid URL: {url}")
 
         try:
-            parsed = urlparse(url)
-            hostname = parsed.hostname
-            if not hostname:
-                raise ValueError(f"Invalid URL: {url}")
-
+            # Check if hostname is already an IP
+            ip_obj = ipaddress.ip_address(hostname)
+            resolved_ips = [str(ip_obj)]
+        except ValueError:
             # Resolve hostname to IP addresses
             loop = asyncio.get_running_loop()
-            # Use run_in_executor for blocking socket call
-            addr_info = await loop.run_in_executor(None, socket.getaddrinfo, hostname, 0)
+            try:
+                addr_info = await loop.run_in_executor(None, socket.getaddrinfo, hostname, 0)
+                resolved_ips = [sockaddr[0] for _, _, _, _, sockaddr in addr_info]
+            except socket.gaierror:
+                raise ValueError(f"Could not resolve hostname: {hostname}")
 
-            for _, _, _, _, sockaddr in addr_info:
-                ip = sockaddr[0]
+        if not resolved_ips:
+            raise ValueError(f"No IP addresses found for hostname: {hostname}")
+
+        # Validate IPs if restricted
+        if getattr(self.config, "BLOCK_LOCAL_IP_ACCESS", False):
+            for ip in resolved_ips:
                 ip_obj = ipaddress.ip_address(ip)
-
-                # Check for private, loopback, or other restricted ranges
                 if (ip_obj.is_private or ip_obj.is_loopback or
                     ip_obj.is_link_local or ip_obj.is_multicast or
                     ip_obj.is_reserved):
                     raise ValueError(f"Access to restricted IP {ip} is forbidden")
 
-        except socket.gaierror:
-            # If we can't resolve it, it might be invalid or internal DNS that fails externally.
-            raise ValueError(f"Could not resolve hostname: {parsed.hostname}")
-        except Exception as e:
-            if isinstance(e, ValueError):
-                raise e
-            raise ValueError(f"Error validating URL {url}: {e}")
+        # Return the first IP
+        return resolved_ips[0]
 
     async def retrieve_and_extract(self, url: str, timeout: Optional[int] = None) -> str:
         """Asynchronously fetches content from a URL and extracts clean text."""
@@ -103,14 +108,38 @@ class ContentRetriever:
                 max_redirects = 10
 
                 for _ in range(max_redirects):
-                    # Validate the URL before fetching (only if BLOCK_LOCAL_IP_ACCESS is enabled)
+                    # Resolve and validate the URL before fetching
                     try:
-                        await self._validate_url(current_url)
+                        resolved_ip = await self._resolve_and_validate_url(current_url)
                     except ValueError as ve:
-                        logger.warning(f"URL validation failed: {ve}")
+                        logger.warning(f"URL validation failed for {current_url}: {ve}")
                         return ""
 
-                    response = await client.get(current_url)
+                    parsed_url = urlparse(current_url)
+                    # Construct pinned URL using IP
+                    # Handle both http and https, and preserve port if present
+                    port_str = f":{parsed_url.port}" if parsed_url.port else ""
+
+                    # Handle IPv6 brackets in URL
+                    ip_for_url = resolved_ip
+                    if ":" in resolved_ip and not resolved_ip.startswith("["):
+                        ip_for_url = f"[{resolved_ip}]"
+
+                    pinned_url = f"{parsed_url.scheme}://{ip_for_url}{port_str}{parsed_url.path}"
+                    if parsed_url.query:
+                        pinned_url += f"?{parsed_url.query}"
+                    if parsed_url.fragment:
+                        pinned_url += f"#{parsed_url.fragment}"
+
+                    request_headers = self.headers.copy()
+                    # Host header should include the port if it's non-standard
+                    request_headers["Host"] = parsed_url.netloc
+
+                    req = httpx.Request("GET", pinned_url, headers=request_headers)
+                    if parsed_url.scheme == "https":
+                        req.extensions["sni_hostname"] = parsed_url.hostname.encode()
+
+                    response = await client.send(req)
 
                     # Check for redirects
                     if response.is_redirect:
