@@ -81,7 +81,7 @@ def main():
 
                 if not config.INTERACTIVE_MODE:
                     with st.status("Automated research processing...", expanded=True) as status:
-                        def progress_update(msg: str):
+                        async def progress_update(msg: str):
                             status.write(msg)
 
                         st.session_state.research_loop.progress_callback = progress_update
@@ -119,7 +119,7 @@ def main():
             if st.button("Approve & Start"):
                 state.plan_approved = True
                 with st.status("Processing research based on approved plan...", expanded=True) as status:
-                    def progress_update(msg: str):
+                    async def progress_update(msg: str):
                         status.write(msg)
                     loop.progress_callback = progress_update
                     asyncio.run(loop.run_loop())
@@ -135,7 +135,7 @@ def main():
                 state.current_query = q
                 state.proposed_query = None
                 with st.status(f"Searching for '{q}'...", expanded=True) as status:
-                    def progress_update(msg: str):
+                    async def progress_update(msg: str):
                         status.write(msg)
                     loop.progress_callback = progress_update
                     asyncio.run(loop.run_loop())
@@ -151,7 +151,7 @@ def main():
                     selected.append(res)
             if st.button("Summarize Selected"):
                 with st.status("Summarizing selected sources and continuing research...", expanded=True) as status:
-                    def progress_update(msg: str):
+                    async def progress_update(msg: str):
                         status.write(msg)
                     loop.progress_callback = progress_update
                     asyncio.run(loop._summarize_sources(selected))
