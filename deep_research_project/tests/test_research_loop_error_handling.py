@@ -44,6 +44,7 @@ class TestResearchLoopErrorHandling(unittest.IsolatedAsyncioTestCase):
         """Test that research plan generation falls back to a default plan on error."""
         # Arrange
         self.mock_llm_client.generate_structured.side_effect = Exception("LLM Failure")
+        self.loop.state.language = "English"
 
         # Act
         await self.loop._generate_research_plan()

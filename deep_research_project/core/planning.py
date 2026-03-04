@@ -5,7 +5,10 @@ from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.state import ResearchPlanModel, Section
 from deep_research_project.core.prompts import (
     RESEARCH_PLAN_PROMPT_JA, RESEARCH_PLAN_PROMPT_EN,
-    INITIAL_QUERY_PROMPT_JA, INITIAL_QUERY_PROMPT_EN
+    INITIAL_QUERY_PROMPT_JA, INITIAL_QUERY_PROMPT_EN,
+    REGENERATE_QUERY_PROMPT_JA, REGENERATE_QUERY_PROMPT_EN,
+    RESEARCH_PLAN_FALLBACK_TITLE_JA, RESEARCH_PLAN_FALLBACK_TITLE_EN,
+    RESEARCH_PLAN_FALLBACK_DESC_JA, RESEARCH_PLAN_FALLBACK_DESC_EN
 )
 
 logger = logging.getLogger(__name__)
@@ -48,9 +51,16 @@ class ResearchPlanner:
             ]
         except Exception as e:
             logger.error(f"Failed to generate research plan: {e}. Using fallback.")
+            if language == "Japanese":
+                fallback_title = RESEARCH_PLAN_FALLBACK_TITLE_JA
+                fallback_desc = RESEARCH_PLAN_FALLBACK_DESC_JA.format(topic=topic)
+            else:
+                fallback_title = RESEARCH_PLAN_FALLBACK_TITLE_EN
+                fallback_desc = RESEARCH_PLAN_FALLBACK_DESC_EN.format(topic=topic)
+
             return [{
-                "title": "General Research",
-                "description": f"Comprehensive research on {topic}",
+                "title": fallback_title,
+                "description": fallback_desc,
                 "status": "pending",
                 "summary": "",
                 "sources": []
@@ -106,31 +116,17 @@ class ResearchPlanner:
             A new, potentially more effective search query
         """
         if language == "Japanese":
-            prompt = f"""トピック: {topic}
-セクション: {section_title}
-元のクエリ: {original_query}
-
-このクエリでは関連性の高い検索結果が見つかりませんでした。
-より適切な検索クエリを生成してください。以下の点を考慮してください:
-- より具体的なキーワードを使用
-- 別の表現や類義語を試す
-- 検索範囲を広げる（または狭める）
-
-新しい検索クエリのみを出力してください（説明不要）。
-"""
+            prompt = REGENERATE_QUERY_PROMPT_JA.format(
+                topic=topic,
+                section_title=section_title,
+                original_query=original_query
+            )
         else:
-            prompt = f"""Topic: {topic}
-Section: {section_title}
-Original Query: {original_query}
-
-This query did not yield any relevant search results.
-Generate a more appropriate search query. Consider:
-- Using more specific keywords
-- Trying alternative expressions or synonyms
-- Broadening (or narrowing) the search scope
-
-Output only the new search query (no explanation needed).
-"""
+            prompt = REGENERATE_QUERY_PROMPT_EN.format(
+                topic=topic,
+                section_title=section_title,
+                original_query=original_query
+            )
         
         logger.info(f"Regenerating query for: '{original_query}'")
         raw_query = await self.llm_client.generate_text(prompt=prompt)
