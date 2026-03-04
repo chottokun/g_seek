@@ -1,6 +1,10 @@
 import logging
 from typing import List
 from deep_research_project.tools.llm_client import LLMClient
+from deep_research_project.core.prompts import (
+    FINALIZE_REPORT_PROMPT_JA, FINALIZE_REPORT_PROMPT_EN,
+    CITATION_INSTRUCTION_JA, CITATION_INSTRUCTION_EN, CITATION_NONE_INSTRUCTION
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,27 +31,27 @@ class ResearchReporter:
 
         if not source_list_str:
             source_info = "No web sources were found."
-            citation_instruction = "Do not use citations."
+            citation_instruction = CITATION_NONE_INSTRUCTION
         else:
             source_info = f"Reference Sources:\n{source_list_str}"
             if language == "Japanese":
-                citation_instruction = "番号付きのインライン引用 [1] を使用して出典を明記してください。"
+                citation_instruction = CITATION_INSTRUCTION_JA
             else:
-                citation_instruction = "Use numbered in-text citations like [1] to attribute information."
+                citation_instruction = CITATION_INSTRUCTION_EN
 
         if language == "Japanese":
-            prompt = (
-                f"トピック: {topic} に関する最終リサーチレポートを作成してください。\n\n"
-                f"コンテキスト:\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"指示: 包括的で専門的な構成（日本語）にしてください。{citation_instruction}"
+            prompt = FINALIZE_REPORT_PROMPT_JA.format(
+                topic=topic,
+                full_context=full_context,
+                source_info=source_info,
+                citation_instruction=citation_instruction
             )
         else:
-            prompt = (
-                f"Synthesize a final report for: {topic}\n\n"
-                f"Context:\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"Instruction: Professional structure. {citation_instruction}"
+            prompt = FINALIZE_REPORT_PROMPT_EN.format(
+                topic=topic,
+                full_context=full_context,
+                source_info=source_info,
+                citation_instruction=citation_instruction
             )
 
         report = await self.llm_client.generate_text(prompt=prompt)

@@ -6,6 +6,11 @@ from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient, SearchResult
 from deep_research_project.tools.content_retriever import ContentRetriever
 from deep_research_project.core.utils import split_text_into_chunks
+from deep_research_project.core.prompts import (
+    SUMMARIZE_CHUNK_PROMPT_JA, SUMMARIZE_CHUNK_PROMPT_EN,
+    COMBINE_SUMMARIES_PROMPT_JA, COMBINE_SUMMARIES_PROMPT_EN,
+    RELEVANCE_SCORE_PROMPT_JA, RELEVANCE_SCORE_PROMPT_EN
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +64,9 @@ class ResearchExecutor:
             async with self.semaphore:
                 if progress_callback: await progress_callback(f"Summarizing chunk from {url}...")
                 if language == "Japanese":
-                    prompt = f"リサーチクエリ: '{query}' のために、このセグメントを要約してください。\n\nセグメント:\n{chunk}"
+                    prompt = SUMMARIZE_CHUNK_PROMPT_JA.format(query=query, chunk=chunk)
                 else:
-                    prompt = f"Summarize this segment for the research query: '{query}'.\n\nSegment:\n{chunk}"
+                    prompt = SUMMARIZE_CHUNK_PROMPT_EN.format(query=query, chunk=chunk)
                 return await self.llm_client.generate_text(prompt=prompt)
 
         chunk_summaries = await asyncio.gather(*[summarize_chunk(c, u) for c, u in all_chunks_info])
@@ -73,9 +78,9 @@ class ResearchExecutor:
         # Final synthesis
         combined = "\n\n---\n\n".join(valid_summaries)
         if language == "Japanese":
-            prompt = f"これらの要約を、クエリ: '{query}' に関する一つの首尾一貫した要約にまとめてください。\n\n要約群:\n{combined}"
+            prompt = COMBINE_SUMMARIES_PROMPT_JA.format(query=query, combined=combined)
         else:
-            prompt = f"Combine these summaries into one coherent summary for query: '{query}'.\n\nSummaries:\n{combined}"
+            prompt = COMBINE_SUMMARIES_PROMPT_EN.format(query=query, combined=combined)
         
         return await self.llm_client.generate_text(prompt=prompt)
 
@@ -85,33 +90,13 @@ class ResearchExecutor:
         Returns a score between 0.0 (not relevant) and 1.0 (highly relevant).
         """
         if language == "Japanese":
-            prompt = f"""クエリ: {query}
-
-検索結果:
-タイトル: {result.title}
-スニペット: {result.snippet}
-
-このページがクエリに関連しているかを 0.0〜1.0 でスコアリングしてください。
-- 1.0: 非常に関連性が高い
-- 0.5: やや関連性がある
-- 0.0: 全く関連性がない
-
-スコアのみを数値で回答してください（例: 0.8）
-"""
+            prompt = RELEVANCE_SCORE_PROMPT_JA.format(
+                query=query, title=result.title, snippet=result.snippet
+            )
         else:
-            prompt = f"""Query: {query}
-
-Search Result:
-Title: {result.title}
-Snippet: {result.snippet}
-
-Score the relevance of this page to the query on a scale of 0.0 to 1.0.
-- 1.0: Highly relevant
-- 0.5: Somewhat relevant
-- 0.0: Not relevant
-
-Respond with only the numeric score (e.g., 0.8)
-"""
+            prompt = RELEVANCE_SCORE_PROMPT_EN.format(
+                query=query, title=result.title, snippet=result.snippet
+            )
         
         try:
             response = await self.llm_client.generate_text(prompt=prompt)
