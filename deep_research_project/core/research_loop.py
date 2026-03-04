@@ -176,9 +176,11 @@ class ResearchLoop:
             self.state.accumulated_summary += f"\n\n## {self.state.current_query}\n{self.state.new_information}"
         
         # Add new sources to gathered list
+        gathered_links = {s.link for s in self.state.sources_gathered}
         for res in selected_results:
-            if res.link not in [s.link for s in self.state.sources_gathered]:
+            if res.link not in gathered_links:
                 self.state.sources_gathered.append(Source(title=res.title, link=res.link))
+                gathered_links.add(res.link)
         
         self.state.pending_source_selection = False
 
