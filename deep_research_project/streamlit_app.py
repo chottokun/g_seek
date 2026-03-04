@@ -7,6 +7,7 @@ import logging
 import traceback
 import json
 import tempfile
+import html
 
 # Adjust path to import from sibling directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -187,27 +188,31 @@ def main():
                         mention_count = int(props.get('mention_count', 1))
                         node_size = 20 + min(mention_count * 5, 40)
                         
+                        # Security: Escape LLM-generated content
+                        esc_label = html.escape(n['label'])
+                        esc_type = html.escape(n['type'])
+
                         # Build detailed title for hover
                         # NOTE: streamlit-agraph also does NOT render HTML in tooltips
-                        hover_info = f"{n['label']} ({n['type']})\n"
+                        hover_info = f"{esc_label} ({esc_type})\n"
                         for k, v in props.items():
                             if k not in ['mention_count', 'section']:
-                                hover_info += f"- {k}: {v}\n"
+                                hover_info += f"- {html.escape(str(k))}: {html.escape(str(v))}\n"
                         
                         source_urls = n.get('source_urls', [])
                         if source_urls:
-                             hover_info += "\nSources:\n" + "\n".join([f"• {url}" for url in source_urls])
+                             hover_info += "\nSources:\n" + "\n".join([f"• {html.escape(str(url))}" for url in source_urls])
 
                         nodes.append(Node(
                             id=n['id'], 
-                            label=n['label'], 
+                            label=esc_label,
                             size=node_size, 
                             group=n['type'],
                             color=type_colors.get(n['type'], "#CCCCCC"),
                             title=hover_info # title is used for mouseover in agraph/vis.js
                         ))
 
-                    edges = [Edge(source=e['source'], target=e['target'], label=e['label']) for e in state.knowledge_graph_edges]
+                    edges = [Edge(source=e['source'], target=e['target'], label=html.escape(e['label'])) for e in state.knowledge_graph_edges]
                     
                     config = Config(
                         width=900, 
