@@ -24,14 +24,14 @@ class ResearchPlanner:
         if language == "Japanese":
             prompt = RESEARCH_PLAN_PROMPT_JA.format(
                 topic=topic,
-                min_sections=self.config.RESEARCH_PLAN_MIN_SECTIONS,
-                max_sections=self.config.RESEARCH_PLAN_MAX_SECTIONS
+                min_sections=getattr(self.config, "RESEARCH_PLAN_MIN_SECTIONS", 3),
+                max_sections=getattr(self.config, "RESEARCH_PLAN_MAX_SECTIONS", 5)
             )
         else:
             prompt = RESEARCH_PLAN_PROMPT_EN.format(
                 topic=topic,
-                min_sections=self.config.RESEARCH_PLAN_MIN_SECTIONS,
-                max_sections=self.config.RESEARCH_PLAN_MAX_SECTIONS
+                min_sections=getattr(self.config, "RESEARCH_PLAN_MIN_SECTIONS", 3),
+                max_sections=getattr(self.config, "RESEARCH_PLAN_MAX_SECTIONS", 5)
             )
 
         try:

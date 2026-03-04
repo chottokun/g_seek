@@ -12,6 +12,7 @@ class TestPerformanceOptimization(unittest.IsolatedAsyncioTestCase):
         self.config.MAX_CONCURRENT_RETRIEVALS = 5
         self.config.BATCH_SIZE_RELEVANCE = 5
         self.config.ENABLE_CACHING = False # Disable for performance testing
+        self.config.ENABLE_RELEVANCE_FILTERING = False # Disable relevance filtering
 
         self.llm_client = AsyncMock()
         self.search_client = AsyncMock()
@@ -20,6 +21,8 @@ class TestPerformanceOptimization(unittest.IsolatedAsyncioTestCase):
         self.executor = ResearchExecutor(
             self.config, self.llm_client, self.search_client, self.content_retriever
         )
+        # Default mock for generate_text to return a string "0.5"
+        self.llm_client.generate_text.return_value = "0.5"
 
     async def test_parallel_retrieval_speed(self):
         # Setup 5 URLs, each taking 1s to retrieve
@@ -30,6 +33,9 @@ class TestPerformanceOptimization(unittest.IsolatedAsyncioTestCase):
             return f"Content for {url}"
             
         self.content_retriever.retrieve_and_extract.side_effect = mock_retrieve
+        
+        # Specifically mock for this test if needed, or just let default return_value work
+        # self.llm_client.generate_text.return_value = "Summary"
         
         start_time = time.time()
         await self.executor.retrieve_and_summarize(results, "query", "English")

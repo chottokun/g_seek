@@ -16,6 +16,7 @@ class TestLLMClientRateLimit(unittest.IsolatedAsyncioTestCase):
         self.mock_config.OPENAI_API_BASE_URL = None
         # 120 RPM means 1 request every 0.5 seconds
         self.mock_config.LLM_RATE_LIMIT_RPM = 120
+        self.mock_config.ENABLE_CACHING = False
 
     async def test_rate_limit_spacing(self):
         with patch('langchain_openai.ChatOpenAI'):

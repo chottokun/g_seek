@@ -19,7 +19,9 @@ class ContentRetriever:
         self.user_agent = user_agent or getattr(config, "USER_AGENT", "DeepResearchBot/1.0")
         self.progress_callback = progress_callback
         self.headers = {"User-Agent": self.user_agent}
-        self.cache_manager = CacheManager(cache_dir=self.config.CACHE_DIR, enabled=self.config.ENABLE_CACHING)
+        cache_dir = getattr(self.config, "CACHE_DIR", ".cache")
+        enable_caching = getattr(self.config, "ENABLE_CACHING", True)
+        self.cache_manager = CacheManager(cache_dir=cache_dir, enabled=enable_caching)
 
     def extract_text(self, html_content: str, url: str = "") -> str:
         """Extracts and cleans text content from HTML using BeautifulSoup."""
@@ -93,7 +95,7 @@ class ContentRetriever:
 
     async def retrieve_and_extract(self, url: str, timeout: Optional[int] = None) -> str:
         """Asynchronously fetches content from a URL and extracts clean text with caching."""
-        if self.config.ENABLE_CACHING:
+        if getattr(self.config, "ENABLE_CACHING", True):
             cached = await self.cache_manager.get_content_cache(url)
             if cached:
                 logger.info(f"Content for {url} retrieved from cache.")
@@ -142,7 +144,7 @@ class ContentRetriever:
                 content_type = response.headers.get("Content-Type", "").lower()
 
                 # PDF Processing
-                if (self.config.PROCESS_PDF_FILES and ("application/pdf" in content_type or current_url.lower().endswith(".pdf"))):
+                if (getattr(self.config, "PROCESS_PDF_FILES", True) and ("application/pdf" in content_type or current_url.lower().endswith(".pdf"))):
                     return await self._process_pdf(response.content, current_url)
 
                 # HTML Processing
@@ -159,7 +161,7 @@ class ContentRetriever:
                     logger.warning(f"Unsupported content type '{content_type}' for {current_url}.")
                     return ""
 
-                if self.config.ENABLE_CACHING and result:
+                if getattr(self.config, "ENABLE_CACHING", True) and result:
                     await self.cache_manager.set_content_cache(url, result)
                 return result
 
@@ -189,7 +191,7 @@ class ContentRetriever:
             return ""
 
     def _apply_truncation(self, text: str, url: str) -> str:
-        limit = self.config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS
+        limit = getattr(self.config, "MAX_TEXT_LENGTH_PER_SOURCE_CHARS", 0)
         if limit > 0 and len(text) > limit:
             logger.info(f"Truncating content from {url} to {limit} chars.")
             return text[:limit]

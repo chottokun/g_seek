@@ -17,7 +17,9 @@ class LLMClient:
         self.llm = None
         self._rate_limit_lock = asyncio.Lock()
         self._last_request_time = 0.0
-        self.cache_manager = CacheManager(cache_dir=self.config.CACHE_DIR, enabled=self.config.ENABLE_CACHING)
+        cache_dir = getattr(self.config, "CACHE_DIR", ".cache")
+        enable_caching = getattr(self.config, "ENABLE_CACHING", True)
+        self.cache_manager = CacheManager(cache_dir=cache_dir, enabled=enable_caching)
 
         if self.config.LLM_PROVIDER == "openai":
             try:
@@ -88,7 +90,10 @@ class LLMClient:
 
     async def _wait_for_rate_limit(self):
         """Waits to respect the rate limit."""
-        limit_interval = 60.0 / self.config.LLM_RATE_LIMIT_RPM if self.config.LLM_RATE_LIMIT_RPM > 0 else 0
+        rpm = getattr(self.config, "LLM_RATE_LIMIT_RPM", 60)
+        if not isinstance(rpm, (int, float)):
+            rpm = 60
+        limit_interval = 60.0 / rpm if rpm > 0 else 0
 
         async with self._rate_limit_lock:
             current_time = asyncio.get_event_loop().time()
@@ -120,11 +125,11 @@ class LLMClient:
                         logger.error(f"LLM call failed after {max_retries+1} attempts: {e}")
                     raise
 
-        return await self._invoke_with_retry(_call)
+        return None # Should not be reached but better than recursion
 
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt with retry logic and caching."""
-        if self.config.ENABLE_CACHING:
+        if getattr(self.config, "ENABLE_CACHING", True):
             cached = await self.cache_manager.get_llm_cache(prompt)
             if cached:
                 logger.info("LLM result retrieved from cache.")
@@ -145,14 +150,14 @@ class LLMClient:
 
             result = await self._invoke_with_retry(_call)
         
-        if self.config.ENABLE_CACHING and result:
+        if getattr(self.config, "ENABLE_CACHING", True) and result:
             await self.cache_manager.set_llm_cache(prompt, result)
         
         return result
 
     async def generate_structured(self, prompt: str, response_model: Type[T]) -> T:
         """Asynchronously generates structured output using LangChain's with_structured_output with robust fallbacks, retries, and caching."""
-        if self.config.ENABLE_CACHING:
+        if getattr(self.config, "ENABLE_CACHING", True):
             cached_json = await self.cache_manager.get_llm_cache(prompt)
             if cached_json:
                 try:
@@ -179,7 +184,7 @@ class LLMClient:
                 logger.warning(f"Native structured output failed even with retries, falling back to PydanticOutputParser: {e}")
                 result = await self._generate_structured_fallback(prompt, response_model)
         
-        if self.config.ENABLE_CACHING and result:
+        if getattr(self.config, "ENABLE_CACHING", True) and result:
             await self.cache_manager.set_llm_cache(prompt, result.model_dump_json())
         
         return result

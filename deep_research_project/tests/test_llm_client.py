@@ -21,6 +21,7 @@ class TestLLMClientAsync(unittest.IsolatedAsyncioTestCase):
         self.mock_config.OPENAI_API_KEY = "test"
         self.mock_config.OPENAI_API_BASE_URL = None
         self.mock_config.LLM_RATE_LIMIT_RPM = 0
+        self.mock_config.ENABLE_CACHING = False
 
         with patch('langchain_openai.ChatOpenAI'):
             self.client = LLMClient(self.mock_config)

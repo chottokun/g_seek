@@ -22,7 +22,7 @@ class ResearchLoop:
         self.config = config
         self.state = state
         self.progress_callback = progress_callback
-        self.interactive_mode = config.INTERACTIVE_MODE
+        self.interactive_mode = getattr(config, "INTERACTIVE_MODE", False)
 
         # Clients
         self.llm_client = LLMClient(config)
@@ -77,12 +77,15 @@ class ResearchLoop:
         
         # Perform initial search
         results = await self.executor.search(
-            self.state.current_query, self.config.MAX_SEARCH_RESULTS_PER_QUERY
+            self.state.current_query, getattr(self.config, "MAX_SEARCH_RESULTS_PER_QUERY", 3)
         )
         
         # Apply relevance filtering if enabled
-        if self.config.ENABLE_RELEVANCE_FILTERING and self.config.RELEVANCE_FILTER_MODE != "disabled":
-            if self.config.RELEVANCE_FILTER_MODE == "snippet":
+        enable_rel = getattr(self.config, "ENABLE_RELEVANCE_FILTERING", True)
+        rel_mode = getattr(self.config, "RELEVANCE_FILTER_MODE", "snippet")
+        
+        if enable_rel and rel_mode != "disabled":
+            if rel_mode == "snippet":
                 # Mode A: Snippet-based pre-filtering (default, recommended)
                 results = await self.executor.filter_by_relevance(
                     self.state.current_query, results, self.state.language, use_snippet=True
@@ -90,7 +93,7 @@ class ResearchLoop:
                 logger.info(f"Pre-filtered to {len(results)} relevant results (snippet-based)")
                 
                 # Zero-result fallback strategy with infinite loop prevention
-                if len(results) == 0 and self.config.ENABLE_QUERY_REGENERATION:
+                if len(results) == 0 and getattr(self.config, "ENABLE_QUERY_REGENERATION", True):
                     logger.warning(f"No relevant results found for query: '{self.state.current_query}'. Applying fallback strategy...")
                     
                     # Check if query was already regenerated (infinite loop prevention)
@@ -112,7 +115,7 @@ class ResearchLoop:
                         self.state.regenerated_queries.add(new_query)
                         
                         # Re-search with new query
-                        results = await self.executor.search(new_query, self.config.MAX_SEARCH_RESULTS_PER_QUERY)
+                        results = await self.executor.search(new_query, getattr(self.config, "MAX_SEARCH_RESULTS_PER_QUERY", 3))
                         results = await self.executor.filter_by_relevance(
                             new_query, results, self.state.language, use_snippet=True
                         )
@@ -129,7 +132,7 @@ class ResearchLoop:
                         results = await self.executor.search(self.state.current_query, self.config.MAX_SEARCH_RESULTS_PER_QUERY)
                         results = await self.executor.filter_by_relevance(
                             self.state.current_query, results, self.state.language, use_snippet=True,
-                            threshold=self.config.RELEVANCE_THRESHOLD * 0.5  # Lower threshold by 50%
+                            threshold=getattr(self.config, "RELEVANCE_THRESHOLD", 0.6) * 0.5  # Lower threshold by 50%
                         )
                         logger.info(f"Fallback: Filtered to {len(results)} results with lowered threshold")
                     
@@ -139,7 +142,7 @@ class ResearchLoop:
                         # Empty results list will be handled downstream
                         # The summarization step will generate a "no information found" message
             
-            elif self.config.RELEVANCE_FILTER_MODE == "full_content":
+            elif rel_mode == "full_content":
                 # Mode B: Full-content-based filtering (not implemented in this phase)
                 # Would require retrieving full content first, then filtering
                 # For now, fall back to snippet mode
@@ -252,7 +255,7 @@ class ResearchLoop:
         if not self.state.current_query and not self.state.proposed_query and self.state.completed_loops == 0:
             await self._generate_initial_query()
 
-        while self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
+        while self.state.completed_loops < getattr(self.config, "MAX_RESEARCH_LOOPS", 3):
             if self.state.is_interrupted: break
 
             # Step 1: Ensure we have a current query if needed

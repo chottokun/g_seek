@@ -4,6 +4,7 @@ Simple integration test for relevance filtering feature.
 Tests the basic functionality without making actual API calls.
 """
 import asyncio
+import pytest
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import SearchResult, ResearchState
 from deep_research_project.tools.llm_client import LLMClient
@@ -12,6 +13,7 @@ from deep_research_project.tools.content_retriever import ContentRetriever
 from deep_research_project.core.execution import ResearchExecutor
 from deep_research_project.core.planning import ResearchPlanner
 
+@pytest.mark.asyncio
 async def test_relevance_filtering_config():
     """Test that relevance filtering configuration is loaded correctly."""
     print("Test 1: Configuration Loading")
@@ -50,6 +52,7 @@ def test_research_state_regenerated_queries():
     assert "query1" in state.regenerated_queries, "query1 should be in set"
     print("✓ ResearchState extended correctly")
 
+@pytest.mark.asyncio
 async def test_executor_methods_exist():
     """Test that ResearchExecutor has new methods."""
     print("\nTest 4: ResearchExecutor Methods")
@@ -65,6 +68,7 @@ async def test_executor_methods_exist():
     assert callable(executor.filter_by_relevance), "filter_by_relevance should be callable"
     print("✓ ResearchExecutor methods exist")
 
+@pytest.mark.asyncio
 async def test_planner_regenerate_query_exists():
     """Test that ResearchPlanner has regenerate_query method."""
     print("\nTest 5: ResearchPlanner Methods")

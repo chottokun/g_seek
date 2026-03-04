@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import List, Optional, Callable
+from pydantic import BaseModel
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient, SearchResult
@@ -16,8 +17,8 @@ class ResearchExecutor:
         self.llm_client = llm_client
         self.search_client = search_client
         self.content_retriever = content_retriever
-        self.chunk_semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_CHUNKS)
-        self.retrieval_semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_RETRIEVALS)
+        self.chunk_semaphore = asyncio.Semaphore(getattr(self.config, "MAX_CONCURRENT_CHUNKS", 5))
+        self.retrieval_semaphore = asyncio.Semaphore(getattr(self.config, "MAX_CONCURRENT_RETRIEVALS", 5))
 
     async def search(self, query: str, num_results: int) -> List[SearchResult]:
         """Performs web search and returns results."""
@@ -40,7 +41,7 @@ class ResearchExecutor:
             if url not in fetched_content:
                 async with self.retrieval_semaphore:
                     if progress_callback: await progress_callback(f"Retrieving: {url}")
-                    if self.config.USE_SNIPPETS_ONLY_MODE:
+                    if getattr(self.config, "USE_SNIPPETS_ONLY_MODE", False):
                         content = res.snippet
                     else:
                         content = await self.content_retriever.retrieve_and_extract(url)
@@ -55,8 +56,8 @@ class ResearchExecutor:
             url = res.link
             content = fetched_content[url]
             chunks = split_text_into_chunks(content, 
-                                            self.config.SUMMARIZATION_CHUNK_SIZE_CHARS, 
-                                            self.config.SUMMARIZATION_CHUNK_OVERLAP_CHARS)
+                                            getattr(self.config, "SUMMARIZATION_CHUNK_SIZE_CHARS", 10000), 
+                                            getattr(self.config, "SUMMARIZATION_CHUNK_OVERLAP_CHARS", 500))
             all_chunks_info.extend([(chunk, url) for chunk in chunks])
 
         if not all_chunks_info:
@@ -189,7 +190,7 @@ Respond with only the numeric score (e.g., 0.8)
             score_str = response.strip().split()[0]  # Get first token
             score = float(score_str)
             return max(0.0, min(1.0, score))  # Clamp to [0.0, 1.0]
-        except (ValueError, IndexError) as e:
+        except (ValueError, IndexError, AttributeError) as e:
             logger.warning(f"Failed to parse relevance score from LLM response: {response}. Error: {e}. Defaulting to 0.5")
             return 0.5  # Default to neutral score on parse failure
 
@@ -215,10 +216,10 @@ Respond with only the numeric score (e.g., 0.8)
             return []
         
         # Use custom threshold or fall back to config
-        relevance_threshold = threshold if threshold is not None else self.config.RELEVANCE_THRESHOLD
+        relevance_threshold = threshold if threshold is not None else getattr(self.config, "RELEVANCE_THRESHOLD", 0.6)
         
         # Batch scoring to save RPM
-        batch_size = self.config.BATCH_SIZE_RELEVANCE
+        batch_size = getattr(self.config, "BATCH_SIZE_RELEVANCE", 5)
         scored_results = []
         
         logger.info(f"Scoring {len(results)} search results for relevance (batch size: {batch_size})...")
@@ -239,6 +240,6 @@ Respond with only the numeric score (e.g., 0.8)
         
         # Sort by relevance score (descending) and take top MAX_RELEVANT_RESULTS
         filtered = sorted(relevant, key=lambda r: r.relevance_score, reverse=True)
-        filtered = filtered[:self.config.MAX_RELEVANT_RESULTS]
+        filtered = filtered[:getattr(self.config, "MAX_RELEVANT_RESULTS", 5)]
         
         return filtered
