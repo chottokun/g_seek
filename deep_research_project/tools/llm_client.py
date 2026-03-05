@@ -81,6 +81,23 @@ class LLMClient:
             except ImportError:
                 logger.error("langchain_ollama is not installed.")
                 raise
+        elif self.config.LLM_PROVIDER == "gemini":
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                gemini_kwargs = {
+                    "model": self.config.LLM_MODEL,
+                    "temperature": self.config.LLM_TEMPERATURE,
+                    "max_output_tokens": self.config.LLM_MAX_TOKENS,
+                    "google_api_key": self.config.GOOGLE_API_KEY
+                }
+                self.llm = ChatGoogleGenerativeAI(**gemini_kwargs)
+                logger.info(f"Initialized Gemini LLM Client with model: {self.config.LLM_MODEL}")
+            except ImportError:
+                logger.error("langchain_google_genai is not installed.")
+                raise
+            except Exception as e:
+                logger.error(f"Error initializing ChatGoogleGenerativeAI: {e}", exc_info=True)
+                raise
         elif self.config.LLM_PROVIDER == "placeholder_llm":
             logger.info("Initialized Placeholder LLM Client.")
             self.llm = "PlaceholderLLMInstance"

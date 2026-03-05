@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import ResearchState, SearchResult
 from deep_research_project.core.research_loop import ResearchLoop
-from chainlit.input_widget import Switch, Slider, Select
+from chainlit.input_widget import Switch, Slider, Select, TextInput
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,8 @@ async def start():
         
         await cl.ChatSettings([
             Select(id="language", label="Language", values=["Japanese", "English"], initial_value=config.DEFAULT_LANGUAGE),
+            Select(id="llm_provider", label="LLM Provider", values=["openai", "gemini", "azure_openai", "ollama", "placeholder_llm"], initial_value=config.LLM_PROVIDER),
+            TextInput(id="llm_model", label="LLM Model", initial=config.LLM_MODEL),
             Select(id="search_api", label="Search Engine", values=["duckduckgo", "searxng", "tavily"], initial_value=config.SEARCH_API),
             Switch(id="interactive_mode", label="Interactive Mode", initial=config.INTERACTIVE_MODE),
             Slider(id="max_loops", label="Max Research Loops", initial=config.MAX_RESEARCH_LOOPS, min=1, max=10, step=1),
@@ -88,6 +90,8 @@ async def setup_agent(settings):
 
     if config:
         cl.user_session.set("language", settings["language"])
+        config.LLM_PROVIDER = settings["llm_provider"]
+        config.LLM_MODEL = settings["llm_model"]
         config.SEARCH_API = settings["search_api"]
         config.INTERACTIVE_MODE = settings["interactive_mode"]
         config.MAX_RESEARCH_LOOPS = int(settings["max_loops"])

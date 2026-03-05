@@ -47,6 +47,12 @@ def main():
         default_lang = config_default.DEFAULT_LANGUAGE
         lang_index = languages.index(default_lang) if default_lang in languages else 0
         language = st.selectbox("Prompt Language", languages, index=lang_index)
+
+        llm_providers = ["openai", "gemini", "azure_openai", "ollama", "placeholder_llm"]
+        provider_index = llm_providers.index(config_default.LLM_PROVIDER) if config_default.LLM_PROVIDER in llm_providers else 0
+        llm_provider = st.selectbox("LLM Provider", llm_providers, index=provider_index)
+        llm_model = st.text_input("LLM Model", value=config_default.LLM_MODEL)
+
         interactive = st.toggle("Run Interactively?", value=config_default.INTERACTIVE_MODE)
         snippets_only = st.toggle("Use Snippets Only?", value=config_default.USE_SNIPPETS_ONLY_MODE)
         max_chars = st.number_input("Max Chars/Source (0=unlim)", min_value=0, value=config_default.MAX_TEXT_LENGTH_PER_SOURCE_CHARS, step=1000)
@@ -64,6 +70,8 @@ def main():
         if st.button("Start Research"):
             if topic:
                 config = Configuration()
+                config.LLM_PROVIDER = llm_provider
+                config.LLM_MODEL = llm_model
                 config.INTERACTIVE_MODE = interactive
                 config.USE_SNIPPETS_ONLY_MODE = snippets_only
                 config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = max_chars
