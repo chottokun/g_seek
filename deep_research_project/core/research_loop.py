@@ -7,6 +7,7 @@ from deep_research_project.core.state import ResearchState, Source, SearchResult
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
+from deep_research_project.core.prompts import FOLLOW_UP_PROMPT_JA, FOLLOW_UP_PROMPT_EN
 
 # New modular components
 from deep_research_project.core.planning import ResearchPlanner
@@ -235,18 +236,14 @@ class ResearchLoop:
     def format_follow_up_prompt(self, final_report: str, question: str) -> str:
         """Formats the prompt for a follow-up question based on the final report."""
         if self.state.language == "Japanese":
-            return (
-                f"以下のリサーチレポートに基づいて、ユーザーのフォローアップ質問に答えてください。\n\n"
-                f"レポート:\n{final_report}\n\n"
-                f"ユーザーの質問: {question}\n\n"
-                f"レポートの内容のみに基づいて、明確で簡潔な回答を提供してください。回答は日本語で行ってください。"
+            return FOLLOW_UP_PROMPT_JA.format(
+                final_report=final_report,
+                question=question
             )
         else:
-            return (
-                f"Based on the following research report, answer the user's follow-up question.\n\n"
-                f"Report:\n{final_report}\n\n"
-                f"User Question: {question}\n\n"
-                f"Provide a clear and concise answer based only on the report content."
+            return FOLLOW_UP_PROMPT_EN.format(
+                final_report=final_report,
+                question=question
             )
 
     async def _process_section(self, section):
