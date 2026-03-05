@@ -4,7 +4,12 @@ from typing import List, Optional, Tuple, Callable
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.state import KnowledgeGraphModel, Source
-from deep_research_project.core.prompts import KG_EXTRACTION_PROMPT_JA, KG_EXTRACTION_PROMPT_EN
+from deep_research_project.core.prompts import (
+    KG_EXTRACTION_PROMPT_JA, KG_EXTRACTION_PROMPT_EN,
+    REFLECTION_PROMPT_JA, REFLECTION_PROMPT_EN
+)
+from deep_research_project.core.utils import sanitize_query
+
 
 logger = logging.getLogger(__name__)
 
@@ -92,34 +97,18 @@ class ResearchReflector:
                                  language: str) -> Tuple[str, Optional[str]]:
         """Evaluates if more research is needed for the current context."""
         if language == "Japanese":
-            prompt = (
-                f"リサーチトピック: {topic}\n"
-                f"セクション: {section_title}\n"
-                f"セクションの目的: {section_description}\n"
-                f"現在の要約:\n{accumulated_summary}\n\n"
-                f"このセクションにさらなる調査が必要かどうかを評価してください。\n"
-                f"必要な場合、次に調査すべき具体的な検索クエリを生成してください。\n"
-                f"クエリは以下の条件を満たす必要があります:\n"
-                f"- リサーチトピック '{topic}' との関連性を保つ\n"
-                f"- セクション '{section_title}' の目的に直接関連する\n"
-                f"- これまでの要約で既にカバーされていない新しい側面を探る\n"
-                f"- 具体的で検索エンジンで有効な形式\n\n"
-                f"フォーマット: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <次の検索クエリまたは None>"
+            prompt = REFLECTION_PROMPT_JA.format(
+                topic=topic,
+                section_title=section_title,
+                section_description=section_description,
+                accumulated_summary=accumulated_summary
             )
         else:
-            prompt = (
-                f"Research Topic: {topic}\n"
-                f"Section: {section_title}\n"
-                f"Section Purpose: {section_description}\n"
-                f"Current Summary:\n{accumulated_summary}\n\n"
-                f"Evaluate if more research is needed for this section.\n"
-                f"If needed, generate a specific search query for the next investigation.\n"
-                f"The query must meet the following criteria:\n"
-                f"- Maintain relevance to the research topic '{topic}'\n"
-                f"- Directly relate to the section '{section_title}' purpose\n"
-                f"- Explore new aspects not already covered in the summary\n"
-                f"- Be specific and effective for search engines\n\n"
-                f"Format: EVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <Next search query or None>"
+            prompt = REFLECTION_PROMPT_EN.format(
+                topic=topic,
+                section_title=section_title,
+                section_description=section_description,
+                accumulated_summary=accumulated_summary
             )
 
         response = await self.llm_client.generate_text(prompt=prompt)
@@ -133,8 +122,6 @@ class ResearchReflector:
                 q = line.split(":", 1)[-1].strip()
                 if q.lower() != "none": 
                     # Sanitize the reflected query similarly to the initial query
-                    q = q.replace("**", "").replace("__", "").replace("`", "").replace('"', '')
-                    if len(q) > 100: q = q[:100]
-                    next_query = q
+                    next_query = sanitize_query(q)
         
         return evaluation, next_query

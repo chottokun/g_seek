@@ -7,12 +7,17 @@ from deep_research_project.core.state import ResearchState, Source, SearchResult
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
+from deep_research_project.core.prompts import FOLLOW_UP_PROMPT_JA, FOLLOW_UP_PROMPT_EN
 
 # New modular components
 from deep_research_project.core.planning import ResearchPlanner
 from deep_research_project.core.execution import ResearchExecutor
 from deep_research_project.core.reflection import ResearchReflector
 from deep_research_project.core.reporting import ResearchReporter
+from deep_research_project.core.prompts import (
+    NO_INFO_FOUND_MSG_JA, NO_INFO_FOUND_MSG_EN,
+    FOLLOW_UP_PROMPT_JA, FOLLOW_UP_PROMPT_EN
+)
 
 logger = logging.getLogger(__name__)
 
@@ -162,9 +167,9 @@ class ResearchLoop:
         # Handle empty results (from relevance filtering)
         if not selected_results:
             if self.state.language == "Japanese":
-                self.state.new_information = f"クエリ「{self.state.current_query}」に関連する情報が見つかりませんでした。"
+                self.state.new_information = NO_INFO_FOUND_MSG_JA.format(query=self.state.current_query)
             else:
-                self.state.new_information = f"No relevant information found for query: '{self.state.current_query}'"
+                self.state.new_information = NO_INFO_FOUND_MSG_EN.format(query=self.state.current_query)
             
             logger.info(f"No results to summarize for query: '{self.state.current_query}'")
             self.state.pending_source_selection = False
@@ -178,10 +183,13 @@ class ResearchLoop:
         if self.state.new_information:
             self.state.accumulated_summary += f"\n\n## {self.state.current_query}\n{self.state.new_information}"
         
-        # Add new sources to gathered list
+        # Add new sources to gathered list (O(N) source deduplication)
+
+        gathered_links = {s.link for s in self.state.sources_gathered}
         for res in selected_results:
-            if res.link not in [s.link for s in self.state.sources_gathered]:
+            if res.link not in gathered_links:
                 self.state.sources_gathered.append(Source(title=res.title, link=res.link))
+                gathered_links.add(res.link)
         
         self.state.pending_source_selection = False
 
@@ -233,18 +241,14 @@ class ResearchLoop:
     def format_follow_up_prompt(self, final_report: str, question: str) -> str:
         """Formats the prompt for a follow-up question based on the final report."""
         if self.state.language == "Japanese":
-            return (
-                f"以下のリサーチレポートに基づいて、ユーザーのフォローアップ質問に答えてください。\n\n"
-                f"レポート:\n{final_report}\n\n"
-                f"ユーザーの質問: {question}\n\n"
-                f"レポートの内容のみに基づいて、明確で簡潔な回答を提供してください。回答は日本語で行ってください。"
+            return FOLLOW_UP_PROMPT_JA.format(
+                final_report=final_report,
+                question=question
             )
         else:
-            return (
-                f"Based on the following research report, answer the user's follow-up question.\n\n"
-                f"Report:\n{final_report}\n\n"
-                f"User Question: {question}\n\n"
-                f"Provide a clear and concise answer based only on the report content."
+            return FOLLOW_UP_PROMPT_EN.format(
+                final_report=final_report,
+                question=question
             )
 
     async def _process_section(self, section):

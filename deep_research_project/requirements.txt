@@ -2,6 +2,7 @@ python-dotenv
 langchain-community
 langchain-openai
 langchain-ollama
+langchain-google-genai
 duckduckgo-search
 ddgs>=9.10.0
 streamlit

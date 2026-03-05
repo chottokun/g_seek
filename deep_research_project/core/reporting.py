@@ -1,6 +1,13 @@
 import logging
 from typing import List
 from deep_research_project.tools.llm_client import LLMClient
+from deep_research_project.core.prompts import (
+    FINAL_REPORT_PROMPT_JA, FINAL_REPORT_PROMPT_EN,
+    NO_SOURCE_INFO_MSG_JA, NO_CITATION_INSTRUCTION_JA,
+    NO_SOURCE_INFO_MSG_EN, NO_CITATION_INSTRUCTION_EN,
+    SOURCE_INFO_PROMPT_JA, CITATION_INSTRUCTION_JA,
+    SOURCE_INFO_PROMPT_EN, CITATION_INSTRUCTION_EN
+)
 
 logger = logging.getLogger(__name__)
 
@@ -12,42 +19,49 @@ class ResearchReporter:
         """Synthesizes the final report from all completed sections."""
         logger.info("Synthesizing final report.")
         
-        full_context = ""
+        context_parts = []
         all_sources = []
         seen_links = set()
         for sec in research_plan:
             if sec['summary']:
-                full_context += f"\n\n### {sec['title']}\n{sec['summary']}"
+                context_parts.append(f"### {sec['title']}\n{sec['summary']}")
             for s in sec['sources']:
                 if s.link not in seen_links:
                     all_sources.append(s)
                     seen_links.add(s.link)
 
+        full_context = "\n\n".join(context_parts)
+
         source_list_str = "\n".join([f"[{i+1}] {s.title} ({s.link})" for i, s in enumerate(all_sources)])
 
         if not source_list_str:
-            source_info = "No web sources were found."
-            citation_instruction = "Do not use citations."
-        else:
-            source_info = f"Reference Sources:\n{source_list_str}"
             if language == "Japanese":
-                citation_instruction = "番号付きのインライン引用 [1] を使用して出典を明記してください。"
+                source_info = NO_SOURCE_INFO_MSG_JA
+                citation_instruction = NO_CITATION_INSTRUCTION_JA
             else:
-                citation_instruction = "Use numbered in-text citations like [1] to attribute information."
+                source_info = NO_SOURCE_INFO_MSG_EN
+                citation_instruction = NO_CITATION_INSTRUCTION_EN
+        else:
+            if language == "Japanese":
+                source_info = SOURCE_INFO_PROMPT_JA.format(source_list=source_list_str)
+                citation_instruction = CITATION_INSTRUCTION_JA
+            else:
+                source_info = SOURCE_INFO_PROMPT_EN.format(source_list=source_list_str)
+                citation_instruction = CITATION_INSTRUCTION_EN
 
         if language == "Japanese":
-            prompt = (
-                f"トピック: {topic} に関する最終リサーチレポートを作成してください。\n\n"
-                f"コンテキスト:\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"指示: 包括的で専門的な構成（日本語）にしてください。{citation_instruction}"
+            prompt = FINAL_REPORT_PROMPT_JA.format(
+                topic=topic,
+                full_context=full_context,
+                source_info=source_info,
+                citation_instruction=citation_instruction
             )
         else:
-            prompt = (
-                f"Synthesize a final report for: {topic}\n\n"
-                f"Context:\n{full_context}\n\n"
-                f"{source_info}\n\n"
-                f"Instruction: Professional structure. {citation_instruction}"
+            prompt = FINAL_REPORT_PROMPT_EN.format(
+                topic=topic,
+                full_context=full_context,
+                source_info=source_info,
+                citation_instruction=citation_instruction
             )
 
         report = await self.llm_client.generate_text(prompt=prompt)

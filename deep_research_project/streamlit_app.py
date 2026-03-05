@@ -7,6 +7,7 @@ import logging
 import traceback
 import json
 import tempfile
+import html
 
 # Adjust path to import from sibling directories
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -46,6 +47,12 @@ def main():
         default_lang = config_default.DEFAULT_LANGUAGE
         lang_index = languages.index(default_lang) if default_lang in languages else 0
         language = st.selectbox("Prompt Language", languages, index=lang_index)
+
+        llm_providers = ["openai", "gemini", "azure_openai", "ollama", "placeholder_llm"]
+        provider_index = llm_providers.index(config_default.LLM_PROVIDER) if config_default.LLM_PROVIDER in llm_providers else 0
+        llm_provider = st.selectbox("LLM Provider", llm_providers, index=provider_index)
+        llm_model = st.text_input("LLM Model", value=config_default.LLM_MODEL)
+
         interactive = st.toggle("Run Interactively?", value=config_default.INTERACTIVE_MODE)
         snippets_only = st.toggle("Use Snippets Only?", value=config_default.USE_SNIPPETS_ONLY_MODE)
         max_chars = st.number_input("Max Chars/Source (0=unlim)", min_value=0, value=config_default.MAX_TEXT_LENGTH_PER_SOURCE_CHARS, step=1000)
@@ -63,6 +70,8 @@ def main():
         if st.button("Start Research"):
             if topic:
                 config = Configuration()
+                config.LLM_PROVIDER = llm_provider
+                config.LLM_MODEL = llm_model
                 config.INTERACTIVE_MODE = interactive
                 config.USE_SNIPPETS_ONLY_MODE = snippets_only
                 config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = max_chars
@@ -187,27 +196,31 @@ def main():
                         mention_count = int(props.get('mention_count', 1))
                         node_size = 20 + min(mention_count * 5, 40)
                         
+                        # Security: Escape LLM-generated content
+                        esc_label = html.escape(n['label'])
+                        esc_type = html.escape(n['type'])
+
                         # Build detailed title for hover
                         # NOTE: streamlit-agraph also does NOT render HTML in tooltips
-                        hover_info = f"{n['label']} ({n['type']})\n"
+                        hover_info = f"{esc_label} ({esc_type})\n"
                         for k, v in props.items():
                             if k not in ['mention_count', 'section']:
-                                hover_info += f"- {k}: {v}\n"
+                                hover_info += f"- {html.escape(str(k))}: {html.escape(str(v))}\n"
                         
                         source_urls = n.get('source_urls', [])
                         if source_urls:
-                             hover_info += "\nSources:\n" + "\n".join([f"• {url}" for url in source_urls])
+                             hover_info += "\nSources:\n" + "\n".join([f"• {html.escape(str(url))}" for url in source_urls])
 
                         nodes.append(Node(
                             id=n['id'], 
-                            label=n['label'], 
+                            label=esc_label,
                             size=node_size, 
                             group=n['type'],
                             color=type_colors.get(n['type'], "#CCCCCC"),
                             title=hover_info # title is used for mouseover in agraph/vis.js
                         ))
 
-                    edges = [Edge(source=e['source'], target=e['target'], label=e['label']) for e in state.knowledge_graph_edges]
+                    edges = [Edge(source=e['source'], target=e['target'], label=html.escape(e['label'])) for e in state.knowledge_graph_edges]
                     
                     config = Config(
                         width=900, 

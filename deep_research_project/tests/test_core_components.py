@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 # Modules to be tested
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.research_loop import ResearchLoop
-from deep_research_project.core.utils import split_text_into_chunks
+from deep_research_project.core.utils import split_text_into_chunks, sanitize_query
 from deep_research_project.core.state import ResearchState, Source, SearchResult, ResearchPlanModel, Section, KnowledgeGraphModel
 from deep_research_project.tools.llm_client import LLMClient
 
@@ -113,6 +113,25 @@ class TestSplitTextIntoChunks(unittest.TestCase):
         text = "1234567890"
         chunks = split_text_into_chunks(text, 5, 2)
         self.assertEqual(chunks, ["12345", "45678", "7890"])
+
+class TestSanitizeQuery(unittest.TestCase):
+    def test_sanitize_query_basic(self):
+        self.assertEqual(sanitize_query("**bold**"), "bold")
+        self.assertEqual(sanitize_query("`code`"), "code")
+        self.assertEqual(sanitize_query('quoted "query"'), "quoted query")
+
+    def test_sanitize_query_newline(self):
+        self.assertEqual(sanitize_query("line1\nline2"), "line1")
+
+    def test_sanitize_query_truncation(self):
+        long_query = "This is a very long query that should definitely be truncated because it exceeds the one hundred character limit imposed by our utility function"
+        sanitized = sanitize_query(long_query)
+        self.assertTrue(len(sanitized) <= 100)
+        self.assertEqual(sanitized, "This is a very long query that should definitely be truncated because it exceeds the one hundred")
+
+    def test_sanitize_query_empty(self):
+        self.assertEqual(sanitize_query(""), "")
+        self.assertEqual(sanitize_query(None), "")
 
 if __name__ == '__main__':
     unittest.main()
