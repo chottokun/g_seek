@@ -180,6 +180,7 @@ class ResearchLoop:
             self.state.accumulated_summary += f"\n\n## {self.state.current_query}\n{self.state.new_information}"
         
         # Add new sources to gathered list (O(N) source deduplication)
+
         gathered_links = {s.link for s in self.state.sources_gathered}
         for res in selected_results:
             if res.link not in gathered_links:
