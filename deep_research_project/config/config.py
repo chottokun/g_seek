@@ -21,6 +21,9 @@ class Configuration(BaseSettings):
     OPENAI_API_KEY: Optional[str] = Field(default=None)
     OPENAI_API_BASE_URL: Optional[str] = Field(default=None, validation_alias=AliasChoices("OPENAI_API_BASE_URL", "OPENAI_BASE_URL"))
 
+    # Gemini Specific Configuration
+    GOOGLE_API_KEY: Optional[str] = Field(default=None)
+
     # Azure OpenAI Specific Configuration
     AZURE_OPENAI_API_KEY: Optional[str] = Field(default=None)
     AZURE_OPENAI_ENDPOINT: Optional[str] = Field(default=None)
@@ -109,6 +112,9 @@ class Configuration(BaseSettings):
             # However, for now we just log a warning instead of raising to be more flexible (placeholder behavior)
             logger.warning("LLM_PROVIDER is 'openai' but OPENAI_API_KEY is missing. Ensure you have set it or use a local gateway.")
 
+        if self.LLM_PROVIDER == "gemini" and not self.GOOGLE_API_KEY:
+            logger.warning("LLM_PROVIDER is 'gemini' but GOOGLE_API_KEY is missing.")
+
         if self.SUMMARIZATION_CHUNK_OVERLAP_CHARS >= self.SUMMARIZATION_CHUNK_SIZE_CHARS:
              raise ValueError("SUMMARIZATION_CHUNK_OVERLAP_CHARS must be less than SUMMARIZATION_CHUNK_SIZE_CHARS.")
         
@@ -156,6 +162,9 @@ class Configuration(BaseSettings):
         if self.LLM_PROVIDER == "openai" or self.OPENAI_API_BASE_URL: # Show relevant OpenAI details
             config_details.append(f"  OpenAI API Key: {'********' if self.OPENAI_API_KEY else 'Not Set'}")
             config_details.append(f"  OpenAI API Base URL: {self.OPENAI_API_BASE_URL if self.OPENAI_API_BASE_URL else 'Default'}")
+
+        if self.LLM_PROVIDER == "gemini": # Show relevant Gemini details
+            config_details.append(f"  Gemini API Key: {'********' if self.GOOGLE_API_KEY else 'Not Set'}")
 
         if self.LLM_PROVIDER == "azure_openai": # Show relevant Azure details
             config_details.extend([

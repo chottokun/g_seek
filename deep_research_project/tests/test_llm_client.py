@@ -61,5 +61,19 @@ class TestLLMClientAsync(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(res_struct, ResearchPlanModel)
         self.assertTrue(len(res_struct.sections) > 0)
 
+    async def test_gemini_initialization(self):
+        self.mock_config.LLM_PROVIDER = "gemini"
+        self.mock_config.LLM_MODEL = "gemini-pro"
+        self.mock_config.GOOGLE_API_KEY = "test_google_key"
+
+        with patch('langchain_google_genai.ChatGoogleGenerativeAI') as mock_gemini:
+            client = LLMClient(self.mock_config)
+            self.assertIsNotNone(client.llm)
+            mock_gemini.assert_called_once()
+            args, kwargs = mock_gemini.call_args
+            self.assertEqual(kwargs['model'], "gemini-pro")
+            self.assertEqual(kwargs['google_api_key'], "test_google_key")
+            self.assertEqual(kwargs['max_output_tokens'], 1000)
+
 if __name__ == '__main__':
     unittest.main()
