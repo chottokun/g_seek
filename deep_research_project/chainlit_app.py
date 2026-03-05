@@ -8,6 +8,7 @@ import time
 import shutil
 import pathlib
 import json
+import html
 from typing import List
 from pyvis.network import Network
 
@@ -275,48 +276,59 @@ async def display_final_report(final_report: str, state: ResearchState):
                     mention_count = int(props.get('mention_count', 1))
                     node_size = 15 + min(mention_count * 5, 50) # Scale size by mention count
                     
+                    # Security: Escape LLM-generated content
+                    esc_label = html.escape(node['label'])
+                    esc_type = html.escape(node['type'])
+
                     # Build plain text hover info (no HTML tags)
-                    hover_info = f"{node['label']} ({node['type']})\n"
+                    hover_info = f"{esc_label} ({esc_type})\n"
                     for k, v in props.items():
                         if k not in ['mention_count', 'section']:
-                            hover_info += f"{k}: {v}\n"
+                            hover_info += f"{html.escape(str(k))}: {html.escape(str(v))}\n"
                     
                     source_urls = node.get('source_urls', [])
-                    if source_urls:
-                        hover_info += "\nSources:\n" + "\n".join([f"• {url}" for url in source_urls])
+                    esc_source_urls = [html.escape(str(url)) for url in source_urls]
+                    if esc_source_urls:
+                        hover_info += "\nSources:\n" + "\n".join([f"• {url}" for url in esc_source_urls])
                     
                     color = type_colors.get(node['type'], "#CCCCCC")
                     
+                    # Dedicated property for the click handler to avoid regex extraction from title
+                    # Security: Basic protocol validation
+                    primary_url = source_urls[0] if source_urls else None
+                    if primary_url and not primary_url.startswith(("http://", "https://")):
+                        primary_url = None
+
                     net.add_node(
                         node['id'], 
-                        label=node['label'], 
+                        label=esc_label,
                         title=hover_info, 
                         group=node['type'], 
                         color=color,
-                        size=node_size
+                        size=node_size,
+                        source_url=primary_url
                     )
                     
                 for edge in state.knowledge_graph_edges:
                     edge_props = edge.get('properties', {})
+                    esc_edge_label = html.escape(edge['label'])
                     # Build plain text hover info (no HTML tags)
-                    edge_hover = f"Relationship: {edge['label']}\n"
+                    edge_hover = f"Relationship: {esc_edge_label}\n"
                     for k, v in edge_props.items():
-                         edge_hover += f"{k}: {v}\n"
+                         edge_hover += f"{html.escape(str(k))}: {html.escape(str(v))}\n"
                     
-                    net.add_edge(edge['source'], edge['target'], label=edge['label'], title=edge_hover)
+                    net.add_edge(edge['source'], edge['target'], label=esc_edge_label, title=edge_hover)
                 
                 # Dynamic interaction: Click to open URL
-                # NOTE: Use raw string to avoid Python escaping issues with regex
                 script = r"""
                 var container = document.getElementById('mynetwork');
                 network.on("click", function (params) {
                     if (params.nodes.length > 0) {
                         var nodeId = params.nodes[0];
                         var node = nodes.get(nodeId);
-                        // Extract URL from title (plain text now, no HTML tags)
-                        var match = node.title.match(/https?:\/\/[^\s]+/);
-                        if (match) {
-                            window.open(match[0], '_blank');
+                        // Security: Use dedicated source_url property with protocol validation
+                        if (node.source_url && (node.source_url.startsWith('http://') || node.source_url.startsWith('https://'))) {
+                            window.open(node.source_url, '_blank');
                         }
                     }
                 });
@@ -341,7 +353,9 @@ async def display_final_report(final_report: str, state: ResearchState):
                     html_content = f.read()
                 
                 if "</body>" in html_content:
-                    html_content = html_content.replace("</body>", f"<script>{script}</script></body>")
+                    # Robust injection: Use rpartition to ensure we inject before the LAST </body> tag
+                    parts = html_content.rpartition("</body>")
+                    html_content = f"{parts[0]}<script>{script}</script></body>{parts[2]}"
                     with open(kg_html_path, "w", encoding="utf-8") as f:
                         f.write(html_content)
 
