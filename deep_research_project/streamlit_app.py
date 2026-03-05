@@ -48,8 +48,14 @@ def main():
         lang_index = languages.index(default_lang) if default_lang in languages else 0
         language = st.selectbox("Prompt Language", languages, index=lang_index)
 
-        llm_providers = ["openai", "gemini", "azure_openai", "ollama", "placeholder_llm"]
-        provider_index = llm_providers.index(config_default.LLM_PROVIDER) if config_default.LLM_PROVIDER in llm_providers else 0
+        llm_providers = config_default.get_available_providers()
+        
+        # Ensure current provider is available, otherwise default to first available
+        current_provider = config_default.LLM_PROVIDER
+        if current_provider not in llm_providers:
+            current_provider = llm_providers[0] if llm_providers else "placeholder_llm"
+            
+        provider_index = llm_providers.index(current_provider) if current_provider in llm_providers else 0
         llm_provider = st.selectbox("LLM Provider", llm_providers, index=provider_index)
         llm_model = st.text_input("LLM Model", value=config_default.LLM_MODEL)
 

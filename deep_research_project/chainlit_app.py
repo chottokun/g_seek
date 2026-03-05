@@ -59,9 +59,10 @@ async def start():
         # Run cleanup occasionally on startup
         cleanup_old_reports(pathlib.Path(config.REPORT_DIR), config.CLEANUP_AGE_SECONDS)
         
+        llm_providers = config.get_available_providers()
         await cl.ChatSettings([
             Select(id="language", label="Language", values=["Japanese", "English"], initial_value=config.DEFAULT_LANGUAGE),
-            Select(id="llm_provider", label="LLM Provider", values=["openai", "gemini", "azure_openai", "ollama", "placeholder_llm"], initial_value=config.LLM_PROVIDER),
+            Select(id="llm_provider", label="LLM Provider", values=llm_providers, initial_value=config.LLM_PROVIDER if config.LLM_PROVIDER in llm_providers else llm_providers[0]),
             TextInput(id="llm_model", label="LLM Model", initial=config.LLM_MODEL),
             Select(id="search_api", label="Search Engine", values=["duckduckgo", "searxng", "tavily"], initial_value=config.SEARCH_API),
             Switch(id="interactive_mode", label="Interactive Mode", initial=config.INTERACTIVE_MODE),

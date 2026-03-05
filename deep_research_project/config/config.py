@@ -151,6 +151,31 @@ class Configuration(BaseSettings):
             # But for initial config, raising is okay.
             raise ValueError("SUMMARIZATION_CHUNK_OVERLAP_CHARS must be non-negative and less than SUMMARIZATION_CHUNK_SIZE_CHARS.")
 
+    def get_available_providers(self) -> list[str]:
+        """Returns a list of LLM providers that have valid configurations."""
+        available = []
+        
+        # Always include placeholder for testing/fallback
+        available.append("placeholder_llm")
+        
+        # OpenAI
+        if self.OPENAI_API_KEY or self.OPENAI_API_BASE_URL:
+            available.append("openai")
+            
+        # Gemini
+        if self.GOOGLE_API_KEY:
+            available.append("gemini")
+            
+        # Azure OpenAI
+        if all([self.AZURE_OPENAI_API_KEY, self.AZURE_OPENAI_ENDPOINT, self.AZURE_OPENAI_API_VERSION, self.AZURE_OPENAI_DEPLOYMENT_NAME]):
+            available.append("azure_openai")
+            
+        # Ollama
+        if self.OLLAMA_BASE_URL:
+            available.append("ollama")
+            
+        return available
+
     def __str__(self):
         # Dynamically build the string representation
         config_details = [
