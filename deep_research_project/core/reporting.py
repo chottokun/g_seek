@@ -1,7 +1,13 @@
 import logging
 from typing import List
 from deep_research_project.tools.llm_client import LLMClient
-from deep_research_project.core.prompts import FINAL_REPORT_PROMPT_JA, FINAL_REPORT_PROMPT_EN
+from deep_research_project.core.prompts import (
+    FINAL_REPORT_PROMPT_JA, FINAL_REPORT_PROMPT_EN,
+    NO_SOURCE_INFO_MSG_JA, NO_CITATION_INSTRUCTION_JA,
+    NO_SOURCE_INFO_MSG_EN, NO_CITATION_INSTRUCTION_EN,
+    SOURCE_INFO_PROMPT_JA, CITATION_INSTRUCTION_JA,
+    SOURCE_INFO_PROMPT_EN, CITATION_INSTRUCTION_EN
+)
 
 logger = logging.getLogger(__name__)
 

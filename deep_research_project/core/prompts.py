@@ -222,3 +222,17 @@ FOLLOW_UP_PROMPT_EN = (
     "User Question: {question}\n\n"
     "Instruction: Provide a clear and concise answer based only on the report content."
 )
+
+
+NO_INFO_FOUND_MSG_JA = "クエリ「{query}」に関連する情報が見つかりませんでした。"
+NO_INFO_FOUND_MSG_EN = "No relevant information found for query: '{query}'"
+
+NO_SOURCE_INFO_MSG_JA = "出典情報はありません。"
+NO_CITATION_INSTRUCTION_JA = "情報源がないため、引用は不要です。"
+NO_SOURCE_INFO_MSG_EN = "No source information available."
+NO_CITATION_INSTRUCTION_EN = "No citations are needed as there are no sources."
+
+SOURCE_INFO_PROMPT_JA = "以下の情報源を利用してください:\n{source_list}"
+CITATION_INSTRUCTION_JA = "文中で [1] のような番号付きのインライン引用を適切に行ってください。"
+SOURCE_INFO_PROMPT_EN = "Use the following sources:\n{source_list}"
+CITATION_INSTRUCTION_EN = "Use numbered in-text citations like [1] where appropriate."
