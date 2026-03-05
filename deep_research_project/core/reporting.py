@@ -29,14 +29,19 @@ class ResearchReporter:
         source_list_str = "\n".join([f"[{i+1}] {s.title} ({s.link})" for i, s in enumerate(all_sources)])
 
         if not source_list_str:
-            source_info = "No web sources were found."
-            citation_instruction = "Do not use citations."
-        else:
-            source_info = f"Reference Sources:\n{source_list_str}"
             if language == "Japanese":
-                citation_instruction = "番号付きのインライン引用 [1] を使用して出典を明記してください。"
+                source_info = NO_SOURCE_INFO_MSG_JA
+                citation_instruction = NO_CITATION_INSTRUCTION_JA
             else:
-                citation_instruction = "Use numbered in-text citations like [1] to attribute information."
+                source_info = NO_SOURCE_INFO_MSG_EN
+                citation_instruction = NO_CITATION_INSTRUCTION_EN
+        else:
+            if language == "Japanese":
+                source_info = SOURCE_INFO_PROMPT_JA.format(source_list=source_list_str)
+                citation_instruction = CITATION_INSTRUCTION_JA
+            else:
+                source_info = SOURCE_INFO_PROMPT_EN.format(source_list=source_list_str)
+                citation_instruction = CITATION_INSTRUCTION_EN
 
         if language == "Japanese":
             prompt = FINAL_REPORT_PROMPT_JA.format(

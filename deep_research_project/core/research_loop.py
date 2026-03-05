@@ -14,6 +14,10 @@ from deep_research_project.core.planning import ResearchPlanner
 from deep_research_project.core.execution import ResearchExecutor
 from deep_research_project.core.reflection import ResearchReflector
 from deep_research_project.core.reporting import ResearchReporter
+from deep_research_project.core.prompts import (
+    NO_INFO_FOUND_MSG_JA, NO_INFO_FOUND_MSG_EN,
+    FOLLOW_UP_PROMPT_JA, FOLLOW_UP_PROMPT_EN
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,9 +167,9 @@ class ResearchLoop:
         # Handle empty results (from relevance filtering)
         if not selected_results:
             if self.state.language == "Japanese":
-                self.state.new_information = f"クエリ「{self.state.current_query}」に関連する情報が見つかりませんでした。"
+                self.state.new_information = NO_INFO_FOUND_MSG_JA.format(query=self.state.current_query)
             else:
-                self.state.new_information = f"No relevant information found for query: '{self.state.current_query}'"
+                self.state.new_information = NO_INFO_FOUND_MSG_EN.format(query=self.state.current_query)
             
             logger.info(f"No results to summarize for query: '{self.state.current_query}'")
             self.state.pending_source_selection = False
