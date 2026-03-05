@@ -4,8 +4,9 @@ from typing import List, Optional, Callable
 from pydantic import BaseModel
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
-from deep_research_project.tools.search_client import SearchClient, SearchResult
+from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
+from deep_research_project.core.state import SearchResult
 from deep_research_project.core.utils import split_text_into_chunks
 from deep_research_project.core.prompts import (
     SUMMARIZE_CHUNK_PROMPT_JA, SUMMARIZE_CHUNK_PROMPT_EN,
