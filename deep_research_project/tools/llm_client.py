@@ -64,6 +64,24 @@ class LLMClient:
                 logger.error(f"Error initializing AzureChatOpenAI: {e}", exc_info=True)
                 raise
 
+        elif self.config.LLM_PROVIDER == "google":
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                google_kwargs = {
+                    "model": self.config.LLM_MODEL,
+                    "api_key": self.config.GOOGLE_API_KEY,
+                    "temperature": self.config.LLM_TEMPERATURE,
+                    "max_output_tokens": self.config.LLM_MAX_TOKENS
+                }
+                self.llm = ChatGoogleGenerativeAI(**google_kwargs)
+                logger.info(f"Initialized Google Gemini Client with model: {self.config.LLM_MODEL}")
+            except ImportError:
+                logger.error("langchain_google_genai is not installed.")
+                raise
+            except Exception as e:
+                logger.error(f"Error initializing ChatGoogleGenerativeAI: {e}", exc_info=True)
+                raise
+
         elif self.config.LLM_PROVIDER == "ollama":
             try:
                 from langchain_ollama import ChatOllama

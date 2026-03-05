@@ -27,6 +27,9 @@ class Configuration(BaseSettings):
     AZURE_OPENAI_API_VERSION: Optional[str] = Field(default=None)
     AZURE_OPENAI_DEPLOYMENT_NAME: Optional[str] = Field(default=None)
 
+    # Gemini (Google) Specific Configuration
+    GOOGLE_API_KEY: Optional[str] = Field(default=None)
+
     # Ollama Specific Configuration
     OLLAMA_BASE_URL: Optional[str] = Field(default=None)
     OLLAMA_NUM_RETRIES: int = Field(default=1)
@@ -119,20 +122,18 @@ class Configuration(BaseSettings):
         if self.RELEVANCE_THRESHOLD < 0.0 or self.RELEVANCE_THRESHOLD > 1.0:
             raise ValueError("RELEVANCE_THRESHOLD must be between 0.0 and 1.0")
 
-        return self
-
         # Perform any validation or conditional setup if needed
         if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY and not self.OPENAI_API_BASE_URL:
             # If using default OpenAI provider and no custom base URL, API key is essential.
             # If OPENAI_API_BASE_URL is set, it might be a proxy or local LLM not requiring a key.
-            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER is 'openai' and no custom OPENAI_API_BASE_URL is set.")
+            logger.warning("LLM_PROVIDER is 'openai' but OPENAI_API_KEY is missing. Ensure you have set it or use a local gateway.")
 
         if self.LLM_PROVIDER == "azure_openai":
             if not all([self.AZURE_OPENAI_API_KEY, self.AZURE_OPENAI_ENDPOINT, self.AZURE_OPENAI_API_VERSION, self.AZURE_OPENAI_DEPLOYMENT_NAME]):
                 raise ValueError("For LLM_PROVIDER 'azure_openai', all AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, and AZURE_OPENAI_DEPLOYMENT_NAME must be set.")
-            # If using Azure, LLM_MODEL should ideally match AZURE_OPENAI_DEPLOYMENT_NAME.
-            # Or, we can enforce that LLM_MODEL is used as the deployment name here.
-            # For now, assuming documentation will guide user to set LLM_MODEL = AZURE_OPENAI_DEPLOYMENT_NAME.
+
+        if self.LLM_PROVIDER == "google" and not self.GOOGLE_API_KEY:
+             raise ValueError("GOOGLE_API_KEY is required when LLM_PROVIDER is 'google'")
 
         if self.SEARCH_API == "tavily" and not self.TAVILY_API_KEY:
             raise ValueError("TAVILY_API_KEY is required when SEARCH_API is 'tavily'")
@@ -141,9 +142,9 @@ class Configuration(BaseSettings):
         if self.SUMMARIZATION_CHUNK_SIZE_CHARS <= 0:
             raise ValueError("SUMMARIZATION_CHUNK_SIZE_CHARS must be positive.")
         if self.SUMMARIZATION_CHUNK_OVERLAP_CHARS < 0 or self.SUMMARIZATION_CHUNK_OVERLAP_CHARS >= self.SUMMARIZATION_CHUNK_SIZE_CHARS:
-            # Instead of raising, we can force it to a safe value or just let the user know later.
-            # But for initial config, raising is okay.
             raise ValueError("SUMMARIZATION_CHUNK_OVERLAP_CHARS must be non-negative and less than SUMMARIZATION_CHUNK_SIZE_CHARS.")
+
+        return self
 
     def __str__(self):
         # Dynamically build the string representation
@@ -164,6 +165,9 @@ class Configuration(BaseSettings):
                 f"  Azure OpenAI API Version: {self.AZURE_OPENAI_API_VERSION}",
                 f"  Azure OpenAI Deployment Name: {self.AZURE_OPENAI_DEPLOYMENT_NAME}",
             ])
+
+        if self.LLM_PROVIDER == "google": # Show relevant Gemini details
+            config_details.append(f"  Google API Key: {'********' if self.GOOGLE_API_KEY else 'Not Set'}")
 
         if self.LLM_PROVIDER == "ollama": # Show relevant Ollama details
              config_details.append(f"  Ollama Base URL: {self.OLLAMA_BASE_URL if self.OLLAMA_BASE_URL else 'Default'}")

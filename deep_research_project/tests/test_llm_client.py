@@ -26,6 +26,34 @@ class TestLLMClientAsync(unittest.IsolatedAsyncioTestCase):
         with patch('langchain_openai.ChatOpenAI'):
             self.client = LLMClient(self.mock_config)
 
+    async def test_azure_openai_initialization(self):
+        self.mock_config.LLM_PROVIDER = "azure_openai"
+        self.mock_config.AZURE_OPENAI_API_KEY = "test_key"
+        self.mock_config.AZURE_OPENAI_ENDPOINT = "https://test.endpoint"
+        self.mock_config.AZURE_OPENAI_API_VERSION = "2023-05-15"
+        self.mock_config.AZURE_OPENAI_DEPLOYMENT_NAME = "test_deployment"
+
+        with patch('langchain_openai.AzureChatOpenAI') as mock_azure:
+            client = LLMClient(self.mock_config)
+            self.assertIsNotNone(client.llm)
+            mock_azure.assert_called_once()
+            args, kwargs = mock_azure.call_args
+            self.assertEqual(kwargs["azure_endpoint"], "https://test.endpoint")
+            self.assertEqual(kwargs["azure_deployment"], "test_deployment")
+
+    async def test_google_gemini_initialization(self):
+        self.mock_config.LLM_PROVIDER = "google"
+        self.mock_config.GOOGLE_API_KEY = "test_google_key"
+        self.mock_config.LLM_MODEL = "gemini-pro"
+
+        with patch('langchain_google_genai.ChatGoogleGenerativeAI') as mock_google:
+            client = LLMClient(self.mock_config)
+            self.assertIsNotNone(client.llm)
+            mock_google.assert_called_once()
+            args, kwargs = mock_google.call_args
+            self.assertEqual(kwargs["model"], "gemini-pro")
+            self.assertEqual(kwargs["api_key"], "test_google_key")
+
     async def test_generate_text_async(self):
         # Mock ainvoke
         self.client.llm = AsyncMock()
