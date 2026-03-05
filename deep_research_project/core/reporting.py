@@ -12,16 +12,18 @@ class ResearchReporter:
         """Synthesizes the final report from all completed sections."""
         logger.info("Synthesizing final report.")
         
-        full_context = ""
+        context_parts = []
         all_sources = []
         seen_links = set()
         for sec in research_plan:
             if sec['summary']:
-                full_context += f"\n\n### {sec['title']}\n{sec['summary']}"
+                context_parts.append(f"### {sec['title']}\n{sec['summary']}")
             for s in sec['sources']:
                 if s.link not in seen_links:
                     all_sources.append(s)
                     seen_links.add(s.link)
+
+        full_context = "\n\n".join(context_parts)
 
         source_list_str = "\n".join([f"[{i+1}] {s.title} ({s.link})" for i, s in enumerate(all_sources)])
 
