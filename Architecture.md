@@ -31,13 +31,16 @@ The Research Assistant has been modernized to follow a multi-stage, asynchronous
 
 - **Framework**: LangChain (v0.3+) for LLM orchestration and structured outputs.
 - **Async Runtime**: Python `asyncio` for non-blocking I/O (searches, retrievals, LLM calls).
-- **LLM Clients**: Support for OpenAI, Azure OpenAI, and Ollama (via `ChatOllama`) with **exponential backoff retry logic** (max 3 retries, 2s/4s/8s delays).
-- **Search**: DuckDuckGo and SearxNG support.
-- **Frontend**: Chainlit (Modern UI with interruption support) and Streamlit.
+- **LLM Clients**: Support for **Gemini**, **OpenAI**, **Azure OpenAI**, and **Ollama** (via `ChatOllama`) with **exponential backoff retry logic** (max 3 retries, 2s/4s/8s delays).
+- **Search**: DuckDuckGo, SearxNG, and **Tavily** support.
+- **Frontend**: Chainlit (Modern UI with interruption and dynamic provider filtering) and Streamlit.
 - **Parsing**: Pydantic v2 for data validation and schema definition.
 - **Package Management**: `uv` for lightning-fast, reproducible dependency management.
 - **Containerization**: Docker & Docker Compose for orchestrated environments (including SearxNG).
-- **Security**: SSRF protection via IP address validation in `ContentRetriever`.
+- **Security**: 
+    - **SSRF Protection**: IP address validation in `ContentRetriever` to block local network access.
+    - **XSS Protection**: Proper sanitization and rendering in Knowledge Graph reports.
+    - **Prompt Injection Protection**: Sanitization of user-provided content before LLM ingestion.
 
 ## Infrastructure & Environment
 

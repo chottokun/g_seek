@@ -16,7 +16,8 @@ Google社のAIコーディングアシスタント[Jules](https://jules.google.c
 - **SRPに基づくモジュラー設計**: リサーチの各フェーズ（Planning, Execution, Reflection, Reporting）を独立したモジュールに分離。単一責任原則の徹底により、エージェントの挙動の予測可能性とテスト容易性を向上。
 - **効率的な並列処理**: `asyncio.gather` とセマフォによる流量制御を組み合わせ、大規模ドキュメントのチャンク要約を並列実行。リソース制約を守りつつスループットを最大化。
 - **$O(N)$ ナレッジマージ**: 辞書インデックスを活用し、抽出されたエンティティと関係性を線形時間でマージ。大規模なリサーチ結果でも破綻しないグラフ統合アルゴリズム。
-- **堅牢な実行環境**: LLM API接続時の指数バックオフ・リトライ、およびWebスクレイピング時のSSRF脆弱性対策（ローカルネットワークへのアクセスブロック）を標準実装。
+- **堅牢な実行環境**: LLM API接続時の指数バックオフ・リトライ、およびWebスクレイピング時の**SSRF脆弱性対策**（ローカルネットワークへのアクセスブロック）、**Stored XSS対策**、**プロンプトインジェクション対策**を標準実装。
+- **UIオートフィルタリング**: 設定済み（APIキー入力済み）のLLMプロバイダーのみを選択肢として表示する動的UI（Streamlit/Chainlit）。
 - **uv による再現性の確保**: 決定論的なパッケージ管理ツール `uv` を活用し、開発からDocker実行環境まで、依存関係による不整合を排除した高速なセットアップを実現。
 
 ## セットアップ
@@ -42,9 +43,11 @@ cp .env.example .env
 ```
 
 主な設定項目:
-- `LLM_PROVIDER`: `ollama`, `openai`, `azure` 等
-- `OPENAI_BASE_URL`: OpenAI互換サービス（LiteLLM, Local LLMs等）を使用する場合のベースURL
-- `SEARCH_API`: `searxng`, `duckduckgo` 等
+- `LLM_PROVIDER`: `gemini`, `openai`, `azure_openai`, `ollama` 等（キーが設定されているもののみUIで選択可能）
+- `GOOGLE_API_KEY`: Geminiを使用する場合に必要
+- `OPENAI_API_KEY`: OpenAIを使用する場合に必要
+- `AZURE_OPENAI_API_KEY`: Azure OpenAIを使用する場合に必要
+- `SEARCH_API`: `tavily`, `searxng`, `duckduckgo` 等
 - `MAX_RESEARCH_LOOPS`: 最大ループ回数（デフォルト 3）
 
 ### OpenAI互換サービスの使用
