@@ -151,12 +151,15 @@ class LLMClient:
         return None # Should not be reached but better than recursion
 
     def _is_fixed_temperature_model(self, model_name: str) -> bool:
-        """Checks if the model belongs to the gpt-5 series or o-series (reasoning models)
-        which may have fixed temperature requirements (typically 1.0)."""
-        if not model_name:
+        """Checks if the model matches any of the patterns defined in the configuration
+        for models requiring a fixed temperature (1.0)."""
+        if not model_name or not hasattr(self.config, "FIXED_TEMPERATURE_MODELS"):
             return False
+
+        patterns = [p.strip().lower() for p in self.config.FIXED_TEMPERATURE_MODELS.split(",") if p.strip()]
         model_name_lower = model_name.lower()
-        return "gpt-5" in model_name_lower or "o1-" in model_name_lower or model_name_lower == "o1" or "o3-" in model_name_lower or model_name_lower == "o3"
+
+        return any(pattern in model_name_lower for pattern in patterns)
 
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt with retry logic and caching."""

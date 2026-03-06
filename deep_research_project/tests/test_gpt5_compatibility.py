@@ -14,9 +14,19 @@ class TestGPT5Compatibility(unittest.IsolatedAsyncioTestCase):
         self.mock_config.OPENAI_API_BASE_URL = None
         self.mock_config.LLM_RATE_LIMIT_RPM = 0
         self.mock_config.ENABLE_CACHING = False
+        self.mock_config.FIXED_TEMPERATURE_MODELS = "gpt-5,o1,o3"
 
     async def test_gpt5_temperature_override_init(self):
         self.mock_config.LLM_MODEL = "gpt-5.2"
+        with patch('langchain_openai.ChatOpenAI') as mock_chat:
+            client = LLMClient(self.mock_config)
+            mock_chat.assert_called_once()
+            args, kwargs = mock_chat.call_args
+            self.assertEqual(kwargs['temperature'], 1.0)
+
+    async def test_custom_fixed_temperature_model(self):
+        self.mock_config.LLM_MODEL = "special-reasoning-v1"
+        self.mock_config.FIXED_TEMPERATURE_MODELS = "gpt-5,o1,o3,special-reasoning"
         with patch('langchain_openai.ChatOpenAI') as mock_chat:
             client = LLMClient(self.mock_config)
             mock_chat.assert_called_once()
