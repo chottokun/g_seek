@@ -16,6 +16,7 @@ class Configuration(BaseSettings):
     LLM_MODEL: str = Field(default="default_model_name")
     LLM_TEMPERATURE: float = Field(default=0.7)
     LLM_MAX_TOKENS: int = Field(default=1024)
+    FIXED_TEMPERATURE_MODELS: str = Field(default="gpt-5,o1,o3", description="Comma-separated model name patterns that require fixed temperature (1.0)")
 
     # OpenAI Specific Configuration
     OPENAI_API_KEY: Optional[str] = Field(default=None)
@@ -183,6 +184,7 @@ class Configuration(BaseSettings):
             f"  LLM Model: {self.LLM_MODEL}",
             f"  LLM Temperature: {self.LLM_TEMPERATURE}",
             f"  LLM Max Tokens: {self.LLM_MAX_TOKENS}",
+            f"  Fixed Temperature Models: {self.FIXED_TEMPERATURE_MODELS}",
         ]
         if self.LLM_PROVIDER == "openai" or self.OPENAI_API_BASE_URL: # Show relevant OpenAI details
             config_details.append(f"  OpenAI API Key: {'********' if self.OPENAI_API_KEY else 'Not Set'}")
