@@ -26,8 +26,8 @@ class LLMClient:
                 from langchain_openai import ChatOpenAI
 
                 temperature = self.config.LLM_TEMPERATURE
-                if self._is_gpt5_model(self.config.LLM_MODEL):
-                    logger.info(f"Model {self.config.LLM_MODEL} detected as GPT-5 series. Overriding temperature to 1.0")
+                if self._is_fixed_temperature_model(self.config.LLM_MODEL):
+                    logger.info(f"Model {self.config.LLM_MODEL} detected as requiring fixed temperature (1.0). Overriding.")
                     temperature = 1.0
 
                 openai_kwargs = {
@@ -150,13 +150,17 @@ class LLMClient:
 
         return None # Should not be reached but better than recursion
 
-    def _is_gpt5_model(self, model_name: str) -> bool:
-        """Checks if the model belongs to the gpt-5 series."""
-        return model_name and "gpt-5" in model_name.lower()
+    def _is_fixed_temperature_model(self, model_name: str) -> bool:
+        """Checks if the model belongs to the gpt-5 series or o-series (reasoning models)
+        which may have fixed temperature requirements (typically 1.0)."""
+        if not model_name:
+            return False
+        model_name_lower = model_name.lower()
+        return "gpt-5" in model_name_lower or "o1-" in model_name_lower or model_name_lower == "o1" or "o3-" in model_name_lower or model_name_lower == "o3"
 
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt with retry logic and caching."""
-        if self._is_gpt5_model(self.config.LLM_MODEL):
+        if self._is_fixed_temperature_model(self.config.LLM_MODEL):
             if temperature is not None and temperature != 1.0:
                 logger.info(f"Overriding provided temperature {temperature} to 1.0 for GPT-5 model.")
             temperature = 1.0

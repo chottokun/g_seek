@@ -23,6 +23,14 @@ class TestGPT5Compatibility(unittest.IsolatedAsyncioTestCase):
             args, kwargs = mock_chat.call_args
             self.assertEqual(kwargs['temperature'], 1.0)
 
+    async def test_o1_temperature_override_init(self):
+        self.mock_config.LLM_MODEL = "o1-mini"
+        with patch('langchain_openai.ChatOpenAI') as mock_chat:
+            client = LLMClient(self.mock_config)
+            mock_chat.assert_called_once()
+            args, kwargs = mock_chat.call_args
+            self.assertEqual(kwargs['temperature'], 1.0)
+
     async def test_gpt5_temperature_override_invoke(self):
         self.mock_config.LLM_MODEL = "gpt-5-preview"
         with patch('langchain_openai.ChatOpenAI') as mock_chat:
