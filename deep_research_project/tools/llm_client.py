@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+class LLMPolicyError(Exception):
+    """Exception raised when the LLM provider refuses to process a request due to safety or policy filters."""
+    pass
+
 class LLMClient:
     def __init__(self, config: Configuration):
         self.config = config
@@ -132,6 +136,11 @@ class LLMClient:
             except Exception as e:
                 error_str = str(e).lower()
                 is_rate_limit = "rate limit" in error_str or "429" in error_str
+                is_policy_error = any(kw in error_str for kw in ["policy", "safety", "content_filter", "filtered", "blocked", "management"])
+
+                if is_policy_error:
+                    logger.warning(f"LLM call blocked by policy/safety filter: {e}")
+                    raise LLMPolicyError(f"LLM Policy Violation: {e}")
                 
                 if attempt < max_retries and (is_rate_limit or "timeout" in error_str or "connection" in error_str):
                     delay = base_delay * (2 ** attempt)
@@ -165,7 +174,11 @@ class LLMClient:
                     return response.content
                 return str(response)
 
-            result = await self._invoke_with_retry(_call)
+            try:
+                result = await self._invoke_with_retry(_call)
+            except LLMPolicyError:
+                logger.warning("LLM call suppressed due to policy violation in generate_text. Returning empty string.")
+                return ""
         
         if getattr(self.config, "ENABLE_CACHING", True) and result:
             await self.cache_manager.set_llm_cache(prompt, result)
@@ -197,6 +210,9 @@ class LLMClient:
             try:
                 # Try native structured output with retry
                 result = await self._invoke_with_retry(_call_native)
+            except LLMPolicyError:
+                logger.warning("LLM call suppressed due to policy violation in generate_structured. Falling back to robust extraction.")
+                result = await self._generate_structured_fallback(prompt, response_model)
             except Exception as e:
                 logger.warning(f"Native structured output failed even with retries, falling back to PydanticOutputParser: {e}")
                 result = await self._generate_structured_fallback(prompt, response_model)
@@ -214,7 +230,11 @@ class LLMClient:
         format_instructions = parser.get_format_instructions()
         full_prompt = f"{prompt}\n\n{format_instructions}"
 
-        response_text = await self.generate_text(full_prompt)
+        try:
+            response_text = await self.generate_text(full_prompt)
+        except LLMPolicyError:
+            logger.error("Policy error during structured fallback. Attempting minimal recovery.")
+            return self._robust_json_extract("", response_model)
         
         try:
             # Standard parsing

@@ -79,8 +79,14 @@ class ResearchExecutor:
                     prompt = SUMMARIZE_CHUNK_PROMPT_EN.format(query=query, chunk=chunk)
                 return await self.llm_client.generate_text(prompt=prompt)
 
-        chunk_summaries = await asyncio.gather(*[summarize_chunk(c, u) for c, u in all_chunks_info])
-        valid_summaries = [s for s in chunk_summaries if s]
+        chunk_summaries = await asyncio.gather(*[summarize_chunk(c, u) for c, u in all_chunks_info], return_exceptions=True)
+
+        valid_summaries = []
+        for s in chunk_summaries:
+            if isinstance(s, Exception):
+                logger.error(f"Error summarizing chunk: {s}")
+            elif s:
+                valid_summaries.append(s)
         
         if not valid_summaries:
             return "Failed to generate any summaries from the segments."
@@ -138,8 +144,12 @@ Search Results:{items_text}
             class ScoreBatch(BaseModel):
                 scores: List[float]
             
-            response = await self.llm_client.generate_structured(prompt, ScoreBatch)
-            scores = [max(0.0, min(1.0, s)) for s in response.scores]
+            try:
+                response = await self.llm_client.generate_structured(prompt, ScoreBatch)
+                scores = [max(0.0, min(1.0, s)) for s in response.scores]
+            except Exception as e:
+                logger.warning(f"Structured batch scoring failed: {e}. Falling back to individual scoring.")
+                raise # Let the outer try-except handle the fallback
             
             # Ensure we have the same number of scores as results
             if len(scores) != len(results):
