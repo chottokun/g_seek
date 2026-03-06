@@ -24,9 +24,15 @@ class LLMClient:
         if self.config.LLM_PROVIDER == "openai":
             try:
                 from langchain_openai import ChatOpenAI
+
+                temperature = self.config.LLM_TEMPERATURE
+                if self._is_fixed_temperature_model(self.config.LLM_MODEL):
+                    logger.info(f"Model {self.config.LLM_MODEL} detected as requiring fixed temperature (1.0). Overriding.")
+                    temperature = 1.0
+
                 openai_kwargs = {
                     "model_name": self.config.LLM_MODEL,
-                    "temperature": self.config.LLM_TEMPERATURE,
+                    "temperature": temperature,
                     "max_tokens": self.config.LLM_MAX_TOKENS
                 }
                 if self.config.OPENAI_API_KEY:
@@ -144,8 +150,24 @@ class LLMClient:
 
         return None # Should not be reached but better than recursion
 
+    def _is_fixed_temperature_model(self, model_name: str) -> bool:
+        """Checks if the model matches any of the patterns defined in the configuration
+        for models requiring a fixed temperature (1.0)."""
+        if not model_name or not hasattr(self.config, "FIXED_TEMPERATURE_MODELS"):
+            return False
+
+        patterns = [p.strip().lower() for p in self.config.FIXED_TEMPERATURE_MODELS.split(",") if p.strip()]
+        model_name_lower = model_name.lower()
+
+        return any(pattern in model_name_lower for pattern in patterns)
+
     async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt with retry logic and caching."""
+        if self._is_fixed_temperature_model(self.config.LLM_MODEL):
+            if temperature is not None and temperature != 1.0:
+                logger.info(f"Overriding provided temperature {temperature} to 1.0 for GPT-5 model.")
+            temperature = 1.0
+
         if getattr(self.config, "ENABLE_CACHING", True):
             cached = await self.cache_manager.get_llm_cache(prompt)
             if cached:
