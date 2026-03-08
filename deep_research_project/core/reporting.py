@@ -6,7 +6,8 @@ from deep_research_project.core.prompts import (
     NO_SOURCE_INFO_MSG_JA, NO_CITATION_INSTRUCTION_JA,
     NO_SOURCE_INFO_MSG_EN, NO_CITATION_INSTRUCTION_EN,
     SOURCE_INFO_PROMPT_JA, CITATION_INSTRUCTION_JA,
-    SOURCE_INFO_PROMPT_EN, CITATION_INSTRUCTION_EN
+    SOURCE_INFO_PROMPT_EN, CITATION_INSTRUCTION_EN,
+    MERMAID_DIAGRAM_PROMPT_JA, MERMAID_DIAGRAM_PROMPT_EN
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class ResearchReporter:
                 source_info=source_info,
                 citation_instruction=citation_instruction
             )
+            mermaid_prompt = MERMAID_DIAGRAM_PROMPT_JA.format(topic=topic)
         else:
             prompt = FINAL_REPORT_PROMPT_EN.format(
                 topic=topic,
@@ -63,7 +65,19 @@ class ResearchReporter:
                 source_info=source_info,
                 citation_instruction=citation_instruction
             )
+            mermaid_prompt = MERMAID_DIAGRAM_PROMPT_EN.format(topic=topic)
 
         report = await self.llm_client.generate_text(prompt=prompt)
+        
+        # Generate Mermaid diagram
+        mermaid_full_prompt = f"--- CONTEXT ---\n{full_context}\n\n{mermaid_prompt}"
+        mermaid_diagram = await self.llm_client.generate_text(prompt=mermaid_full_prompt)
+        
+        # Ensure code blocks for mermaid if LLM missed them
+        if "```mermaid" not in mermaid_diagram and mermaid_diagram.strip().startswith(("graph", "erDiagram")):
+            mermaid_diagram = f"```mermaid\n{mermaid_diagram.strip()}\n```"
+
         sources_footer = f"\n\n## Sources\n{source_list_str}" if source_list_str else ""
-        return f"{report}{sources_footer}"
+        
+        final_output = f"{report}\n\n## Visual Summary\n{mermaid_diagram}{sources_footer}"
+        return final_output

@@ -16,9 +16,15 @@ from pyvis.network import Network
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from deep_research_project.config.config import Configuration
-from deep_research_project.core.state import ResearchState, SearchResult
+from deep_research_project.core.state import ResearchState, Source, SearchResult
 from deep_research_project.core.research_loop import ResearchLoop
+from deep_research_project.core.graph import create_research_graph
+from deep_research_project.core.ki_distiller import KIDistiller
+from deep_research_project.tools.llm_client import LLMClient
+from deep_research_project.tools.search_client import SearchClient
+from deep_research_project.tools.content_retriever import ContentRetriever
 from chainlit.input_widget import Switch, Slider, Select, TextInput
+from chainlit.action import Action as ClAction
 
 logger = logging.getLogger(__name__)
 
@@ -193,32 +199,147 @@ async def main(message: cl.Message):
     # Start new research
     topic = message.content
     language = cl.user_session.get("language") or config.DEFAULT_LANGUAGE
-    state = ResearchState(research_topic=topic, language=language)
-    cl.user_session.set("state", state)
+    
+    # Initialize clients and Graph
+    llm_client = LLMClient(config)
+    search_client = SearchClient(config)
+    content_retriever = ContentRetriever(config)
+    graph = create_research_graph(config, llm_client, search_client, content_retriever)
+    
+    # Use thread_id for persistence
+    import uuid
+    thread_id = str(uuid.uuid4())
+    graph_config = {"configurable": {"thread_id": thread_id}}
 
-    actions = [
-        cl.Action(name="stop_research", payload={"value": "stop"}, label="⏹️ Stop Research")
-    ]
-    root_msg = cl.Message(content=f"## Researching: {topic}", actions=actions)
-    await root_msg.send()
-
-    progress_messages = []  # Track progress as messages
-
-    async def progress_callback(info: str):
-        """Simple message-based progress display"""
-        # Send each progress update as a visible message
-        await cl.Message(content=f"📍 {info}", author="Progress").send()
-
-    loop = ResearchLoop(config, state, progress_callback=progress_callback)
-    cl.user_session.set("loop", loop)
+    # Initial Agent State
+    agent_state = {
+        "topic": topic,
+        "language": language,
+        "plan": [],
+        "current_section_index": -1,
+        "findings": [],
+        "sources": [],
+        "knowledge_graph": {"nodes": [], "edges": []},
+        "research_context": [],
+        "activated_skill_ids": [],
+        "is_complete": False,
+        "iteration_count": 0,
+        "max_iterations": config.MAX_RESEARCH_LOOPS * 2
+    }
 
     try:
-        final_report = await handle_interactive_steps(loop, state)
-        if final_report:
-            await display_final_report(final_report, state)
+        # Run the graph and visualize nodes as cl.Steps
+        # We use a loop to handle interrupts (Human-In-The-Loop)
+        current_input = agent_state
+        
+        while True:
+            async for event in graph.astream(current_input, config=graph_config, stream_mode="updates"):
+                for node_name, node_update in event.items():
+                    async with cl.Step(name=f"Node: {node_name.capitalize()}"):
+                        if node_update:
+                            if node_name == "planner":
+                                plan_details = "\n".join([f"**{i+1}. {p['title']}**\n   {p.get('description', '')}" for i, p in enumerate(node_update.get('plan', []))])
+                                await cl.Message(content=f"### 📋 Research Plan Generated\n{plan_details}").send()
+                            elif node_name == "researcher":
+                                # Show progress
+                                sec_idx = agent_state.get('current_section_index', -1)
+                                total_sec = len(agent_state.get('plan', []))
+                                
+                                # Show citations
+                                sources = node_update.get("sources", [])
+                                sources_md = "\n".join([f"- [{s.get('title', 'Link')}]({s.get('url', '#')})" for s in sources[-3:]]) if sources else "None found in this step."
+                                
+                                findings = node_update.get("findings", [])
+                                summary = findings[-1] if findings else "No findings."
+                                safe_summary = (summary[:200] + "...") if len(summary) > 200 else summary
+                                
+                                await cl.Message(content=f"### 🔍 Researching Section {sec_idx + 1} / {total_sec}\n**Gathered Info:** {safe_summary}\n\n**Citations:**\n{sources_md}").send()
+                            elif node_name == "reflector":
+                                await cl.Message(content="🧠 *Reflecting on findings and adjusting queries...*").send()
+                            elif node_name == "skills_extractor":
+                                await cl.Message(content="💡 *Extracted domain expertise for future use.*").send()
+                        
+                            # Update local agent_state Tracking
+                            agent_state.update(node_update)
+
+            # Check if we are interrupted (waiting for user input)
+            state_snapshot = graph.get_state(graph_config)
+            next_steps = state_snapshot.next
+            
+            # When using interrupt_after=["planner"], the next step is "researcher" and there are pending tasks
+            if "researcher" in next_steps and not current_input:
+                # Interrupted for Human-In-The-Loop Plan Approval
+                plan_text = "\n".join([f"- {s['title']}: {s.get('description', '')}" for s in agent_state["plan"]])
+                
+                logger.info(f"Generating HITL actions. cl.Action type: {type(cl.Action)}")
+                actions = [
+                    cl.Action(name="approve", payload={"action": "approve"}, label="Proceed with Research"),
+                    cl.Action(name="edit", payload={"action": "edit"}, label="Edit Plan"),
+                    cl.Action(name="cancel", payload={"action": "cancel"}, label="Cancel Research")
+                ]
+                logger.info(f"Created actions: {actions}")
+                
+                res = await cl.AskActionMessage(
+                    content=f"### Research Plan for Approval\n\n{plan_text}\n\nDo you want to proceed?",
+                    actions=actions
+                ).send()
+                
+                if res and (res.get("name") == "approve" or res.get("id") == "approve" or res.get("value") == "approve"):
+                    current_input = None # Resume from checkpointer
+                    continue
+                elif res and (res.get("name") == "edit" or res.get("id") == "edit" or res.get("value") == "edit"):
+                    # Simple text-based editing for prototype
+                    new_plan_text = await cl.AskUserMessage(
+                        content="Enter the new plan as a list of sections (Title: Description), one per line."
+                    ).send()
+                    
+                    if new_plan_text:
+                        # Parse and update state
+                        new_plan = []
+                        for line in new_plan_text['output'].split('\n'):
+                            if ':' in line:
+                                title, desc = line.split(':', 1)
+                                new_plan.append({"title": title.strip("- ").strip(), "description": desc.strip()})
+                        
+                        if new_plan:
+                            await graph.aupdate_state(graph_config, {"plan": new_plan})
+                            await cl.Message(content="Plan updated. Resuming research...").send()
+                            current_input = None 
+                            continue
+                else:
+                    await cl.Message(content="Research cancelled by user.").send()
+                    return
+            else:
+                # Graph finished normally
+                break
+
+        # Final Report Generation
+        from deep_research_project.core.reporting import ResearchReporter
+        reporter = ResearchReporter(llm_client)
+        final_report = await reporter.finalize_report(topic, agent_state["plan"], language)
+        
+        # Knowledge Item Distillation
+        knowledge_root = os.path.expanduser("~/.gemini/antigravity/knowledge")
+        distiller = KIDistiller(llm_client, knowledge_root)
+        ki_path = await distiller.distill_research(final_report, language)
+        
+        await cl.Message(content=f"### Knowledge Item Created\nInsight persisted at: `{ki_path}`").send()
+
+        # Adapt for display
+        class MockState:
+            def __init__(self, agent_state, report):
+                self.final_report = report
+                self.knowledge_graph_nodes = agent_state["knowledge_graph"].get("nodes", [])
+                self.knowledge_graph_edges = agent_state["knowledge_graph"].get("edges", [])
+                self.is_interrupted = False
+        
+        await display_final_report(final_report, MockState(agent_state, final_report))
+
     except Exception as e:
-        logger.error(f"Error in research loop: {e}", exc_info=True)
-        await cl.Message(content=f"❌ An error occurred: {str(e)}").send()
+        import traceback
+        tb_str = traceback.format_exc()
+        logger.error(f"Error in deep research graph: {e}\n{tb_str}")
+        await cl.Message(content=f"❌ An error occurred during graph execution:\n```\n{tb_str}\n```").send()
 
 async def display_final_report(final_report: str, state: ResearchState):
     config = cl.user_session.get("config")
@@ -244,6 +365,17 @@ async def display_final_report(final_report: str, state: ResearchState):
         with open(report_path, "w", encoding="utf-8") as f:
             f.write(final_report)
         elements.append(cl.File(name="research_report.md", path=str(report_path), display="inline"))
+
+        # Extract and render Mermaid diagram
+        # Use plain text or a markdown snippet for now to prevent React crash
+        import re
+        mermaid_match = re.search(r'```mermaid\n(.*?)\n```', final_report, re.DOTALL)
+        if mermaid_match:
+            mermaid_code = mermaid_match.group(1)
+            # Chainlit natively supports markdown. We just need to make sure the markdown was sent 
+            # in the cl.Message content. The final_report is already sent as cl.Message(content=final_report).
+            # If it's not rendering, we don't need a cl.Html hack that breaks the UI.
+            pass
 
         # Knowledge Graph files
         if state.knowledge_graph_nodes:
@@ -373,7 +505,7 @@ async def display_final_report(final_report: str, state: ResearchState):
         logger.error(f"Failed to save results: {e}")
         await cl.Message(content="Failed to save the result files locally, but you can see the report above.").send()
 
-    new_res_action = cl.Action(name="new_research", payload={"value": "new"}, label="🔄 New Research", description="Start a new research topic with current settings")
+    new_res_action = cl.Action("new_research", {"value": "new"}, "🔄 New Research")
     await cl.Message(content="You can ask follow-up questions about the report above, or start a new research.", actions=[new_res_action]).send()
 
 @cl.action_callback("new_research")

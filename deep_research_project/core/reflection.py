@@ -125,3 +125,12 @@ class ResearchReflector:
                     next_query = sanitize_query(q)
         
         return evaluation, next_query
+
+    async def reflect(self, topic: str, section_title: str, 
+                      section_description: str, accumulated_summary: str, 
+                      language: str) -> dict:
+        """Alias for reflect_and_decide returning dict format for graph nodes."""
+        evaluation, next_query = await self.reflect_and_decide(
+            topic, section_title, section_description, accumulated_summary, language
+        )
+        return {"evaluation": evaluation, "query": next_query}

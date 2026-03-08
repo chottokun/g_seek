@@ -1,0 +1,95 @@
+import os
+import logging
+from typing import List, Dict, Optional
+from pathlib import Path
+import yaml
+import re
+
+logger = logging.getLogger(__name__)
+
+class SkillRegistry:
+    """Manages discovery, loading, and registration of modular skills (Anthropic style)."""
+    
+    def __init__(self, skills_dir: str = "data/skills"):
+        self.skills_dir = Path(skills_dir)
+        self.skills_dir.mkdir(parents=True, exist_ok=True)
+        self.skills: Dict[str, Dict] = {}
+        self._discover_skills()
+
+    def _discover_skills(self):
+        """Scans the skills directory for folders containing SKILL.md."""
+        if not self.skills_dir.exists():
+            return
+
+        for skill_path in self.skills_dir.iterdir():
+            if skill_path.is_dir():
+                skill_file = skill_path / "SKILL.md"
+                if skill_file.exists():
+                    try:
+                        skill_data = self._parse_skill_file(skill_file)
+                        skill_data["id"] = skill_path.name
+                        skill_data["path"] = str(skill_path)
+                        self.skills[skill_path.name] = skill_data
+                        logger.info(f"Discovered skill: {skill_data['name']} ({skill_path.name})")
+                    except Exception as e:
+                        logger.error(f"Failed to parse skill at {skill_file}: {e}")
+
+    def _parse_skill_file(self, file_path: Path) -> Dict:
+        """Parses the YAML frontmatter and body of a SKILL.md file."""
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Simple YAML frontmatter regex
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)$", content, re.DOTALL)
+        if match:
+            yaml_content = match.group(1)
+            markdown_body = match.group(2)
+            data = yaml.safe_load(yaml_content)
+            data["content"] = markdown_body
+            return data
+        else:
+            # Fallback if no frontmatter
+            return {
+                "name": file_path.parent.name,
+                "description": "No description provided.",
+                "content": content
+            }
+
+    def list_skills(self) -> List[Dict]:
+        """Returns metadata for all discovered skills (Progressive Disclosure)."""
+        return [
+            {
+                "id": skill_id,
+                "name": data["name"],
+                "description": data["description"]
+            }
+            for skill_id, data in self.skills.items()
+        ]
+
+    def get_skill(self, skill_id: str) -> Optional[Dict]:
+        """Retrieves the full content of a specific skill."""
+        return self.skills.get(skill_id)
+
+    def save_skill(self, skill_id: str, name: str, description: str, content: str):
+        """Saves or updates a skill in the folder structure."""
+        skill_path = self.skills_dir / skill_id
+        skill_path.mkdir(parents=True, exist_ok=True)
+        
+        skill_file = skill_path / "SKILL.md"
+        
+        full_content = f"---\nname: {name}\ndescription: {description}\n---\n\n{content}"
+        
+        with open(skill_file, "w", encoding="utf-8") as f:
+            f.write(full_content)
+        
+        # Partially reload registry (optimized)
+        self.skills[skill_id] = {
+            "id": skill_id,
+            "name": name,
+            "description": description,
+            "content": content,
+            "path": str(skill_path)
+        }
+
+# For backward compatibility during migration
+SkillsManager = SkillRegistry

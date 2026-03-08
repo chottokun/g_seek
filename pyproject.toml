@@ -22,6 +22,7 @@ dependencies = [
     "langchain>=1.2.6",
     "langchain-core>=1.2.7",
     "pydantic-settings>=2.1.0",
+    "langgraph>=1.0.8",
 ]
 
 [dependency-groups]

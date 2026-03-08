@@ -236,3 +236,61 @@ SOURCE_INFO_PROMPT_JA = "以下の情報源を利用してください:\n{source
 CITATION_INSTRUCTION_JA = "文中で [1] のような番号付きのインライン引用を適切に行ってください。"
 SOURCE_INFO_PROMPT_EN = "Use the following sources:\n{source_list}"
 CITATION_INSTRUCTION_EN = "Use numbered in-text citations like [1] where appropriate."
+ 
+SKILLS_EXTRACTION_PROMPT_JA = (
+    "リサーチ内容:\n{findings}\n\n"
+    "このリサーチプロセスから得られた、将来の同様のトピックに関する調査で役立つ「調査の定石」や「ノウハウ」を抽出してください。\n"
+    "例:\n"
+    "- 特定の情報のソースとして、このサイトが非常に有用だった\n"
+    "- このトピックでは、最新の論文 (arXiv) を優先的に確認すべきである\n"
+    "- 専門用語の定義が曖昧な場合は、まず Wiki などの二次資料で概要を掴むと効率が良い\n\n"
+    "抽出した「調査スキル」を短い箇条書きで 1〜3 つ程度挙げてください。解説は不要です。"
+)
+
+SKILLS_EXTRACTION_PROMPT_EN = (
+    "Research Findings:\n{findings}\n\n"
+    "Extract research patterns or 'how-to' knowledge from this session that would be useful for future research on similar topics.\n"
+    "Examples:\n"
+    "- For this topic, prioritizing arXiv papers was very effective.\n"
+    "- Official product documentation was more reliable than community forums for X.\n"
+    "- When terminology is ambiguous, starting with a general overview helps efficiency.\n\n"
+    "Provide 1-3 concise research 'skills' as bullet points. No explanations needed."
+)
+
+SKILLS_REFINEMENT_PROMPT_JA = (
+    "現在のスキル定義:\n{current_skill}\n\n"
+    "今回のリサーチで得られた知見:\n{findings}\n\n"
+    "上記のリサーチ結果に基づき、現在のスキル定義を「見直し・強化」してください。\n"
+    "既存の定石が有効であった場合はそれを残し、新しく判明したより良い手法や特定のソース、注意点を追加してください。\n"
+    "出力は、既存の指示と新しい知見を統合した、箇条書きのリスト（1〜5項目程度）にしてください。"
+)
+
+SKILLS_REFINEMENT_PROMPT_EN = (
+    "Current Skill Definition:\n{current_skill}\n\n"
+    "Findings from this session:\n{findings}\n\n"
+    "Based on these findings, please review and improve the current skill definition.\n"
+    "Verify if existing patterns were effective and add any newly discovered better methods, specific sources, or pitfalls to avoid.\n"
+    "Output should be a consolidated bulleted list (1-5 items) integrating old and new expertise."
+)
+
+MERMAID_DIAGRAM_PROMPT_JA = (
+    "コンテキストに基づき、トピック '{topic}' の主要な概念や関係性を表す Mermaid 形式の図（graph TD または erDiagram）を生成してください。\n"
+    "出力はコードブロック内の Mermaid シンタックスのみにしてください（解説不要）。"
+)
+
+MERMAID_DIAGRAM_PROMPT_EN = (
+    "Based on the context, generate a Mermaid diagram (graph TD or erDiagram) representing the key concepts and relationships for the topic: '{topic}'.\n"
+    "Output ONLY the Mermaid syntax within a code block (no explanation)."
+)
+
+KI_METADATA_PROMPT_JA = (
+    "レポートに基づいて、ナレッジアイテム（KI）用のメタデータを JSON 形式で抽出してください。\n"
+    "必要なフィールド: title, summary (3-4文), keywords (リスト), related_topics (リスト)。\n"
+    "出力は純粋な JSON のみにしてください。"
+)
+
+KI_METADATA_PROMPT_EN = (
+    "Extract metadata for a Knowledge Item (KI) based on the report in JSON format.\n"
+    "Required fields: title, summary (3-4 sentences), keywords (list), related_topics (list).\n"
+    "Output ONLY pure JSON."
+)
