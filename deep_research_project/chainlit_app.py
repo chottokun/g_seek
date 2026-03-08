@@ -185,12 +185,41 @@ async def main(message: cl.Message):
     config = cl.user_session.get("config")
     state = cl.user_session.get("state")
 
-    if state and state.final_report:
-        # Follow-up question
-        loop = cl.user_session.get("loop")
-        async with cl.Step(name="Thinking"):
-            prompt = loop.format_follow_up_prompt(state.final_report, message.content)
-            answer = await loop.llm_client.generate_text(prompt)
+    if state and getattr(state, "final_report", None):
+        # Follow-up question with web search
+        llm_client = LLMClient(config)
+        search_client = SearchClient(config)
+        language = cl.user_session.get("language") or config.DEFAULT_LANGUAGE
+        
+        async with cl.Step(name="Thinking (Web Search)"):
+            # Generate a context-aware search query
+            if language == "Japanese":
+                query_prompt = f"以下の最終レポートとユーザーの質問に基づき、回答を見つけるための「検索クエリ」を1つだけ生成してください。検索クエリの文字列のみを出力し、引用符や解説は含めないでください。\n\nレポート:\n{state.final_report}\n\n質問: {message.content}"
+            else:
+                query_prompt = f"Based on the final report and the user's question, generate a single focused web search query to find the answer. Output ONLY the search query string without quotes or explanation.\n\nReport:\n{state.final_report}\n\nQuestion: {message.content}"
+            
+            search_query = await llm_client.generate_text(query_prompt)
+            search_query = search_query.strip('"\'').strip()
+            
+            await cl.Message(content=f"*Searching the web for: `{search_query}`...*").send()
+            
+            # 1. Search for new information using the generated query
+            results = await search_client.search(search_query)
+            
+            search_context = ""
+            if results:
+                search_context = "\n".join([f"- {r.title}: {r.snippet} ({r.link})" for r in results[:3]])
+                
+            # 2. Generate answer
+            from deep_research_project.core.prompts import FOLLOW_UP_WITH_SEARCH_PROMPT_JA, FOLLOW_UP_WITH_SEARCH_PROMPT_EN
+            prompt_tpl = FOLLOW_UP_WITH_SEARCH_PROMPT_JA if language == "Japanese" else FOLLOW_UP_WITH_SEARCH_PROMPT_EN
+            
+            prompt = prompt_tpl.format(
+                report=state.final_report,
+                question=message.content,
+                search_context=search_context
+            )
+            answer = await llm_client.generate_text(prompt)
 
         state.follow_up_log.append({"question": message.content, "answer": answer})
         await cl.Message(content=answer).send()
@@ -257,10 +286,17 @@ async def main(message: cl.Message):
                             elif node_name == "reflector":
                                 await cl.Message(content="🧠 *Reflecting on findings and adjusting queries...*").send()
                             elif node_name == "skills_extractor":
-                                await cl.Message(content="💡 *Extracted domain expertise for future use.*").send()
+                                new_skill = node_update.get("newly_extracted_skill")
+                                if new_skill:
+                                    await cl.Message(content=f"💡 **New Domain Skill Created:** `{new_skill}`\nExtracted expertise for future use.").send()
+                                else:
+                                    await cl.Message(content="💡 *Skills reviewed. No new domain skill was necessary for this topic.*").send()
                         
-                            # Update local agent_state Tracking
-                            agent_state.update(node_update)
+                            # Fetch TRUE state from graph to correctly accumulate findings and sources
+                            # instead of using simple dict.update() which overwrites lists.
+                            current_state = graph.get_state(graph_config)
+                            if current_state and hasattr(current_state, 'values'):
+                                agent_state = current_state.values
 
             # Check if we are interrupted (waiting for user input)
             state_snapshot = graph.get_state(graph_config)
@@ -316,7 +352,12 @@ async def main(message: cl.Message):
         # Final Report Generation
         from deep_research_project.core.reporting import ResearchReporter
         reporter = ResearchReporter(llm_client)
-        final_report = await reporter.finalize_report(topic, agent_state["plan"], language)
+        final_report = await reporter.finalize_report(
+            topic, 
+            agent_state.get("findings", []), 
+            agent_state.get("sources", []), 
+            language
+        )
         
         # Knowledge Item Distillation
         knowledge_root = os.path.expanduser("~/.gemini/antigravity/knowledge")
@@ -332,8 +373,11 @@ async def main(message: cl.Message):
                 self.knowledge_graph_nodes = agent_state["knowledge_graph"].get("nodes", [])
                 self.knowledge_graph_edges = agent_state["knowledge_graph"].get("edges", [])
                 self.is_interrupted = False
+                self.follow_up_log = []
         
-        await display_final_report(final_report, MockState(agent_state, final_report))
+        display_state = MockState(agent_state, final_report)
+        cl.user_session.set("state", display_state)
+        await display_final_report(final_report, display_state)
 
     except Exception as e:
         import traceback

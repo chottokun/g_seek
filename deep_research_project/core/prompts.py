@@ -294,3 +294,23 @@ KI_METADATA_PROMPT_EN = (
     "Required fields: title, summary (3-4 sentences), keywords (list), related_topics (list).\n"
     "Output ONLY pure JSON."
 )
+
+FOLLOW_UP_WITH_SEARCH_PROMPT_JA = (
+    "最終レポートの内容と最新のウェブ検索結果を踏まえて、ユーザーからのフォローアップ質問に答えてください。\n\n"
+    "--- 最終レポート ---\n"
+    "{report}\n\n"
+    "--- Web検索結果 ---\n"
+    "{search_context}\n\n"
+    "質問: {question}\n\n"
+    "回答は詳細かつ簡潔に、必要に応じて検索結果からの引用URLを含めてください。"
+)
+
+FOLLOW_UP_WITH_SEARCH_PROMPT_EN = (
+    "Answer the user's follow-up question based on the final report and the latest web search results.\n\n"
+    "--- Final Report ---\n"
+    "{report}\n\n"
+    "--- Web Search Results ---\n"
+    "{search_context}\n\n"
+    "Question: {question}\n\n"
+    "Provide a detailed and concise answer, including citation URLs from the search results if appropriate."
+)

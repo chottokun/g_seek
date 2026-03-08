@@ -16,24 +16,25 @@ class ResearchReporter:
     def __init__(self, llm_client: LLMClient):
         self.llm_client = llm_client
 
-    async def finalize_report(self, topic: str, research_plan: List[dict], language: str) -> str:
+    async def finalize_report(self, topic: str, findings: List[str], sources: List[dict], language: str) -> str:
         """Synthesizes the final report from all completed sections."""
         logger.info("Synthesizing final report.")
         
-        context_parts = []
+        # Findings are already accumulated text summaries from the research loops
+        full_context = "\n\n".join(findings)
+
         all_sources = []
         seen_links = set()
-        for sec in research_plan:
-            if sec['summary']:
-                context_parts.append(f"### {sec['title']}\n{sec['summary']}")
-            for s in sec['sources']:
-                if s.link not in seen_links:
-                    all_sources.append(s)
-                    seen_links.add(s.link)
+        for s in sources:
+            # s might be a dict if coming from graph state
+            link = s.get('link') if isinstance(s, dict) else s.link
+            title = s.get('title') if isinstance(s, dict) else s.title
+            
+            if link and link not in seen_links:
+                all_sources.append({"title": title, "link": link})
+                seen_links.add(link)
 
-        full_context = "\n\n".join(context_parts)
-
-        source_list_str = "\n".join([f"[{i+1}] {s.title} ({s.link})" for i, s in enumerate(all_sources)])
+        source_list_str = "\n".join([f"[{i+1}] {s['title']} ({s['link']})" for i, s in enumerate(all_sources)])
 
         if not source_list_str:
             if language == "Japanese":

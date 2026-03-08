@@ -20,3 +20,4 @@ class AgentState(TypedDict):
     iteration_count: int
     # For loop protection
     max_iterations: int
+    newly_extracted_skill: Optional[str] # To inform the UI about new skills

@@ -78,23 +78,7 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
         
     section = state["plan"][idx]
     logger.info(f"--- RESEARCHER NODE: {section['title']} ---")
-    
-    # Try Delegation to Sub-Agent first
-    delegated_findings = await orchestrator.delegate_if_relevant(
-        section_title=section["title"],
-        section_description=section.get("description", ""),
-        activated_skill_ids=state["activated_skill_ids"],
-        findings=state["findings"],
-        language=state["language"]
-    )
-    
-    if delegated_findings:
-        return {
-            "findings": [delegated_findings],
-            "iteration_count": state["iteration_count"] + 1
-        }
-
-    # Fallback to Standard Web Search Workflow
+    # Standard Web Search Workflow
     # Generate Query (only if no current_query provided by Reflector)
     query = state.get("current_query")
     if not query:
@@ -120,6 +104,7 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
     
     return {
         "findings": [summary],
+        "sources": [{"title": r.title, "link": r.link} for r in relevant],
         "iteration_count": state["iteration_count"] + 1
     }
 
@@ -200,10 +185,12 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
             # Save as a distinct new skill
             skills_mgr.save_skill(skill_id, skill_name, description, content)
             logger.info(f"Extracted and saved NEW dedicated domain skill: {skill_id}")
+            return {"newly_extracted_skill": skill_name}
+
     except Exception as e:
         logger.error(f"Failed to extract dedicated domain skill: {e}")
             
-    return {}
+    return {"newly_extracted_skill": None}
 
 # --- Graph Construction ---
 
