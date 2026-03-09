@@ -264,6 +264,7 @@ SOURCE_INFO_PROMPT_EN = "Use the following sources:\n{source_list}"
 CITATION_INSTRUCTION_EN = "Use numbered in-text citations like [1] where appropriate."
  
 SKILLS_EXTRACTION_PROMPT_JA = (
+    "本日日付: {current_date}\n"
     "リサーチ内容:\n{findings}\n\n"
     "このリサーチプロセスから得られた、将来の同様のトピックに関する調査で役立つ「調査の定石」や「ノウハウ」を抽出してください。\n"
     "例:\n"
@@ -274,6 +275,7 @@ SKILLS_EXTRACTION_PROMPT_JA = (
 )
 
 SKILLS_EXTRACTION_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
     "Research Findings:\n{findings}\n\n"
     "Extract research patterns or 'how-to' knowledge from this session that would be useful for future research on similar topics.\n"
     "Examples:\n"

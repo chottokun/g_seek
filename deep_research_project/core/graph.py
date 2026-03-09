@@ -178,9 +178,12 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
     findings_str = "\n\n".join(state["findings"])[:10000] # Increased context window
     is_japanese = state["language"] == "Japanese"
 
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y-%m-%d")
+
     logger.info("Extracting insights to create a new dedicated domain skill...")
     prompt_tpl = SKILLS_EXTRACTION_PROMPT_JA if is_japanese else SKILLS_EXTRACTION_PROMPT_EN
-    prompt = prompt_tpl.format(findings=findings_str)
+    prompt = prompt_tpl.format(findings=findings_str, current_date=current_date)
     
     try:
         extraction = await llm_client.generate_text(prompt)
@@ -205,7 +208,7 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
             content += "\n".join([f"- {p}" for p in patterns])
             
             # Save as a distinct new skill
-            skills_mgr.save_skill(skill_id, skill_name, description, content)
+            skills_mgr.save_skill(skill_id, skill_name, description, content, created_at=current_date)
             logger.info(f"SUCCESS: Created NEW domain skill: {skill_id}")
             return {"newly_extracted_skill": skill_name}
 
