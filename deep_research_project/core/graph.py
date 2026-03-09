@@ -30,8 +30,13 @@ async def planner_node(state: AgentState, config: Configuration, planner: Resear
         trigger_prompt = (
             f"Topic: {state['topic']}\n\n"
             f"Available Skills:\n{skill_descriptions}\n\n"
-            "Based on the topic, which skills should be activated? "
-            "Respond with a comma-separated list of skill IDs, or 'None' if no skills are relevant."
+            "Analyze the topic and the list of available skills. "
+            "Select ONLY the skills that are directly relevant and strictly necessary for researching this specific topic. "
+            "Guidelines:\n"
+            "1. 'web-search' and 'arxiv-research' are general utility skills and should be selected if the topic is technical or news-oriented.\n"
+            "2. 'domain-xxx' skills contain specific past research findings. ONLY select them if the current topic is a direct continuation or deeply related to that specific domain.\n"
+            "3. If in doubt, do not select a skill.\n\n"
+            "Respond with a comma-separated list of skill IDs, or 'None' if no skills are strictly relevant."
         )
         try:
             from deep_research_project.tools.llm_client import LLMClient
