@@ -23,15 +23,20 @@ class ResearchPlanner:
         logger.info(f"Generating research plan for topic: {topic}")
         if progress_callback: await progress_callback("Generating structured research plan...")
         
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
         if language == "Japanese":
             prompt = RESEARCH_PLAN_PROMPT_JA.format(
                 topic=topic,
+                current_date=current_date,
                 min_sections=getattr(self.config, "RESEARCH_PLAN_MIN_SECTIONS", 3),
                 max_sections=getattr(self.config, "RESEARCH_PLAN_MAX_SECTIONS", 5)
             )
         else:
             prompt = RESEARCH_PLAN_PROMPT_EN.format(
                 topic=topic,
+                current_date=current_date,
                 min_sections=getattr(self.config, "RESEARCH_PLAN_MIN_SECTIONS", 3),
                 max_sections=getattr(self.config, "RESEARCH_PLAN_MAX_SECTIONS", 5)
             )
@@ -62,15 +67,20 @@ class ResearchPlanner:
                                      section_description: str, language: str,
                                      progress_callback: Optional[Callable] = None) -> str:
         """Generates the first search query to start research for a specific section."""
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
         if language == "Japanese":
             prompt = INITIAL_QUERY_PROMPT_JA.format(
                 topic=topic,
+                current_date=current_date,
                 section_title=section_title,
                 section_description=section_description
             )
         else:
             prompt = INITIAL_QUERY_PROMPT_EN.format(
                 topic=topic,
+                current_date=current_date,
                 section_title=section_title,
                 section_description=section_description
             )
@@ -99,15 +109,20 @@ class ResearchPlanner:
         Returns:
             A new, potentially more effective search query
         """
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
         if language == "Japanese":
             prompt = REGENERATE_QUERY_PROMPT_JA.format(
                 topic=topic,
+                current_date=current_date,
                 section_title=section_title,
                 original_query=original_query
             )
         else:
             prompt = REGENERATE_QUERY_PROMPT_EN.format(
                 topic=topic,
+                current_date=current_date,
                 section_title=section_title,
                 original_query=original_query
             )

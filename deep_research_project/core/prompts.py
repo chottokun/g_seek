@@ -1,12 +1,14 @@
 # Language independent prompts could go here, but we focus on modularizing the loop's prompts.
 
 RESEARCH_PLAN_PROMPT_JA = (
+    "本日日付: {current_date}\n"
     "トピック: '{topic}' に関する詳細なリサーチプランを生成してください。\n"
     "プランは少なくとも {min_sections} つ、最大 {max_sections} つのセクションで構成してください。\n"
     "各セクションには明確なタイトルと、そのセクションで何を調査すべきかの詳細な説明を含めてください。"
 )
 
 RESEARCH_PLAN_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
     "Generate a detailed research plan for the topic: '{topic}'.\n"
     "The plan should have at least {min_sections} and at most {max_sections} sections.\n"
     "Each section must have a clear title and a detailed description of what to research."
@@ -14,11 +16,13 @@ RESEARCH_PLAN_PROMPT_EN = (
 
 
 INITIAL_QUERY_PROMPT_JA = (
+    "本日日付: {current_date}\n"
     "リサーチトピック: '{topic}'\n"
     "セクション: '{section_title}'\n"
     "セクションの目的: '{section_description}'\n\n"
     "このセクションの目的を達成するための、具体的で焦点を絞った検索クエリを 1 つ生成してください。\n"
     "--- 重要なガイドライン ---\n"
+    "- **現在の年月日を意識し、必要に応じて「最新の」「2024年」などの期間指定をクエリに含めてください。**\n"
     "- **単語をスペースで区切ったシンプルなキーワード形式**にしてください。\n"
     "- 'site:go.jp' や 'filetype:pdf' などの強力すぎる演算子の多用は避けてください（ヒット件数が極端に減る原因になります）。\n"
     "- 自然言語の質問形式ではなく、検索エンジンが情報を索引しやすい名詞句を組み合わせてください。\n\n"
@@ -26,11 +30,13 @@ INITIAL_QUERY_PROMPT_JA = (
 )
 
 INITIAL_QUERY_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
     "Research Topic: '{topic}'\n"
     "Section: '{section_title}'\n"
     "Section Purpose: '{section_description}'\n\n"
     "Generate one specific, focused search query to achieve the purpose of this section.\n"
     "--- IMPORTANT GUIDELINES ---\n"
+    "- **Be aware of the current date and include relevant year/period keywords (e.g., '2024', 'recent') in the query if appropriate for the topic.**\n"
     "- Use **simple keyword-based queries** separated by spaces.\n"
     "- AVOID over-using restrictive operators like 'site:' or 'filetype:' unless absolutely necessary, as they drastically reduce result counts in DuckDuckGo.\n"
     "- Use noun phrases that search engines can easily index, rather than full natural language questions.\n\n"
@@ -139,6 +145,7 @@ REGENERATE_QUERY_PROMPT_JA = (
 )
 
 REGENERATE_QUERY_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
     "Topic: {topic}\n"
     "Section: {section_title}\n"
     "Original Query: {original_query}\n\n"
@@ -148,11 +155,13 @@ REGENERATE_QUERY_PROMPT_EN = (
 )
 
 REFLECTION_PROMPT_JA = (
+    "本日日付: {current_date}\n"
     "リサーチトピック: {topic}\n"
     "セクション: {section_title}\n"
     "セクションの目的: {section_description}\n\n"
     "以下の現在の要約に基づき、このセクションの目的に対して情報が十分に網羅されているか厳密に評価してください。\n"
-    "重要：1つの情報源だけでなく、多角的な視点や詳細な事実（数値、具体例、対立意見など）が欠けている場合、あるいは少しでも情報が浅いと感じる場合は、必ず追加調査を行ってください。\n\n"
+    "重要：1つの情報源だけでなく、多角的な視点や詳細な事実（数値、具体例、対立意見など）が欠けている場合、あるいは少しでも情報が浅いと感じる場合は、必ず追加調査を行ってください。\n"
+    "また、本日日付以前の最新情報が含まれているかも考慮してください。\n\n"
     "--- SUMMARY START ---\n"
     "{accumulated_summary}\n"
     "--- SUMMARY END ---\n\n"
@@ -166,11 +175,13 @@ REFLECTION_PROMPT_JA = (
 )
 
 REFLECTION_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
     "Research Topic: {topic}\n"
     "Section: {section_title}\n"
     "Section Objective: {section_description}\n\n"
     "Based on the following current summary, strictly evaluate whether the information is sufficiently comprehensive for this section's objective.\n"
-    "IMPORTANT: If there is a lack of diverse perspectives, detailed facts (numbers, specific examples, conflicting opinions), or if the information feels superficial, you MUST conduct additional research.\n\n"
+    "IMPORTANT: If there is a lack of diverse perspectives, detailed facts (numbers, specific examples, conflicting opinions), or if the information feels superficial, you MUST conduct additional research.\n"
+    "Ensure the gathered facts are up-to-date relative to today's date.\n\n"
     "--- SUMMARY START ---\n"
     "{accumulated_summary}\n"
     "--- SUMMARY END ---\n\n"
@@ -188,6 +199,7 @@ SOURCE_INFO_PROMPT_EN = "Use the following sources for citations:\n{source_list}
 CITATION_INSTRUCTION_EN = "You MUST use numbered in-text citations like [1], [2] throughout the report, matching the numbers in the provided source list."
  
 FINAL_REPORT_PROMPT_JA = (
+    "本日日付: {current_date}\n"
     "トピック: '{topic}' に関する最終リサーチレポートを日本語で作成してください。\n\n"
     "--- 重要事項 ---\n"
     "1. 以下のコンテキストのみを情報源として使用してください。\n"
@@ -202,6 +214,8 @@ FINAL_REPORT_PROMPT_JA = (
 )
 
 FINAL_REPORT_PROMPT_EN = (
+    "FINAL_REPORT_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
     "Synthesize a final report for: '{topic}'\n\n"
     "--- IMPORTANT ---\n"
     "1. Use ONLY the context provided below.\n"
@@ -308,6 +322,7 @@ KI_METADATA_PROMPT_EN = (
 )
 
 FOLLOW_UP_WITH_SEARCH_PROMPT_JA = (
+    "本日日付: {current_date}\n"
     "最終レポートの内容と最新のウェブ検索結果を踏まえて、ユーザーからのフォローアップ質問に答えてください。\n\n"
     "--- 最終レポート ---\n"
     "{report}\n\n"
@@ -318,6 +333,7 @@ FOLLOW_UP_WITH_SEARCH_PROMPT_JA = (
 )
 
 FOLLOW_UP_WITH_SEARCH_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
     "Answer the user's follow-up question based on the final report and the latest web search results.\n\n"
     "--- Final Report ---\n"
     "{report}\n\n"

@@ -96,9 +96,13 @@ class ResearchReflector:
                                  section_description: str, accumulated_summary: str, 
                                  language: str) -> Tuple[str, Optional[str]]:
         """Evaluates if more research is needed for the current context."""
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
         if language == "Japanese":
             prompt = REFLECTION_PROMPT_JA.format(
                 topic=topic,
+                current_date=current_date,
                 section_title=section_title,
                 section_description=section_description,
                 accumulated_summary=accumulated_summary
@@ -106,6 +110,7 @@ class ResearchReflector:
         else:
             prompt = REFLECTION_PROMPT_EN.format(
                 topic=topic,
+                current_date=current_date,
                 section_title=section_title,
                 section_description=section_description,
                 accumulated_summary=accumulated_summary

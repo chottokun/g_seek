@@ -51,9 +51,13 @@ class ResearchReporter:
                 source_info = SOURCE_INFO_PROMPT_EN.format(source_list=source_list_str)
                 citation_instruction = CITATION_INSTRUCTION_EN
 
+        from datetime import datetime
+        current_date = datetime.now().strftime("%Y-%m-%d")
+
         if language == "Japanese":
             prompt = FINAL_REPORT_PROMPT_JA.format(
                 topic=topic,
+                current_date=current_date,
                 full_context=full_context,
                 source_info=source_info,
                 citation_instruction=citation_instruction
@@ -62,6 +66,7 @@ class ResearchReporter:
         else:
             prompt = FINAL_REPORT_PROMPT_EN.format(
                 topic=topic,
+                current_date=current_date,
                 full_context=full_context,
                 source_info=source_info,
                 citation_instruction=citation_instruction
