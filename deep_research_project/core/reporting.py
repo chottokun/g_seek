@@ -70,6 +70,15 @@ class ResearchReporter:
 
         report = await self.llm_client.generate_text(prompt=prompt)
         
+        # Safety cleanup: Remove any LLM-generated reference sections to prevent duplicates
+        import re
+        ref_patterns = [
+            r"##?\s*(?:参考文献|References?|Sources?|出典(?::|：)?|情報源(?::|：)?).*",
+            r"\d+\.\s+\[?参考文献\]?.*"
+        ]
+        for pattern in ref_patterns:
+            report = re.split(pattern, report, flags=re.IGNORECASE | re.DOTALL)[0].strip()
+
         # Generate Mermaid diagram
         mermaid_full_prompt = f"--- CONTEXT ---\n{full_context}\n\n{mermaid_prompt}"
         mermaid_diagram = await self.llm_client.generate_text(prompt=mermaid_full_prompt)

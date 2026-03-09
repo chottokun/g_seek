@@ -64,7 +64,10 @@ async def planner_node(state: AgentState, config: Configuration, planner: Resear
         "current_section_index": 0,
         "iteration_count": 0,
         "activated_skill_ids": selected_skill_ids,
-        "current_query": None
+        "current_query": None,
+        "plan_approved": False,
+        "findings": [],
+        "sources": []
     }
 
 async def researcher_node(state: AgentState, config: Configuration, planner: ResearchPlanner, executor: ResearchExecutor, orchestrator: Any):
@@ -78,25 +81,33 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
         
     section = state["plan"][idx]
     logger.info(f"--- RESEARCHER NODE: {section['title']} ---")
+    print(f"DEBUG: Researcher Node Hit for section index {idx}, title: {section['title']}")
+    
     # Standard Web Search Workflow
     # Generate Query (only if no current_query provided by Reflector)
     query = state.get("current_query")
     if not query:
+        print("DEBUG: Generating initial query...")
         query = await planner.generate_initial_query(
             topic=state["topic"],
             section_title=section["title"],
             section_description=section.get("description", ""),
             language=state["language"]
         )
+    print(f"DEBUG: Search Query: {query}")
     
     # Search
+    print(f"DEBUG: Executing search for: {query}")
     results = await executor.search(query, getattr(config, "MAX_SEARCH_RESULTS_PER_QUERY", 3))
+    print(f"DEBUG: Found {len(results)} raw search results")
     
     # Filter
     relevant = await executor.filter_by_relevance(query, results, state["language"])
+    print(f"DEBUG: Found {len(relevant)} relevant search results")
     
     # Retrieve & Summarize with TRUNCATION for logs
     summary = await executor.retrieve_and_summarize(relevant, query, state["language"])
+    print(f"DEBUG: Summary generated, length: {len(summary)}")
     
     # Truncate for logging purposes if needed, but findings should stay intact
     safe_summary_log = (summary[:500] + '...') if len(summary) > 500 else summary
@@ -105,6 +116,7 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
     return {
         "findings": [summary],
         "sources": [{"title": r.title, "link": r.link} for r in relevant],
+        "current_query": query,
         "iteration_count": state["iteration_count"] + 1
     }
 
@@ -148,19 +160,22 @@ async def reflector_node(state: AgentState, config: Configuration, reflector: Re
         return {
             "current_section_index": next_idx,
             "current_query": None, # Reset query for next section
+            "iteration_count": 0,  # Reset loop counter for the new section
             "is_complete": is_complete
         }
 
-async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills_mgr: SkillRegistry):
+async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills_mgr: SkillRegistry, config: Configuration):
     """Learns research expertise and generates or refines standardized SKILL.md documents."""
     logger.info(f"--- SKILLS EXTRACTOR NODE ---")
     
-    from deep_research_project.core.prompts import (
-        SKILLS_EXTRACTION_PROMPT_JA, SKILLS_EXTRACTION_PROMPT_EN,
-        SKILLS_REFINEMENT_PROMPT_JA, SKILLS_REFINEMENT_PROMPT_EN
-    )
+    from deep_research_project.core.prompts import SKILLS_EXTRACTION_PROMPT_JA, SKILLS_EXTRACTION_PROMPT_EN
     
-    findings_str = "\n\n".join(state["findings"])[:4000]
+    # Ensure findings exist
+    if not state.get("findings"):
+        logger.info("No findings available for skill extraction.")
+        return {"newly_extracted_skill": None}
+        
+    findings_str = "\n\n".join(state["findings"])[:10000] # Increased context window
     is_japanese = state["language"] == "Japanese"
 
     logger.info("Extracting insights to create a new dedicated domain skill...")
@@ -169,28 +184,46 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
     
     try:
         extraction = await llm_client.generate_text(prompt)
-        patterns = [line.strip("- ").strip("* ").strip() for line in extraction.strip().split("\n") if line.strip()]
+        # Cleaner parsing of patterns
+        patterns = []
+        for line in extraction.strip().split("\n"):
+            clean = line.strip("- ").strip("* ").strip()
+            if clean and len(clean) > 5:
+                patterns.append(clean)
         
         if patterns:
             import re
+            import uuid
             # Ensure unique ID for the specific topic domain
             base_id = re.sub(r'[^a-zA-Z0-9-]', '-', state["topic"].lower())[:30].strip("-")
-            import uuid
             skill_id = f"domain-{base_id}-{uuid.uuid4().hex[:6]}"
-            skill_name = f"Domain: {state['topic'][:30]}..."
-            description = f"Dedicated parsing and methodological insights for researching: {state['topic']}. Trigger when exploring similar specific domains."
+            skill_name = f"Domain: {state['topic'][:40]}..."
+            description = f"Specialized methodology and insights for: {state['topic']}."
             
-            content = "## Extracted Domain Instructions\n" + "\n".join([f"- {p}" for p in patterns])
+            content = "## Domain Expertise: " + state["topic"] + "\n\n"
+            content += "### Key Methodological Patterns\n"
+            content += "\n".join([f"- {p}" for p in patterns])
             
             # Save as a distinct new skill
             skills_mgr.save_skill(skill_id, skill_name, description, content)
-            logger.info(f"Extracted and saved NEW dedicated domain skill: {skill_id}")
+            logger.info(f"SUCCESS: Created NEW domain skill: {skill_id}")
             return {"newly_extracted_skill": skill_name}
 
     except Exception as e:
-        logger.error(f"Failed to extract dedicated domain skill: {e}")
+        logger.error(f"CRITICAL: Failed to extract domain skill: {e}")
             
     return {"newly_extracted_skill": None}
+
+async def final_reporter_node(state: AgentState, reporter: ResearchReporter):
+    """Generates the final research report."""
+    logger.info(f"--- FINAL REPORTER NODE ---")
+    report = await reporter.finalize_report(
+        topic=state["topic"],
+        findings=state["findings"],
+        sources=state["sources"],
+        language=state["language"]
+    )
+    return {"final_report": report, "is_complete": True}
 
 # --- Graph Construction ---
 
@@ -201,6 +234,7 @@ def create_research_graph(config: Configuration, llm_client: LLMClient, search_c
     planner = ResearchPlanner(config, llm_client)
     executor = ResearchExecutor(config, llm_client, search_client, content_retriever)
     reflector = ResearchReflector(config, llm_client)
+    reporter = ResearchReporter(llm_client)
     skills_mgr = SkillRegistry()
     orchestrator = Orchestrator(skills_mgr, llm_client)
     
@@ -210,12 +244,14 @@ def create_research_graph(config: Configuration, llm_client: LLMClient, search_c
     async def _planner_node(s): return await planner_node(s, config, planner, skills_mgr)
     async def _researcher_node(s): return await researcher_node(s, config, planner, executor, orchestrator)
     async def _reflector_node(s): return await reflector_node(s, config, reflector)
-    async def _skills_extractor_node(s): return await skills_extractor_node(s, llm_client, skills_mgr)
+    async def _skills_extractor_node(s): return await skills_extractor_node(s, llm_client, skills_mgr, config)
+    async def _final_reporter_node(s): return await final_reporter_node(s, reporter)
 
     workflow.add_node("planner", _planner_node)
     workflow.add_node("researcher", _researcher_node)
     workflow.add_node("reflector", _reflector_node)
     workflow.add_node("skills_extractor", _skills_extractor_node)
+    workflow.add_node("final_reporter", _final_reporter_node)
     
     # Define Edges
     workflow.set_entry_point("planner")
@@ -223,10 +259,8 @@ def create_research_graph(config: Configuration, llm_client: LLMClient, search_c
     workflow.add_edge("researcher", "reflector")
     
     # Loop Protection & Conditional Exit
-    def should_continue(state):
-        if state["is_complete"] or state["iteration_count"] >= 10: # Recursion limit
-            if state["iteration_count"] >= 10:
-                logger.warning("Reached max iterations (10). Force terminating.")
+    def should_continue(state: AgentState):
+        if state.get("is_complete") or state.get("iteration_count", 0) >= state.get("max_iterations", 10):
             return "end"
         return "continue"
     
@@ -238,9 +272,11 @@ def create_research_graph(config: Configuration, llm_client: LLMClient, search_c
             "end": "skills_extractor"
         }
     )
-    workflow.add_edge("skills_extractor", END)
+    workflow.add_edge("skills_extractor", "final_reporter")
+    workflow.add_edge("final_reporter", END)
     
     # Initialize MemorySaver for Human-In-The-Loop and state persistence
     checkpointer = MemorySaver()
     
-    return workflow.compile(checkpointer=checkpointer, interrupt_after=["planner"])
+    interrupts = ["planner"] if config.INTERACTIVE_MODE else []
+    return workflow.compile(checkpointer=checkpointer, interrupt_after=interrupts)

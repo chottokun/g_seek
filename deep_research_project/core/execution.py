@@ -212,13 +212,13 @@ Search Results:{items_text}
             return []
         
         # Use custom threshold or fall back to config
-        relevance_threshold = threshold if threshold is not None else getattr(self.config, "RELEVANCE_THRESHOLD", 0.6)
+        relevance_threshold = threshold if threshold is not None else getattr(self.config, "RELEVANCE_THRESHOLD", 0.4) # Slightly lower for more results
         
         # Batch scoring to save RPM
         batch_size = getattr(self.config, "BATCH_SIZE_RELEVANCE", 5)
         scored_results = []
         
-        logger.info(f"Scoring {len(results)} search results for relevance (batch size: {batch_size})...")
+        logger.info(f"Scoring {len(results)} search results for relevance (batch size: {batch_size}, threshold: {relevance_threshold})...")
         
         for i in range(0, len(results), batch_size):
             batch = results[i:i + batch_size]
@@ -232,7 +232,7 @@ Search Results:{items_text}
         
         # Filter by threshold
         relevant = [r for r in scored_results if r.relevance_score >= relevance_threshold]
-        logger.info(f"Found {len(relevant)}/{len(results)} results above threshold {relevance_threshold:.2f}")
+        logger.info(f"Found {len(relevant)}/{len(results)} results above threshold {relevance_threshold:.2f}. Total unique sources being passed: {len(relevant)}")
         
         # Sort by relevance score (descending) and take top MAX_RELEVANT_RESULTS
         filtered = sorted(relevant, key=lambda r: r.relevance_score, reverse=True)

@@ -1,6 +1,8 @@
 ---
+description: Specialized patterns for searching and extracting information from Arxiv
+  and other academic repositories. Use this for highly technical, scientific, or cutting-edge
+  AI topics.
 name: Academic Research (Arxiv)
-description: Specialized patterns for searching and extracting information from Arxiv and other academic repositories. Use this for highly technical, scientific, or cutting-edge AI topics.
 ---
 
 ## Updated Instructions

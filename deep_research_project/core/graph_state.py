@@ -21,3 +21,5 @@ class AgentState(TypedDict):
     # For loop protection
     max_iterations: int
     newly_extracted_skill: Optional[str] # To inform the UI about new skills
+    plan_approved: bool # For HITL flow tracking
+    final_report: Optional[str]

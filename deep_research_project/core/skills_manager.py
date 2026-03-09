@@ -77,7 +77,12 @@ class SkillRegistry:
         
         skill_file = skill_path / "SKILL.md"
         
-        full_content = f"---\nname: {name}\ndescription: {description}\n---\n\n{content}"
+        frontmatter = {
+            "name": name,
+            "description": description
+        }
+        yaml_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
+        full_content = f"---\n{yaml_str}\n---\n\n{content}"
         
         with open(skill_file, "w", encoding="utf-8") as f:
             f.write(full_content)

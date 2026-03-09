@@ -42,8 +42,8 @@ class Configuration(BaseSettings):
     SEARXNG_BASE_URL: str = Field(default="http://localhost:8080")
 
     # Research Loop Configuration
-    MAX_RESEARCH_LOOPS: int = Field(default=3)
-    MAX_SEARCH_RESULTS_PER_QUERY: int = Field(default=3)
+    MAX_RESEARCH_LOOPS: int = Field(default=5)
+    MAX_SEARCH_RESULTS_PER_QUERY: int = Field(default=10)
 
     # Output Configuration
     OUTPUT_FILENAME: str = Field(default="research_report.md")
@@ -95,7 +95,7 @@ class Configuration(BaseSettings):
         default="snippet",
         description="Relevance filtering mode: 'snippet' (pre-filter with snippets), 'full_content' (filter after retrieval), 'disabled' (no filtering)"
     )
-    RELEVANCE_THRESHOLD: float = Field(default=0.6, ge=0.0, le=1.0, description="Minimum relevance score (0.0-1.0)")
+    RELEVANCE_THRESHOLD: float = Field(default=0.4, ge=0.0, le=1.0, description="Minimum relevance score (0.0-1.0)")
     MAX_RELEVANT_RESULTS: int = Field(default=5, ge=1, description="Maximum number of results after filtering")
     ENABLE_QUERY_REGENERATION: bool = Field(
         default=True,
