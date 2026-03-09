@@ -214,7 +214,6 @@ FINAL_REPORT_PROMPT_JA = (
 )
 
 FINAL_REPORT_PROMPT_EN = (
-    "FINAL_REPORT_PROMPT_EN = (
     "Today's Date: {current_date}\n"
     "Synthesize a final report for: '{topic}'\n\n"
     "--- IMPORTANT ---\n"

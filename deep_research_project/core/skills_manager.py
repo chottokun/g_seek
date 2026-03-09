@@ -70,7 +70,7 @@ class SkillRegistry:
         """Retrieves the full content of a specific skill."""
         return self.skills.get(skill_id)
 
-    def save_skill(self, skill_id: str, name: str, description: str, content: str):
+    def save_skill(self, skill_id: str, name: str, description: str, content: str, created_at: Optional[str] = None):
         """Saves or updates a skill in the folder structure."""
         skill_path = self.skills_dir / skill_id
         skill_path.mkdir(parents=True, exist_ok=True)
@@ -81,6 +81,9 @@ class SkillRegistry:
             "name": name,
             "description": description
         }
+        if created_at:
+            frontmatter["created_at"] = created_at
+            
         yaml_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
         full_content = f"---\n{yaml_str}\n---\n\n{content}"
         
