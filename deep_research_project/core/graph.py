@@ -213,7 +213,7 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
             content += "\n".join([f"- {p}" for p in patterns])
             
             # Save as a distinct new skill
-            skills_mgr.save_skill(skill_id, skill_name, description, content, created_at=current_date)
+            await skills_mgr.save_skill(skill_id, skill_name, description, content, created_at=current_date)
             logger.info(f"SUCCESS: Created NEW domain skill: {skill_id}")
             return {"newly_extracted_skill": skill_name}
 
