@@ -181,7 +181,86 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
         final_state = graph.get_state(config_dict).values
         if final_state.get("final_report"):
             report = final_state["final_report"]
-            await cl.Message(content=f"## 📄 Final Research Report\n\n{report}").send()
+            
+            # Split the report to find JSON blocks and render them as Custom Elements
+            import re
+            # More permissive regex to catch ```json ... ``` with various spacers
+            parts = re.split(r"(```json\s*\n.*?\n\s*```)", report, flags=re.DOTALL)
+            
+            for part in parts:
+                if "```json" in part:
+                    match = re.search(r"```json\s*\n(.*?)\n\s*```", part, re.DOTALL)
+                    if match:
+                        json_str = match.group(1).strip()
+                        import logging
+                        logging.info(f"VISUAL_SUMMARY_PAYLOAD: {json_str[:200]}...")
+                        # Sent via VisualSummary component
+                        msg = cl.Message(content="")
+                        await msg.send()
+                        try:
+                            import json
+                            import tempfile
+                            from pyvis.network import Network
+                            
+                            json_obj = json.loads(json_str)
+                            
+                            # Build the Interactive Graph using Pyvis
+                            net = Network(notebook=False, height="600px", width="100%", directed=True)
+                            net.set_options("""
+                            var options = {
+                              "physics": {
+                                "barnesHut": {
+                                  "gravitationalConstant": -3000,
+                                  "centralGravity": 0.3,
+                                  "springLength": 150
+                                }
+                              }
+                            }
+                            """)
+                            
+                            for node in json_obj.get('nodes', []):
+                                color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
+                                
+                                # 构建rich html tooltip (title)
+                                title_html = f"<b>{node.get('label', str(node['id']))}</b>"
+                                if 'description' in node and node['description']:
+                                    title_html += f"<br><br>{node['description']}"
+                                if 'url' in node and node['url']:
+                                    title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
+                                
+                                net.add_node(
+                                    node['id'], 
+                                    label=node.get('label', str(node['id'])), 
+                                    color=color, 
+                                    shape="box",
+                                    title=title_html
+                                )
+                                
+                            for edge in json_obj.get('edges', []):
+                                from_id = str(edge['from'])
+                                to_id = str(edge['to'])
+                                label = edge.get('label', '')
+                                net.add_edge(from_id, to_id, title=label, label=label)
+                                
+                            # Save to temp file and send
+                            tmp_path = tempfile.mktemp(suffix=".html", prefix="research_graph_")
+                            net.save_graph(tmp_path)
+                            
+                            elements = [
+                                cl.File(
+                                    name="Interactive Visual Summary",
+                                    path=tmp_path,
+                                    mime="text/html",
+                                    display="inline",
+                                )
+                            ]
+                            await cl.Message(content="Visual summary generated as an interactive HTML diagram:", elements=elements).send()
+                            
+                        except Exception as e:
+                            logging.error(f"Failed to parse or send Pyvis graph: {e}")
+                            await cl.Message(content=f"Error parsing graph data: {e}").send()
+                elif part.strip():
+                    await cl.Message(content=part.strip()).send()
             
     except Exception as e:
         import traceback

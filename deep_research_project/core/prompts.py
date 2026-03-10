@@ -300,14 +300,28 @@ SKILLS_REFINEMENT_PROMPT_EN = (
     "Output should be a consolidated bulleted list (1-5 items) integrating old and new expertise."
 )
 
-MERMAID_DIAGRAM_PROMPT_JA = (
-    "コンテキストに基づき、トピック '{topic}' の主要な概念や関係性を表す Mermaid 形式の図（graph TD または erDiagram）を生成してください。\n"
-    "出力はコードブロック内の Mermaid シンタックスのみにしてください（解説不要）。"
+VISUAL_SUMMARY_PROMPT_JA = (
+    "コンテキストに基づき、トピック '{topic}' の詳細な構造化データ（JSON形式）を生成してください。\n"
+    "各ノードには、もし情報があれば詳細な説明（description）と出展・参考リンク（url）を含めてください。\n"
+    "--- フォーマット ---\n"
+    "{{\n"
+    "  \"nodes\": [ {{ \"id\": \"1\", \"label\": \"概念名\", \"type\": \"core|detail\", \"description\": \"具体的な説明\", \"url\": \"https://...\" }}, ... ],\n"
+    "  \"edges\": [ {{ \"from\": \"1\", \"to\": \"2\", \"label\": \"関係\" }}, ... ]\n"
+    "}}\n"
+    "--- 制限 ---\n"
+    "- 出力は純粋なJSONのみにしてください（コードブロック不要）。\n"
+    "- ノードは最大20個程度とし、できるだけ詳細な関係性を含めてください。\n"
+    "- 可能な限り具体的なURLや出典を'url'フィールドに含め、ポップアップで確認できるようにしてください。"
 )
 
 MERMAID_DIAGRAM_PROMPT_EN = (
-    "Based on the context, generate a Mermaid diagram (graph TD or erDiagram) representing the key concepts and relationships for the topic: '{topic}'.\n"
-    "Output ONLY the Mermaid syntax within a code block (no explanation)."
+    "Generate a simple Mermaid diagram (graph TD) for the topic: '{topic}'.\n"
+    "--- STRICT RULES (To avoid syntax errors) ---\n"
+    "1. Define every node using alphanumeric IDs and quoted labels: id1[\"Label Text\"].\n"
+    "2. All text containing spaces, symbols, or special characters MUST be enclosed in double quotes (\").\n"
+    "3. Edge labels MUST also be enclosed in double quotes: A -->|\"Relation\"| B.\n"
+    "4. NO empty lines, NO comments (%%), and NO complex features like subgraphs.\n"
+    "5. Output ONLY the Mermaid syntax within a code block."
 )
 
 KI_METADATA_PROMPT_JA = (

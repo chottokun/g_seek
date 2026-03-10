@@ -88,9 +88,9 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
     logger.info(f"--- RESEARCHER NODE: {section['title']} ---")
     print(f"DEBUG: Researcher Node Hit for section index {idx}, title: {section['title']}")
     
-    # Sub-agent Delegation Attempt
-    # Check if a specialized skill agent can handle this section directly
-    subagent_summary = await orchestrator.delegate_if_relevant(
+    # Sub-agent Guidance Attempt
+    # Use sub-agent expertise to enrich the research process
+    expert_guidance = await orchestrator.delegate_if_relevant(
         section_title=section["title"],
         section_description=section.get("description", ""),
         activated_skill_ids=state.get("activated_skill_ids", []),
@@ -98,17 +98,7 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
         language=state["language"]
     )
     
-    if subagent_summary:
-        logger.info(f"Sub-agent successfully handled section '{section['title']}'. Skipping web search.")
-        safe_summary_log = (subagent_summary[:500] + '...') if len(subagent_summary) > 500 else subagent_summary
-        logger.debug(f"Sub-agent summary: {safe_summary_log}")
-        
-        return {
-            "findings": [subagent_summary],
-            "sources": [{"title": f"Sub-Agent Knowledge: {section['title']}", "link": "internal-skill-agent"}],
-            "current_query": None,
-            "iteration_count": state["iteration_count"] + 1
-        }
+    expert_context = f"\n\n--- EXPERT GUIDANCE ---\n{expert_guidance}" if expert_guidance else ""
         
     # Standard Web Search Workflow
     # Generate Query (only if no current_query provided by Reflector)
@@ -118,7 +108,7 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
         query = await planner.generate_initial_query(
             topic=state["topic"],
             section_title=section["title"],
-            section_description=section.get("description", ""),
+            section_description=section.get("description", "") + expert_context,
             language=state["language"]
         )
     print(f"DEBUG: Search Query: {query}")
