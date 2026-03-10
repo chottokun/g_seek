@@ -88,6 +88,28 @@ async def researcher_node(state: AgentState, config: Configuration, planner: Res
     logger.info(f"--- RESEARCHER NODE: {section['title']} ---")
     print(f"DEBUG: Researcher Node Hit for section index {idx}, title: {section['title']}")
     
+    # Sub-agent Delegation Attempt
+    # Check if a specialized skill agent can handle this section directly
+    subagent_summary = await orchestrator.delegate_if_relevant(
+        section_title=section["title"],
+        section_description=section.get("description", ""),
+        activated_skill_ids=state.get("activated_skill_ids", []),
+        findings=state.get("findings", []),
+        language=state["language"]
+    )
+    
+    if subagent_summary:
+        logger.info(f"Sub-agent successfully handled section '{section['title']}'. Skipping web search.")
+        safe_summary_log = (subagent_summary[:500] + '...') if len(subagent_summary) > 500 else subagent_summary
+        logger.debug(f"Sub-agent summary: {safe_summary_log}")
+        
+        return {
+            "findings": [subagent_summary],
+            "sources": [{"title": f"Sub-Agent Knowledge: {section['title']}", "link": "internal-skill-agent"}],
+            "current_query": None,
+            "iteration_count": state["iteration_count"] + 1
+        }
+        
     # Standard Web Search Workflow
     # Generate Query (only if no current_query provided by Reflector)
     query = state.get("current_query")
@@ -173,6 +195,10 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
     """Learns research expertise and generates or refines standardized SKILL.md documents."""
     logger.info(f"--- SKILLS EXTRACTOR NODE ---")
     
+    if not getattr(config, "EVOLVE_SKILLS", True):
+        logger.info("EVOLVE_SKILLS is disabled. Skipping skill extraction.")
+        return {"newly_extracted_skill": None}
+        
     from deep_research_project.core.prompts import SKILLS_EXTRACTION_PROMPT_JA, SKILLS_EXTRACTION_PROMPT_EN
     
     # Ensure findings exist

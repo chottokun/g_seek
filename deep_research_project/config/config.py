@@ -45,6 +45,9 @@ class Configuration(BaseSettings):
     MAX_RESEARCH_LOOPS: int = Field(default=5)
     MAX_SEARCH_RESULTS_PER_QUERY: int = Field(default=10)
 
+    # Skill Configuration
+    EVOLVE_SKILLS: bool = Field(default=True, description="Whether to extract and save new domain skills during research.")
+
     # Output Configuration
     OUTPUT_FILENAME: str = Field(default="research_report.md")
 
@@ -240,6 +243,7 @@ class Configuration(BaseSettings):
             f"  Relevance Threshold: {self.RELEVANCE_THRESHOLD}",
             f"  Max Relevant Results: {self.MAX_RELEVANT_RESULTS}",
             f"  Query Regeneration Enabled: {self.ENABLE_QUERY_REGENERATION}",
+            f"  Evolve Skills: {self.EVOLVE_SKILLS}",
         ])
         return "Configuration:\n" + "\n".join(config_details)
 

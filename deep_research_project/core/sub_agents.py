@@ -13,6 +13,7 @@ class SkillAgent:
         self.name = skill_data.get("name", skill_id)
         self.instructions = skill_data.get("content", "")
         self.description = skill_data.get("description", "")
+        self.is_dynamic = skill_data.get("is_dynamic", False)
         self.llm_client = llm_client
 
     async def run_task(self, section_title: str, section_description: str, context: List[str], language: str) -> str:
@@ -67,12 +68,20 @@ class Orchestrator:
         if not activated_skill_ids:
             return None
             
-        # For prototype: pick the first activated skill if it exists as an agent
-        # In multi-agent version, we could use an LLM router here.
-        for sid in activated_skill_ids:
+        # Extract valid dynamic agents (domain skills) to act as specialized sub-agents
+        valid_agents = []
+        for sid in set(activated_skill_ids):
             agent = self.get_agent(sid)
-            if agent:
-                logger.info(f"Orchestrator: Delegating '{section_title}' to Agent '{agent.name}'")
-                return await agent.run_task(section_title, section_description, findings, language)
+            if agent and (agent.is_dynamic or sid.startswith("domain-")):
+                valid_agents.append(agent)
+                
+        if not valid_agents:
+            # If no specialized domain skill, fallback to normal search
+            return None
+            
+        # Use the first valid specialized agent
+        best_agent = valid_agents[0]
+        logger.info(f"Orchestrator: Delegating '{section_title}' to Sub-Agent '{best_agent.name}'")
+        return await best_agent.run_task(section_title, section_description, findings, language)
         
         return None
