@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from typing import List, Dict, Optional
 from pathlib import Path
 import yaml
@@ -70,25 +71,28 @@ class SkillRegistry:
         """Retrieves the full content of a specific skill."""
         return self.skills.get(skill_id)
 
-    def save_skill(self, skill_id: str, name: str, description: str, content: str, created_at: Optional[str] = None):
+    async def save_skill(self, skill_id: str, name: str, description: str, content: str, created_at: Optional[str] = None):
         """Saves or updates a skill in the folder structure."""
         skill_path = self.skills_dir / skill_id
-        skill_path.mkdir(parents=True, exist_ok=True)
         
-        skill_file = skill_path / "SKILL.md"
-        
-        frontmatter = {
-            "name": name,
-            "description": description
-        }
-        if created_at:
-            frontmatter["created_at"] = created_at
+        def _write_file():
+            skill_path.mkdir(parents=True, exist_ok=True)
+            skill_file = skill_path / "SKILL.md"
+
+            frontmatter = {
+                "name": name,
+                "description": description
+            }
+            if created_at:
+                frontmatter["created_at"] = created_at
+
+            yaml_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
+            full_content = f"---\n{yaml_str}\n---\n\n{content}"
             
-        yaml_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
-        full_content = f"---\n{yaml_str}\n---\n\n{content}"
+            with open(skill_file, "w", encoding="utf-8") as f:
+                f.write(full_content)
         
-        with open(skill_file, "w", encoding="utf-8") as f:
-            f.write(full_content)
+        await asyncio.to_thread(_write_file)
         
         # Partially reload registry (optimized)
         self.skills[skill_id] = {
