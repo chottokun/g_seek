@@ -21,10 +21,8 @@ RUN uv sync --frozen --no-dev
 # Place executable scripts in the PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Expose Streamlit and Chainlit ports
-EXPOSE 8501
+# Expose Chainlit port
 EXPOSE 8000
 
-# Default command to run the application
-# We use chainlit as the default, but it can be overridden
-CMD ["/app/.venv/bin/python", "-m", "chainlit", "run", "deep_research_project/chainlit_app.py", "--host", "0.0.0.0", "--port", "8000"]
+# Default command
+CMD ["sh", "-c", "/app/.venv/bin/python -m chainlit run deep_research_project/chainlit_app.py --host 0.0.0.0 --port ${CHAINLIT_PORT:-8000}"]

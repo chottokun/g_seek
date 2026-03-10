@@ -177,11 +177,33 @@ uv run -m deep_research_project.main "Your Topic" --loops 5 --results 5 --snippe
 - `--lang`: プロンプトの言語 (`Japanese` または `English`)
 
 ### Docker Compose
-SearxNG等を含めたフルスタック環境をワンコマンドで起動できます。
 
+Docker Composeを使用して、Chainlitアプリ単体、またはSearXNGやOllamaを含めたフルスタック環境を起動できます。
+
+#### 1. 基本起動（Chainlitのみ）
 ```bash
-docker-compose up -d
+docker compose up --build
 ```
+デフォルトで http://localhost:8000 でアクセス可能です。
+
+#### 2. 外部サービス連携（マルチファイル構成）
+必要に応じて、以下の追加ファイルを指定して起動します。
+
+- **SearXNGと連携する場合**:
+  ```bash
+  docker compose -f docker-compose.yaml -f docker-compose.searxng.yaml up --build
+  ```
+- **Ollamaと連携する場合**:
+  ```bash
+  docker compose -f docker-compose.yaml -f docker-compose.ollama.yaml up --build
+  ```
+- **全て同時に起動する場合**:
+  ```bash
+  docker compose -f docker-compose.yaml -f docker-compose.searxng.yaml -f docker-compose.ollama.yaml up --build
+  ```
+
+#### 3. ポート番号の変更
+`.env` ファイルの `CHAINLIT_PORT` を書き換えることで、公開ポートを変更できます（デフォルト: 8000）。
 
 ---
 
