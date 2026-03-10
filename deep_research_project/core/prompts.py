@@ -264,40 +264,46 @@ CITATION_INSTRUCTION_EN = "Use numbered in-text citations like [1] where appropr
  
 SKILLS_EXTRACTION_PROMPT_JA = (
     "本日日付: {current_date}\n"
+    "トピック: {topic}\n"
     "リサーチ内容:\n{findings}\n\n"
-    "このリサーチプロセスから得られた、将来の同様のトピックに関する調査で役立つ「調査の定石」や「ノウハウ」を抽出してください。\n"
-    "例:\n"
-    "- 特定の情報のソースとして、このサイトが非常に有用だった\n"
-    "- このトピックでは、最新の論文 (arXiv) を優先的に確認すべきである\n"
-    "- 専門用語の定義が曖昧な場合は、まず Wiki などの二次資料で概要を掴むと効率が良い\n\n"
-    "抽出した「調査スキル」を短い箇条書きで 1〜3 つ程度挙げてください。解説は不要です。"
+    "このリサーチプロセスから得られた、将来同一または類似のトピックを調査する際に役立つ「高度な調査の定石」や「専門的なノウハウ」を抽出してください。\n"
+    "以下の点に注力してください：\n"
+    "1. **共通の検索のコツ**: どのキーワードやクエリ形式が最も効果的だったか。\n"
+    "2. **分野別調査の要点**: 優先すべき信頼できるドメインや避けるべきノイズの多いソース。\n"
+    "3. **分析の流れ**: 曖昧な概念をどうやって具体化し、どう深掘りしていくべきかというワークフロー。\n\n"
+    "抽出した「調査スキル」を具体的に箇条書きで 3〜5 つ程度挙げてください。"
 )
 
 SKILLS_EXTRACTION_PROMPT_EN = (
     "Today's Date: {current_date}\n"
+    "Topic: {topic}\n"
     "Research Findings:\n{findings}\n\n"
-    "Extract research patterns or 'how-to' knowledge from this session that would be useful for future research on similar topics.\n"
-    "Examples:\n"
-    "- For this topic, prioritizing arXiv papers was very effective.\n"
-    "- Official product documentation was more reliable than community forums for X.\n"
-    "- When terminology is ambiguous, starting with a general overview helps efficiency.\n\n"
-    "Provide 1-3 concise research 'skills' as bullet points. No explanations needed."
+    "Extract advanced research patterns and domain-specific know-how from this session that would be crucial for future research on this or similar topics.\n"
+    "Focus on:\n"
+    "1. **Search Tips**: Which keywords, operators, or query structures were most effective.\n"
+    "2. **Domain Survey Points**: Which specific domains/sources are highly reliable and which should be avoided.\n"
+    "3. **Analysis Workflow**: How to break down ambiguous concepts and the best step-by-step approach to deep dive into this topic.\n\n"
+    "Provide 3-5 specific, actionable research 'skills' as bullet points."
 )
 
 SKILLS_REFINEMENT_PROMPT_JA = (
+    "本日日付: {current_date}\n"
+    "トピック: {topic}\n"
     "現在のスキル定義:\n{current_skill}\n\n"
-    "今回のリサーチで得られた知見:\n{findings}\n\n"
-    "上記のリサーチ結果に基づき、現在のスキル定義を「見直し・強化」してください。\n"
-    "既存の定石が有効であった場合はそれを残し、新しく判明したより良い手法や特定のソース、注意点を追加してください。\n"
-    "出力は、既存の指示と新しい知見を統合した、箇条書きのリスト（1〜5項目程度）にしてください。"
+    "今回の追加リサーチで得られた新しい知見:\n{findings}\n\n"
+    "上記のリサーチ結果に基づき、現在のスキル定義を「見直し・強化（網羅性を保ちつつ深みを持たせる）」してください。\n"
+    "既存の定石が有効であった場合はそれを保持・補強し、新しく判明したより良い検索手法、特定のソース、分析の視点を追加してください。\n"
+    "出力は、既存の指示と新しい知見を統合した、箇条書きのリスト（3〜7項目程度）にしてください。"
 )
 
 SKILLS_REFINEMENT_PROMPT_EN = (
+    "Today's Date: {current_date}\n"
+    "Topic: {topic}\n"
     "Current Skill Definition:\n{current_skill}\n\n"
-    "Findings from this session:\n{findings}\n\n"
-    "Based on these findings, please review and improve the current skill definition.\n"
-    "Verify if existing patterns were effective and add any newly discovered better methods, specific sources, or pitfalls to avoid.\n"
-    "Output should be a consolidated bulleted list (1-5 items) integrating old and new expertise."
+    "New findings from this session:\n{findings}\n\n"
+    "Based on these new findings, please review and deeply refine the current skill definition.\n"
+    "Keep effective existing patterns while augmenting them with newly discovered best practices, search tips, reliable sources, or workflows to maintain comprehensive coverage.\n"
+    "Output should be a consolidated, enriched bulleted list (3-7 items) seamlessly integrating old and new expertise."
 )
 
 VISUAL_SUMMARY_PROMPT_JA = (

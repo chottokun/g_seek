@@ -109,7 +109,7 @@ class TestModularComponents(unittest.IsolatedAsyncioTestCase):
 
     async def test_reflector_reflect_and_decide_parsing(self):
         reflector = ResearchReflector(self.config, self.mock_llm)
-        self.mock_llm.generate_text = AsyncMock(return_value="EVALUATION: CONTINUE\nQUERY: Next specific query")
+        self.mock_llm.generate_text = AsyncMock(side_effect=["EVALUATION: CONTINUE\nQUERY: Next specific query"])
         
         # Fixed signature: reflect_and_decide(topic, section_title, section_description, accumulated_summary, language)
         eval_res, next_q = await reflector.reflect_and_decide("Topic", "Sec1", "Desc1", "Summary", "English")
@@ -119,12 +119,12 @@ class TestModularComponents(unittest.IsolatedAsyncioTestCase):
     # --- ResearchReporter Tests ---
     async def test_reporter_finalize_report_citations(self):
         reporter = ResearchReporter(self.mock_llm)
-        plan = [
-            {"title": "Intro", "summary": "Found X.", "sources": [Source(title="Source 1", link="url1")]}
-        ]
-        self.mock_llm.generate_text = AsyncMock(return_value="Final synthesized report text with [1].")
+        findings = ["Found X."]
+        sources = [Source(title="Source 1", link="url1")]
         
-        report = await reporter.finalize_report("Topic", plan, "English")
+        self.mock_llm.generate_text = AsyncMock(side_effect=["Final synthesized report text with [1].", "```json\n{}\n```"])
+        
+        report = await reporter.finalize_report("Topic", findings, sources, "English")
         
         self.assertIn("Final synthesized report text with [1].", report)
         self.assertIn("## Sources", report)

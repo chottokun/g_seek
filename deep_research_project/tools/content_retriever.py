@@ -29,13 +29,21 @@ class ContentRetriever:
             return ""
         try:
             soup = BeautifulSoup(html_content, "html.parser")
-            for script_or_style in soup(["script", "style", "header", "footer", "nav", "aside"]):
-                script_or_style.decompose()
+            # Remove scripts, styles, and common boilerplate containers
+            for element in soup(["script", "style", "header", "footer", "nav", "aside", "form", "iframe", "noscript"]):
+                element.decompose()
 
+            # Extract text with linebreaks to preserve some structure
             text = soup.get_text(separator='\n', strip=True)
-            cleaned_lines = [
-                " ".join(line.split()) for line in text.splitlines() if line.strip()
-            ]
+            
+            # Clean up excessive newlines/spaces
+            cleaned_lines = []
+            for line in text.splitlines():
+                line = line.strip()
+                if line:
+                    # Replace multiple spaces with single space
+                    line = " ".join(line.split())
+                    cleaned_lines.append(line)
 
             text = "\n\n".join(cleaned_lines)
 

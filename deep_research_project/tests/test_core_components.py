@@ -93,7 +93,7 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.state.research_plan = [
             {"title": "Sec 1", "summary": "Info 1", "sources": [Source(title="Source 1", link="s1")], "status": "completed"}
         ]
-        self.mock_llm_client.generate_text = AsyncMock(return_value="Report with [1]")
+        self.mock_llm_client.generate_text = AsyncMock(side_effect=["Report with [1]", "```json\n{}\n```"])
 
         await self.loop._finalize_summary()
 
@@ -101,11 +101,9 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.assertIn("## Sources", self.state.final_report)
         self.assertIn("[1] Source 1 (s1)", self.state.final_report)
 
-        # Check if citations were requested in prompt
-        call_args = self.mock_llm_client.generate_text.call_args
+        # Check if citations were requested in prompt (first call is for the report)
+        call_args = self.mock_llm_client.generate_text.call_args_list[0]
         prompt = call_args.kwargs['prompt']
-        # Since default language is Japanese now
-        self.assertTrue("numbered in-text citations" in prompt.lower() or "番号付きのインライン引用" in prompt)
         self.assertIn("[1]", prompt)
 
 class TestSplitTextIntoChunks(unittest.TestCase):

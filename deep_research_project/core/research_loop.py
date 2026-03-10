@@ -233,8 +233,18 @@ class ResearchLoop:
     async def _finalize_summary(self):
         """Delegates final report synthesis to the reporting module."""
         if self.progress_callback: await self.progress_callback("Synthesizing final research report...")
+        
+        # Extract findings and sources from the completed research plan
+        findings = []
+        sources = []
+        for section in self.state.research_plan:
+            if section.get('summary'):
+                findings.append(section['summary'])
+            if section.get('sources'):
+                sources.extend(section['sources'])
+
         self.state.final_report = await self.reporter.finalize_report(
-            self.state.research_topic, self.state.research_plan, self.state.language
+            self.state.research_topic, findings, sources, self.state.language
         )
         if self.progress_callback: await self.progress_callback("Final report generation complete.")
 

@@ -189,7 +189,10 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
         logger.info("EVOLVE_SKILLS is disabled. Skipping skill extraction.")
         return {"newly_extracted_skill": None}
         
-    from deep_research_project.core.prompts import SKILLS_EXTRACTION_PROMPT_JA, SKILLS_EXTRACTION_PROMPT_EN
+    from deep_research_project.core.prompts import (
+        SKILLS_EXTRACTION_PROMPT_JA, SKILLS_EXTRACTION_PROMPT_EN,
+        SKILLS_REFINEMENT_PROMPT_JA, SKILLS_REFINEMENT_PROMPT_EN
+    )
     
     # Ensure findings exist
     if not state.get("findings"):
@@ -201,10 +204,36 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
 
     from datetime import datetime
     current_date = datetime.now().strftime("%Y-%m-%d")
+    
+    import re
+    # Create a stable ID based purely on the topic to allow evolution (no UUID)
+    base_id = re.sub(r'[^a-zA-Z0-9-]', '-', state["topic"].lower())[:40].strip("-")
+    # To avoid 'domain-' bare stems if topic is oddly filtered, provide fallback
+    if not base_id:
+        base_id = "general-research"
+    skill_id = f"domain-{base_id}"
+    
+    existing_skill = skills_mgr.get_skill(skill_id)
 
-    logger.info("Extracting insights to create a new dedicated domain skill...")
-    prompt_tpl = SKILLS_EXTRACTION_PROMPT_JA if is_japanese else SKILLS_EXTRACTION_PROMPT_EN
-    prompt = prompt_tpl.format(findings=findings_str, current_date=current_date)
+    if existing_skill:
+        logger.info(f"Refining existing domain skill: {skill_id}...")
+        prompt_tpl = SKILLS_REFINEMENT_PROMPT_JA if is_japanese else SKILLS_REFINEMENT_PROMPT_EN
+        prompt = prompt_tpl.format(
+            topic=state["topic"],
+            findings=findings_str, 
+            current_date=current_date,
+            current_skill=existing_skill.get("content", "")
+        )
+        action_log = "REFINED"
+    else:
+        logger.info(f"Extracting insights to create a new domain skill: {skill_id}...")
+        prompt_tpl = SKILLS_EXTRACTION_PROMPT_JA if is_japanese else SKILLS_EXTRACTION_PROMPT_EN
+        prompt = prompt_tpl.format(
+            topic=state["topic"],
+            findings=findings_str, 
+            current_date=current_date
+        )
+        action_log = "CREATED NEW"
     
     try:
         extraction = await llm_client.generate_text(prompt)
@@ -216,11 +245,6 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
                 patterns.append(clean)
         
         if patterns:
-            import re
-            import uuid
-            # Ensure unique ID for the specific topic domain
-            base_id = re.sub(r'[^a-zA-Z0-9-]', '-', state["topic"].lower())[:30].strip("-")
-            skill_id = f"domain-{base_id}-{uuid.uuid4().hex[:6]}"
             skill_name = f"Domain: {state['topic'][:40]}..."
             description = f"Specialized methodology and insights for: {state['topic']}."
             
@@ -228,13 +252,13 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
             content += "### Key Methodological Patterns\n"
             content += "\n".join([f"- {p}" for p in patterns])
             
-            # Save as a distinct new skill
+            # Save as a distinct new or refined skill
             skills_mgr.save_skill(skill_id, skill_name, description, content, created_at=current_date)
-            logger.info(f"SUCCESS: Created NEW domain skill: {skill_id}")
-            return {"newly_extracted_skill": skill_name}
+            logger.info(f"SUCCESS: {action_log} domain skill: {skill_id}")
+            return {"newly_extracted_skill": f"{skill_name} ({action_log})"}
 
     except Exception as e:
-        logger.error(f"CRITICAL: Failed to extract domain skill: {e}")
+        logger.error(f"CRITICAL: Failed to extract/refine domain skill '{skill_id}': {e}")
             
     return {"newly_extracted_skill": None}
 
