@@ -3,7 +3,7 @@ import asyncio
 from typing import List, Optional, Tuple, Callable
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
-from deep_research_project.core.state import KnowledgeGraphModel, Source
+from deep_research_project.core.state import KnowledgeGraphModel, Source, KGNode, KGEdge
 from deep_research_project.core.prompts import (
     KG_EXTRACTION_PROMPT_JA, KG_EXTRACTION_PROMPT_EN,
     REFLECTION_PROMPT_JA, REFLECTION_PROMPT_EN
@@ -42,14 +42,10 @@ class ResearchReflector:
         except Exception as e:
             logger.error(f"KG extraction or merge failed: {e}")
 
-    def _merge_knowledge_graph(self, kg_model: KnowledgeGraphModel, 
-                                existing_nodes: List[dict], existing_edges: List[dict]):
-        """Internal logic to merge newly extracted graph data into state using O(N) indexing."""
-        # Index existing nodes by ID for O(1) lookup
+    def _merge_nodes(self, new_nodes: List[KGNode], existing_nodes: List[dict]):
+        """Merges new nodes into the existing nodes list."""
         node_map = {n['id']: n for n in existing_nodes}
-        
-        # Merge Nodes
-        for new_node in kg_model.nodes:
+        for new_node in new_nodes:
             if new_node.id in node_map:
                 existing_node = node_map[new_node.id]
                 existing_node.setdefault('properties', {}).update(new_node.properties)
@@ -70,14 +66,12 @@ class ResearchReflector:
                 node_data = new_node.model_dump()
                 node_data.setdefault('properties', {})['mention_count'] = "1"
                 existing_nodes.append(node_data)
-                node_map[new_node.id] = node_data # Update index for subsequent new nodes in same batch
+                node_map[new_node.id] = node_data
 
-        # Index existing edges by key for O(1) lookup
-        # Key: (source, target, label)
+    def _merge_edges(self, new_edges: List[KGEdge], existing_edges: List[dict]):
+        """Merges new edges into the existing edges list."""
         edge_map = {(e['source'], e['target'], e.get('label')): e for e in existing_edges}
-        
-        # Merge Edges
-        for new_edge in kg_model.edges:
+        for new_edge in new_edges:
             edge_key = (new_edge.source, new_edge.target, new_edge.label)
             if edge_key in edge_map:
                 existing_edge = edge_map[edge_key]
@@ -91,6 +85,12 @@ class ResearchReflector:
                 edge_data = new_edge.model_dump()
                 existing_edges.append(edge_data)
                 edge_map[edge_key] = edge_data
+
+    def _merge_knowledge_graph(self, kg_model: KnowledgeGraphModel,
+                                existing_nodes: List[dict], existing_edges: List[dict]):
+        """Internal logic to merge newly extracted graph data into state using O(N) indexing."""
+        self._merge_nodes(kg_model.nodes, existing_nodes)
+        self._merge_edges(kg_model.edges, existing_edges)
 
     async def reflect_and_decide(self, topic: str, section_title: str, 
                                  section_description: str, accumulated_summary: str, 
