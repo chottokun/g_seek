@@ -98,7 +98,7 @@ class Configuration(BaseSettings):
         default="snippet",
         description="Relevance filtering mode: 'snippet' (pre-filter with snippets), 'full_content' (filter after retrieval), 'disabled' (no filtering)"
     )
-    RELEVANCE_THRESHOLD: float = Field(default=0.4, ge=0.0, le=1.0, description="Minimum relevance score (0.0-1.0)")
+    RELEVANCE_THRESHOLD: float = Field(default=0.3, ge=0.0, le=1.0, description="Minimum relevance score (0.0-1.0)")
     MAX_RELEVANT_RESULTS: int = Field(default=5, ge=1, description="Maximum number of results after filtering")
     ENABLE_QUERY_REGENERATION: bool = Field(
         default=True,

@@ -202,8 +202,24 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                             import tempfile
                             from pyvis.network import Network
                             
-                            json_obj = json.loads(json_str)
-                            
+                            def try_repair_json(s):
+                                """Attempts to find the actual JSON object if there's trailing junk like '...'"""
+                                try:
+                                    return json.loads(s)
+                                except json.JSONDecodeError:
+                                    # Try to find the last '}' and cut there
+                                    last_brace = s.rfind('}')
+                                    if last_brace != -1:
+                                        try:
+                                            return json.loads(s[:last_brace+1])
+                                        except: pass
+                                    return None
+
+                            json_obj = try_repair_json(json_str)
+                            if not json_obj:
+                                logging.warning("Failed to repair JSON for visual summary.")
+                                continue
+
                             # Build the Interactive Graph using Pyvis
                             net = Network(notebook=False, height="600px", width="100%", directed=True)
                             net.set_options("""
