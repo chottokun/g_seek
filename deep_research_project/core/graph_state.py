@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, TypedDict, Annotated
+from typing import List, Dict, Optional, TypedDict, Annotated, Any
 import operator
 from pydantic import BaseModel
 from deep_research_project.core.state import SectionPlan, Source
@@ -23,3 +23,4 @@ class AgentState(TypedDict):
     newly_extracted_skill: Optional[str] # To inform the UI about new skills
     plan_approved: bool # For HITL flow tracking
     final_report: Optional[str]
+    progress_callback: Optional[Any] # For real-time UI logging

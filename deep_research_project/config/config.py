@@ -66,8 +66,10 @@ class Configuration(BaseSettings):
 
     # Optimization Configuration
     MAX_CONCURRENT_CHUNKS: int = Field(default=10)
+    MAX_CONCURRENT_SECTIONS: int = Field(default=3, description="Maximum number of sections processed in parallel")
     LLM_RATE_LIMIT_RPM: int = Field(default=60)
     LLM_RATE_LIMIT_TPM: int = Field(default=40000, description="Tokens Per Minute limit")
+    LLM_RETRY_BASE_DELAY: float = Field(default=2.0, description="Base delay for exponential backoff in seconds")
 
     ENABLE_CACHING: bool = Field(default=True, description="Enable persistent caching")
     CACHE_DIR: str = Field(default=".cache", description="Directory for cache files")

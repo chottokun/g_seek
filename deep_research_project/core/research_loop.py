@@ -268,67 +268,70 @@ class ResearchLoop:
             )
 
     async def _process_section(self, section, callback_override=None):
-        """Processes a single research section."""
-        section['status'] = 'researching'
+        """Processes a single research section and returns results."""
+        section_findings = []
+        section_sources = []
+        
         callback = callback_override or self.progress_callback
         if callback: await callback(f"Starting research for section: '{section['title']}'")
 
-        if not self.state.current_query and not self.state.proposed_query and self.state.completed_loops == 0:
-            await self._generate_initial_query(callback_override=callback)
-
-        while self.state.completed_loops < getattr(self.config, "MAX_RESEARCH_LOOPS", 3):
+        # Step 1: Initial Query
+        current_query = await self.planner.generate_initial_query(
+            topic=self.state.research_topic,
+            section_title=section['title'],
+            section_description=section.get('description', section['title']),
+            language=self.state.language,
+            progress_callback=callback
+        )
+        if callback: await callback(f"[{section['title']}] Initial query: {current_query}")
+        
+        for loop_idx in range(getattr(self.config, "MAX_RESEARCH_LOOPS", 5)):
             if self.state.is_interrupted: break
+            
+            # Step 2: Search
+            results = await self.executor.search(current_query, getattr(self.config, "MAX_SEARCH_RESULTS_PER_QUERY", 3))
+            
+            # Step 3: Filter and Summarize
+            relevant = await self.executor.filter_by_relevance(current_query, results, self.state.language)
+            if callback: await callback(f"[{section['title']}] Found {len(relevant)} relevant results.")
+            
+            if not relevant:
+                if callback: await callback(f"[{section['title']}] No relevant information found.")
+                break
+                
+            summary = await self.executor.retrieve_and_summarize(
+                relevant, current_query, self.state.language, {}, callback
+            )
+            
+            if summary:
+                section_findings.append(summary)
+                for r in relevant:
+                    section_sources.append(Source(title=r.title, link=r.link))
+            
+            # Step 4: Reflect & Decide loop continuation
+            reflection = await self.reflector.reflect(
+                topic=self.state.research_topic,
+                section_title=section['title'],
+                section_description=section.get('description', ''),
+                accumulated_summary="\n\n".join(section_findings),
+                language=self.state.language
+            )
+            
+            evaluation = reflection.get("evaluation", "CONCLUDE")
+            next_query = reflection.get("query")
+            
+            if evaluation == "CONTINUE" and next_query and next_query.lower() != "none":
+                current_query = next_query
+                if callback: await callback(f"[{section['title']}] Continuing with new query: {current_query}")
+            else:
+                break
 
-            # Step 1: Ensure we have a current query if needed
-            if not self.state.current_query:
-                if not self.interactive_mode and self.state.proposed_query:
-                    self.state.current_query = self.state.proposed_query
-                    self.state.proposed_query = None
-                elif self.interactive_mode and self.state.proposed_query:
-                    return False # Need interactive input
-                else: break
-
-            # Step 2: Search if needed
-            if not self.state.pending_source_selection and self.state.search_results is None:
-                await self._web_search(callback_override=callback)
-
-            # Step 3: Summarize if needed
-            if self.state.pending_source_selection:
-                if not self.interactive_mode:
-                    await self._summarize_sources(self.state.search_results or [], callback_override=callback)
-                else: return False # Need interactive input
-
-            # Step 4: After summarization, increment and reflect
-            if not self.state.pending_source_selection:
-                self.state.completed_loops += 1
-                self.state.current_query = None # Clear current query as it's finished
-                self.state.search_results = None # Clear results for this query
-
-                # Parallelize Graph Extraction and Reflection on every loop completion
-                await asyncio.gather(
-                    self._extract_entities_and_relations(callback_override=callback),
-                    self._reflect_on_summary()
-                )
-
-                if self.state.completed_loops < self.config.MAX_RESEARCH_LOOPS:
-                    if not self.state.proposed_query: break
-                    if not self.interactive_mode:
-                        self.state.current_query = self.state.proposed_query
-                        self.state.proposed_query = None
-                    else: return False # Need interactive input
-
+        # Finalize section state
         section['status'] = 'completed'
-        section['summary'] = self.state.accumulated_summary
-        section['sources'] = self.state.sources_gathered.copy()
-
-        # Reset section-specific state
-        self.state.accumulated_summary = ""
-        self.state.sources_gathered = []
-        self.state.completed_loops = 0
-        self.state.current_query = None
-        self.state.proposed_query = None
-        self.state.search_results = None
-        self.state.fetched_content = {}
+        section['summary'] = "\n\n".join(section_findings)
+        section['sources'] = [s.dict() if hasattr(s, 'dict') else s for s in section_sources]
+        
+        if callback: await callback(f"[{section['title']}] Section research complete.")
         return True
 
     async def run_loop(self):
@@ -340,23 +343,27 @@ class ResearchLoop:
             incomplete_sections = [s for s in self.state.research_plan if s['status'] != 'completed']
             if incomplete_sections:
                 if self.progress_callback:
-                    await self.progress_callback(f"🚀 Processing {len(incomplete_sections)} sections in parallel...")
+                    await self.progress_callback(f"🚀 Processing {len(incomplete_sections)} sections in parallel (max {getattr(self.config, 'MAX_CONCURRENT_SECTIONS', 3)} at once)...")
                 
+                # Global semaphore to control cross-section concurrency across all instances
+                if not hasattr(ResearchLoop, "_section_semaphore"):
+                    max_sections = getattr(self.config, "MAX_CONCURRENT_SECTIONS", 3)
+                    ResearchLoop._section_semaphore = asyncio.Semaphore(max_sections)
+                
+                section_semaphore = ResearchLoop._section_semaphore
+
                 # Wrap progress callback to include section title context
                 async def run_section_with_context(sec):
-                    orig_callback = self.progress_callback
-                    if orig_callback:
-                        async def wrapped_callback(msg):
-                            await orig_callback(f"[{sec['title']}] {msg}")
-                        # Temporarily replace callback for this section's context
-                        # Since we're in parallel, we need to be careful. 
-                        # Actually, _process_section uses self.progress_callback directly.
-                        # We need to modify _process_section to accept an optional callback override.
-                        return await self._process_section(sec, callback_override=wrapped_callback)
-                    else:
-                        return await self._process_section(sec)
+                    async with section_semaphore: # Control parallel execution
+                        orig_callback = self.progress_callback
+                        if orig_callback:
+                            async def wrapped_callback(msg):
+                                await orig_callback(f"[{sec['title']}] {msg}")
+                            return await self._process_section(sec, callback_override=wrapped_callback)
+                        else:
+                            return await self._process_section(sec)
 
-                # Execute all sections concurrently
+                # Execute all sections concurrently, but limited by the semaphore
                 await asyncio.gather(*[run_section_with_context(s) for s in incomplete_sections])
         else:
             # Sequential processing for interactive mode to allow per-step approval

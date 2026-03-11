@@ -67,6 +67,9 @@ async def main(message: cl.Message):
         else:
             topic_with_ctx = base_topic
             
+        async def progress_cb(msg):
+            await cl.Message(content=msg).send()
+            
         initial_state = {
             "topic": topic_with_ctx,
             "language": language,
@@ -78,15 +81,31 @@ async def main(message: cl.Message):
             "research_plan": [],
             "current_section_index": 0,
             "plan_approved": not config.INTERACTIVE_MODE,
-            "is_interrupted": False
+            "is_interrupted": False,
+            "progress_callback": None # Keeping as None in State, passing real one via Config
         }
-        config_dict = {"configurable": {"thread_id": thread_id}}
+        config_dict = {
+            "configurable": {
+                "thread_id": thread_id,
+                "progress_callback": progress_cb,
+                "config": config
+            }
+        }
         
         await run_graph_and_render(graph, initial_state, config_dict, config)
         return
 
     # 2. Resume Interrupted Graph (e.g. Plan Approval)
-    config_dict = {"configurable": {"thread_id": thread_id}}
+    async def progress_cb(msg):
+        await cl.Message(content=msg).send()
+        
+    config_dict = {
+        "configurable": {
+            "thread_id": thread_id,
+            "progress_callback": progress_cb,
+            "config": config
+        }
+    }
     state = graph.get_state(config_dict)
     
     if state and state.next:
@@ -175,10 +194,10 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                     if new_skill:
                         await cl.Message(content=f"💡 **New Domain Skill Extracted:** `{new_skill}`").send()
                         
-                elif node == "final_reporter":
-                    await cl.Message(content="📝 *Synthesizing gathered information into the final research report...*").send()
+            # Send final report if available
+            if node == "final_reporter":
+                await cl.Message(content="📝 *Synthesizing gathered information into the final research report...*").send()
 
-                        
         # Check if complete
         final_state = graph.get_state(config_dict).values
         if final_state.get("final_report"):
@@ -191,8 +210,15 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
             import logging
 
             # 1. Extract JSON blocks and create temporary HTML files
-            json_pattern = r"```json\s*\n(.*?)\n\s*```"
+            # More flexible pattern: allow the block to end with or without a final newline before the ```
+            json_pattern = r"```json\s*\n(.*?)\n?```"
             json_matches = re.findall(json_pattern, report, re.DOTALL)
+            
+            # Fallback: if no code blocks, look for a raw JSON-like structure starting with "{" and ending with "}"
+            if not json_matches:
+                raw_json_match = re.search(r"(\{\s*\"nodes\":.*?\})", report, re.DOTALL | re.IGNORECASE)
+                if raw_json_match:
+                    json_matches = [raw_json_match.group(1)]
             
             file_elements = []
             

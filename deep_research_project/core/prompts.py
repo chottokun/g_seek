@@ -159,17 +159,19 @@ REFLECTION_PROMPT_JA = (
     "リサーチトピック: {topic}\n"
     "セクション: {section_title}\n"
     "セクションの目的: {section_description}\n\n"
-    "以下の現在の要約に基づき、このセクションの目的に対して情報が十分に網羅されているか厳密に評価してください。\n"
+    "以下の現在の調査結果に基づき、このセクションの目的に対して情報が十分に網羅されているか厳密に評価してください。\n"
     "重要：1つの情報源だけでなく、多角的な視点や詳細な事実（数値、具体例、対立意見など）が欠けている、あるいは検索結果がゼロで進捗がない場合は、必ず原因を分析し、**より広範なキーワード**を用いて追加調査を行ってください。\n\n"
-    "--- SUMMARY START ---\n"
+    "--- 現在の調査結果 --- \n"
     "{accumulated_summary}\n"
-    "--- SUMMARY END ---\n\n"
+    "--- 調査結果ここまで ---\n\n"
     "指示：内容が不十分またはさらに深掘りが必要な場合、欠落している情報を埋めるための具体的な次の検索クエリを生成してください。\n"
     "**検索クエリのガイドライン**:\n"
     "- 直前の検索で結果が少なかった場合は、`site:`制限や`filetype:`制限を外し、より一般的なキーワードを追加して対象を広げてください。\n"
     "- セクション '{section_title}' の目的に直接関連する、多角的な切り口を試してください。\n\n"
-    "フォーマット: \nEVALUATION: <CONTINUE|CONCLUDE>\nQUERY: <次の検索クエリまたは None>\n"
-    "※ 情報が少しでも足りないと感じる場合は直ちに CONTINUE を選択してください。"
+    "以下のフォーマットで必ず出力してください（各項目は必ず独立した行に記述してください）: \n"
+    "EVALUATION: <CONTINUE または CONCLUDE>\n"
+    "QUERY: <具体的な検索クエリ または なし>\n"
+    "※ 情報が少しでも足りないと感じる場合は、妥協せず CONTINUE を選択してください。"
 )
 
 REFLECTION_PROMPT_EN = (
@@ -320,6 +322,20 @@ VISUAL_SUMMARY_PROMPT_JA = (
     "- 出力は純粋なJSONのみにしてください（コードブロック不要）。\n"
     "- ノードは最大20個程度とし、できるだけ詳細な関係性を含めてください。\n"
     "- 可能な限り具体的なURLや出典を'url'フィールドに含め、ポップアップで確認できるようにしてください。"
+)
+
+VISUAL_SUMMARY_PROMPT_EN = (
+    "Based on the context, generate detailed structured data (JSON format) for the topic: '{topic}'.\n"
+    "Include detailed descriptions and source/reference links (url) for each node if available.\n"
+    "--- FORMAT ---\n"
+    "{{\n"
+    "  \"nodes\": [ {{ \"id\": \"1\", \"label\": \"Concept Name\", \"type\": \"core|detail\", \"description\": \"Detailed explanation\", \"url\": \"https://...\" }}, ... ],\n"
+    "  \"edges\": [ {{ \"from\": \"1\", \"to\": \"2\", \"label\": \"Relationship\" }}, ... ]\n"
+    "}}\n"
+    "--- CONSTRAINTS ---\n"
+    "- Output ONLY pure JSON (no code blocks).\n"
+    "- Limit to approximately 20 nodes, including the most detailed relationships possible.\n"
+    "- Include specific URLs or citations in the 'url' field whenever available for verification."
 )
 
 MERMAID_DIAGRAM_PROMPT_EN = (

@@ -7,7 +7,7 @@ from deep_research_project.core.prompts import (
     NO_SOURCE_INFO_MSG_EN, NO_CITATION_INSTRUCTION_EN,
     SOURCE_INFO_PROMPT_JA, CITATION_INSTRUCTION_JA,
     SOURCE_INFO_PROMPT_EN, CITATION_INSTRUCTION_EN,
-    VISUAL_SUMMARY_PROMPT_JA, MERMAID_DIAGRAM_PROMPT_EN
+    VISUAL_SUMMARY_PROMPT_JA, VISUAL_SUMMARY_PROMPT_EN
 )
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ class ResearchReporter:
                 source_info=source_info,
                 citation_instruction=citation_instruction
             )
-            visual_summary_prompt = MERMAID_DIAGRAM_PROMPT_EN.format(topic=topic)
+            visual_summary_prompt = VISUAL_SUMMARY_PROMPT_EN.format(topic=topic)
 
         report = await self.llm_client.generate_text(prompt=prompt)
         
