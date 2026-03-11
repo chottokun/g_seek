@@ -19,10 +19,11 @@ async def start():
     config = Configuration()
     cl.user_session.set("config", config)
     
-    # Minimal UI Settings to prevent overrides
+    # Minimal UI Settings
     await cl.ChatSettings([
         Select(id="language", label="Language", values=["Japanese", "English"], initial_value=config.DEFAULT_LANGUAGE),
         Switch(id="interactive_mode", label="Interactive Mode (Plan Approval)", initial=config.INTERACTIVE_MODE),
+        Switch(id="snippets_only", label="Snippet Only Mode (Fast)", initial=config.USE_SNIPPETS_ONLY_MODE),
     ]).send()
     
     await cl.Message(content="# Deep Research Assistant\nAIを活用したリサーチを開始します。テーマを入力してください。\n（※ 一から作り直したクリーンなUI実装です）").send()
@@ -33,6 +34,7 @@ async def setup_agent(settings):
     if config:
         cl.user_session.set("language", settings["language"])
         config.INTERACTIVE_MODE = settings["interactive_mode"]
+        config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -182,120 +184,84 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
         if final_state.get("final_report"):
             report = final_state["final_report"]
             
-            # Split the report to find JSON blocks and render them as Custom Elements
             import re
-            # More permissive regex to catch ```json ... ``` with various spacers
-            parts = re.split(r"(```json\s*\n.*?\n\s*```)", report, flags=re.DOTALL)
+            import json
+            import tempfile
+            from pyvis.network import Network
+            import logging
+
+            # 1. Extract JSON blocks and create temporary HTML files
+            json_pattern = r"```json\s*\n(.*?)\n\s*```"
+            json_matches = re.findall(json_pattern, report, re.DOTALL)
             
-            clean_text_parts = []
-            json_blocks = []
+            file_elements = []
             
-            for part in parts:
-                if "```json" in part:
-                    match = re.search(r"```json\s*\n(.*?)\n\s*```", part, re.DOTALL)
-                    if match:
-                        json_blocks.append(match.group(1).strip())
-                elif part.strip():
-                    clean_text_parts.append(part.strip())
-            
-            for json_str in json_blocks:
-                import logging
-                logging.info(f"VISUAL_SUMMARY_PAYLOAD: {json_str[:200]}...")
+            for idx, json_str in enumerate(json_matches):
                 try:
-                    import json
-                    import tempfile
-                    from pyvis.network import Network
-                    
                     def try_repair_json(s):
-                        """Attempts to find the actual JSON object if there's trailing junk like '...'"""
                         try:
                             return json.loads(s)
                         except json.JSONDecodeError:
-                            # Try to find the last '}' and cut there
                             last_brace = s.rfind('}')
                             if last_brace != -1:
-                                try:
-                                    return json.loads(s[:last_brace+1])
+                                try: return json.loads(s[:last_brace+1])
                                 except: pass
                             return None
 
                     json_obj = try_repair_json(json_str)
-                    if not json_obj:
-                        logging.warning("Failed to repair JSON for visual summary.")
-                        continue
+                    if not json_obj: continue
 
-                    # Build the Interactive Graph using Pyvis
                     net = Network(notebook=False, height="600px", width="100%", directed=True)
+                    # ... [net options and node/edge logic remains same] ...
                     net.set_options("""
-                    var options = {
-                      "physics": {
-                        "barnesHut": {
-                          "gravitationalConstant": -3000,
-                          "centralGravity": 0.3,
-                          "springLength": 150
-                        }
-                      }
-                    }
+                    var options = { "physics": { "barnesHut": { "gravitationalConstant": -3000, "centralGravity": 0.3, "springLength": 150 } } }
                     """)
                     
                     for node in json_obj.get('nodes', []):
                         color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
-                        
-                        # 构建rich html tooltip (title)
                         title_html = f"<b>{node.get('label', str(node['id']))}</b>"
-                        if 'description' in node and node['description']:
-                            title_html += f"<br><br>{node['description']}"
-                        if 'url' in node and node['url']:
-                            title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
-                        
-                        net.add_node(
-                            node['id'], 
-                            label=node.get('label', str(node['id'])), 
-                            color=color, 
-                            shape="box",
-                            title=title_html
-                        )
+                        if 'description' in node and node['description']: title_html += f"<br><br>{node['description']}"
+                        if 'url' in node and node['url']: title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
+                        net.add_node(node['id'], label=node.get('label', str(node['id'])), color=color, shape="box", title=title_html)
                         
                     for edge in json_obj.get('edges', []):
-                        from_id = str(edge['from'])
-                        to_id = str(edge['to'])
-                        label = edge.get('label', '')
-                        net.add_edge(from_id, to_id, title=label, label=label)
+                        net.add_edge(str(edge['from']), str(edge['to']), title=edge.get('label', ''), label=edge.get('label', ''))
                         
-                    # Save to temp file and send
-                    tmp_path = tempfile.mktemp(suffix=".html", prefix="research_graph_")
+                    tmp_path = tempfile.mktemp(suffix=".html", prefix=f"visual_summary_{idx}_")
                     net.save_graph(tmp_path)
                     
-                    elements = [
+                    file_elements.append(
                         cl.File(
-                            name="Interactive Visual Summary",
+                            name=f"Visual_Summary_{idx+1}.html",
                             path=tmp_path,
-                            mime="text/html",
-                            display="inline",
+                            display="inline"
                         )
-                    ]
-                    await cl.Message(content="Visual summary generated as an interactive HTML diagram:", elements=elements).send()
-                    
-                except Exception as e:
-                    logging.error(f"Failed to parse or send Pyvis graph: {e}")
-                    await cl.Message(content=f"Error parsing graph data: {e}").send()
-
-            clean_report = "\n\n".join(clean_text_parts)
-            
-            if clean_report.strip():
-                import tempfile
-                report_file = tempfile.mktemp(suffix=".md", prefix="research_report_")
-                with open(report_file, "w", encoding="utf-8") as f:
-                    f.write(report)
-                
-                elements = [
-                    cl.File(
-                        name="research_report.md",
-                        path=report_file,
-                        display="inline"
                     )
-                ]
-                await cl.Message(content=clean_report, elements=elements).send()
+                except Exception as e:
+                    logging.error(f"Failed to process graph {idx}: {e}")
+
+            # 2. Clean the report text
+            # Remove JSON blocks
+            clean_report = re.sub(json_pattern, "", report, flags=re.DOTALL)
+            # Remove "## Visual Summary" or similar headers if they exist
+            clean_report = re.sub(r"##\s*Visual\s*Summary.*?\n", "", clean_report, flags=re.IGNORECASE)
+            clean_report = clean_report.strip()
+
+            # 3. Create report file element
+            report_path = tempfile.mktemp(suffix=".md", prefix="research_report_")
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(report) # Save original full report including JSON
+            
+            file_elements.append(
+                cl.File(
+                    name="research_report.md",
+                    path=report_path,
+                    display="inline"
+                )
+            )
+
+            # 4. Send single consolidated message
+            await cl.Message(content=clean_report, elements=file_elements).send()
             
     except Exception as e:
         import traceback

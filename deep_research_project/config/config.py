@@ -65,17 +65,17 @@ class Configuration(BaseSettings):
     SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = Field(default=500)
 
     # Optimization Configuration
-    MAX_CONCURRENT_CHUNKS: int = Field(default=5)
+    MAX_CONCURRENT_CHUNKS: int = Field(default=10)
     LLM_RATE_LIMIT_RPM: int = Field(default=60)
     LLM_RATE_LIMIT_TPM: int = Field(default=40000, description="Tokens Per Minute limit")
 
     ENABLE_CACHING: bool = Field(default=True, description="Enable persistent caching")
     CACHE_DIR: str = Field(default=".cache", description="Directory for cache files")
     
-    MAX_CONCURRENT_RETRIEVALS: int = Field(default=5, description="Maximum concurrent web content retrievals")
+    MAX_CONCURRENT_RETRIEVALS: int = Field(default=20, description="Maximum concurrent web content retrievals")
     BATCH_SIZE_RELEVANCE: int = Field(default=5, description="Number of results to score in one LLM call")
 
-    USE_SNIPPETS_ONLY_MODE: bool = Field(default=False)
+    USE_SNIPPETS_ONLY_MODE: bool = Field(default=False, validation_alias=AliasChoices("USE_SNIPPETS_ONLY_MODE", "SNIPPETS_ONLY"))
     MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = Field(default=0)
     PROCESS_PDF_FILES: bool = Field(default=True)
 
