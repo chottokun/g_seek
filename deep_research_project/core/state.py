@@ -37,6 +37,25 @@ class KnowledgeGraphModel(BaseModel):
     nodes: List[KGNode]
     edges: List[KGEdge]
 
+class VisualSummaryNode(BaseModel):
+    id: str = Field(description="Unique identifier for the node")
+    label: str = Field(description="Label or name of the concept")
+    type: str = Field(description="Type of the node: 'core' (major concept) or 'detail' (supporting info)")
+    description: Optional[str] = Field(default=None, description="Detailed explanation of the concept")
+    url: Optional[str] = Field(default=None, description="Source/reference link for the node")
+
+class VisualSummaryEdge(BaseModel):
+    source: str = Field(alias="from", description="ID of the source node")
+    target: str = Field(alias="to", description="ID of the destination node")
+    label: Optional[str] = Field(default=None, description="Label describing the relationship")
+
+    class Config:
+        populate_by_name = True
+
+class VisualSummaryModel(BaseModel):
+    nodes: List[VisualSummaryNode]
+    edges: List[VisualSummaryEdge]
+
 class SectionPlan(TypedDict):
     title: str
     description: str

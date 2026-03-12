@@ -93,6 +93,7 @@ class Configuration(BaseSettings):
     REPORT_DIR: str = Field(default="temp_reports")
     CLEANUP_AGE_SECONDS: int = Field(default=3600)
     DEFAULT_LANGUAGE: str = Field(default="Japanese")
+    MAX_FINAL_REPORT_CONTEXT_CHARS: int = Field(default=102400, description="Max characters of context passed to final report generation to prevent overflow.")
     
     # Relevance Filtering Configuration (Phase 6)
     ENABLE_RELEVANCE_FILTERING: bool = Field(default=True, description="Enable relevance filtering for search results")
