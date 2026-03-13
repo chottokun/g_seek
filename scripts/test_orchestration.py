@@ -4,7 +4,6 @@ import logging
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.graph import create_research_graph
-from deep_research_project.core.skills_manager import SkillRegistry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
