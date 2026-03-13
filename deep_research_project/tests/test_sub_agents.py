@@ -1,8 +1,8 @@
 import pytest
 import asyncio
-from typing import Dict, Any
+from unittest.mock import AsyncMock, MagicMock
+from typing import Dict, Any, List
 from deep_research_project.core.sub_agents import SkillAgent, Orchestrator
-from deep_research_project.core.skills_manager import SkillRegistry
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.config.config import Configuration
 
@@ -53,6 +53,73 @@ async def test_sub_agent_routing():
     )
     # web-search is static, should return None
     assert summary_none is None
+
+@pytest.mark.asyncio
+async def test_run_task_success():
+    """Test SkillAgent.run_task happy path."""
+    mock_llm = MagicMock(spec=LLMClient)
+    mock_llm.generate_text = AsyncMock(return_value="Success response")
+
+    skill_data = {
+        "name": "Test Agent",
+        "description": "Test Description",
+        "content": "Test Instructions"
+    }
+    agent = SkillAgent("test-id", skill_data, mock_llm)
+
+    section_title = "Testing Section"
+    section_description = "A section for testing"
+    context = ["Context item 1", "Context item 2"]
+
+    response = await agent.run_task(
+        section_title=section_title,
+        section_description=section_description,
+        context=context,
+        language="English"
+    )
+
+    assert response == "Success response"
+
+    # Verify prompt construction
+    args, kwargs = mock_llm.generate_text.call_args
+    prompt = args[0]
+    assert "Test Agent" in prompt
+    assert "Test Description" in prompt
+    assert "Test Instructions" in prompt
+    assert section_title in prompt
+    assert section_description in prompt
+    assert "Context item 1" in prompt
+    assert "Context item 2" in prompt
+
+@pytest.mark.asyncio
+async def test_run_task_empty_context():
+    """Test SkillAgent.run_task with empty context."""
+    mock_llm = MagicMock(spec=LLMClient)
+    mock_llm.generate_text = AsyncMock(return_value="Empty context response")
+
+    skill_data = {"name": "Agent"}
+    agent = SkillAgent("test-id", skill_data, mock_llm)
+
+    response = await agent.run_task("Title", "Desc", [], "English")
+
+    assert response == "Empty context response"
+    args, _ = mock_llm.generate_text.call_args
+    prompt = args[0]
+    assert "Current context/findings:\n\n" in prompt
+
+@pytest.mark.asyncio
+async def test_run_task_error():
+    """Test SkillAgent.run_task error handling."""
+    mock_llm = MagicMock(spec=LLMClient)
+    mock_llm.generate_text = AsyncMock(side_effect=Exception("LLM Failure"))
+
+    skill_data = {"name": "FailAgent"}
+    agent = SkillAgent("test-id", skill_data, mock_llm)
+
+    response = await agent.run_task("Title", "Desc", ["Context"], "English")
+
+    assert "Error in sub-agent FailAgent" in response
+    assert "LLM Failure" in response
 
 @pytest.mark.asyncio
 async def test_sub_agent_actual_llm_call():
