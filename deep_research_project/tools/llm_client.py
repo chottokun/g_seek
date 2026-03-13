@@ -26,94 +26,112 @@ class LLMClient:
         self.cache_manager = CacheManager(cache_dir=cache_dir, enabled=enable_caching)
 
         if self.config.LLM_PROVIDER == "openai":
-            try:
-                from langchain_openai import ChatOpenAI
-
-                temperature = self.config.LLM_TEMPERATURE
-                if self._is_fixed_temperature_model(self.config.LLM_MODEL):
-                    logger.info(f"Model {self.config.LLM_MODEL} detected as requiring fixed temperature (1.0). Overriding.")
-                    temperature = 1.0
-
-                openai_kwargs = {
-                    "model_name": self.config.LLM_MODEL,
-                    "temperature": temperature,
-                    "max_tokens": self.config.LLM_MAX_TOKENS
-                }
-                if self.config.OPENAI_API_KEY:
-                    openai_kwargs["api_key"] = self.config.OPENAI_API_KEY
-                if self.config.OPENAI_API_BASE_URL:
-                    openai_kwargs["base_url"] = self.config.OPENAI_API_BASE_URL
-
-                self.llm = ChatOpenAI(**openai_kwargs)
-                logger.info(f"Initialized OpenAI LLM Client with model: {self.config.LLM_MODEL}")
-
-            except ImportError:
-                logger.error("langchain_openai is not installed.")
-                raise
-            except Exception as e:
-                logger.error(f"Error initializing ChatOpenAI: {e}", exc_info=True)
-                raise
-
+            self._init_openai_client()
         elif self.config.LLM_PROVIDER == "azure_openai":
-            try:
-                from langchain_openai import AzureChatOpenAI
-                azure_kwargs = {
-                    "azure_endpoint": self.config.AZURE_OPENAI_ENDPOINT,
-                    "api_key": self.config.AZURE_OPENAI_API_KEY,
-                    "api_version": self.config.AZURE_OPENAI_API_VERSION,
-                    "azure_deployment": self.config.AZURE_OPENAI_DEPLOYMENT_NAME,
-                    "temperature": self.config.LLM_TEMPERATURE,
-                    "max_tokens": self.config.LLM_MAX_TOKENS
-                }
-                self.llm = AzureChatOpenAI(**azure_kwargs)
-                logger.info(f"Initialized Azure OpenAI Client with deployment: {self.config.AZURE_OPENAI_DEPLOYMENT_NAME}")
-            except ImportError:
-                logger.error("langchain_openai is not installed for Azure.")
-                raise
-            except Exception as e:
-                logger.error(f"Error initializing AzureChatOpenAI: {e}", exc_info=True)
-                raise
-
+            self._init_azure_openai_client()
         elif self.config.LLM_PROVIDER == "ollama":
-            try:
-                from langchain_ollama import ChatOllama
-
-                ollama_kwargs = {
-                    "model": self.config.LLM_MODEL,
-                    "temperature": self.config.LLM_TEMPERATURE,
-                    "num_predict": self.config.LLM_MAX_TOKENS
-                }
-                if hasattr(self.config, "OLLAMA_BASE_URL") and self.config.OLLAMA_BASE_URL:
-                    ollama_kwargs["base_url"] = self.config.OLLAMA_BASE_URL
-
-                self.llm = ChatOllama(**ollama_kwargs)
-                logger.info(f"Initialized Ollama LLM Client (ChatOllama) with model: {self.config.LLM_MODEL}")
-            except ImportError:
-                logger.error("langchain_ollama is not installed.")
-                raise
+            self._init_ollama_client()
         elif self.config.LLM_PROVIDER == "gemini":
-            try:
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                gemini_kwargs = {
-                    "model": self.config.LLM_MODEL,
-                    "temperature": self.config.LLM_TEMPERATURE,
-                    "max_output_tokens": self.config.LLM_MAX_TOKENS,
-                    "google_api_key": self.config.GOOGLE_API_KEY
-                }
-                self.llm = ChatGoogleGenerativeAI(**gemini_kwargs)
-                logger.info(f"Initialized Gemini LLM Client with model: {self.config.LLM_MODEL}")
-            except ImportError:
-                logger.error("langchain_google_genai is not installed.")
-                raise
-            except Exception as e:
-                logger.error(f"Error initializing ChatGoogleGenerativeAI: {e}", exc_info=True)
-                raise
-        elif self.config.LLM_PROVIDER == "placeholder_llm":
+            self._init_gemini_client()
+        else:
+            self._init_placeholder_client()
+
+    def _init_openai_client(self):
+        """Initializes the OpenAI LLM client."""
+        try:
+            from langchain_openai import ChatOpenAI
+
+            temperature = self.config.LLM_TEMPERATURE
+            if self._is_fixed_temperature_model(self.config.LLM_MODEL):
+                logger.info(f"Model {self.config.LLM_MODEL} detected as requiring fixed temperature (1.0). Overriding.")
+                temperature = 1.0
+
+            openai_kwargs = {
+                "model_name": self.config.LLM_MODEL,
+                "temperature": temperature,
+                "max_tokens": self.config.LLM_MAX_TOKENS
+            }
+            if self.config.OPENAI_API_KEY:
+                openai_kwargs["api_key"] = self.config.OPENAI_API_KEY
+            if self.config.OPENAI_API_BASE_URL:
+                openai_kwargs["base_url"] = self.config.OPENAI_API_BASE_URL
+
+            self.llm = ChatOpenAI(**openai_kwargs)
+            logger.info(f"Initialized OpenAI LLM Client with model: {self.config.LLM_MODEL}")
+
+        except ImportError:
+            logger.error("langchain_openai is not installed.")
+            raise
+        except Exception as e:
+            logger.error(f"Error initializing ChatOpenAI: {e}", exc_info=True)
+            raise
+
+    def _init_azure_openai_client(self):
+        """Initializes the Azure OpenAI LLM client."""
+        try:
+            from langchain_openai import AzureChatOpenAI
+            azure_kwargs = {
+                "azure_endpoint": self.config.AZURE_OPENAI_ENDPOINT,
+                "api_key": self.config.AZURE_OPENAI_API_KEY,
+                "api_version": self.config.AZURE_OPENAI_API_VERSION,
+                "azure_deployment": self.config.AZURE_OPENAI_DEPLOYMENT_NAME,
+                "temperature": self.config.LLM_TEMPERATURE,
+                "max_tokens": self.config.LLM_MAX_TOKENS
+            }
+            self.llm = AzureChatOpenAI(**azure_kwargs)
+            logger.info(f"Initialized Azure OpenAI Client with deployment: {self.config.AZURE_OPENAI_DEPLOYMENT_NAME}")
+        except ImportError:
+            logger.error("langchain_openai is not installed for Azure.")
+            raise
+        except Exception as e:
+            logger.error(f"Error initializing AzureChatOpenAI: {e}", exc_info=True)
+            raise
+
+    def _init_ollama_client(self):
+        """Initializes the Ollama LLM client."""
+        try:
+            from langchain_ollama import ChatOllama
+
+            ollama_kwargs = {
+                "model": self.config.LLM_MODEL,
+                "temperature": self.config.LLM_TEMPERATURE,
+                "num_predict": self.config.LLM_MAX_TOKENS
+            }
+            if hasattr(self.config, "OLLAMA_BASE_URL") and self.config.OLLAMA_BASE_URL:
+                ollama_kwargs["base_url"] = self.config.OLLAMA_BASE_URL
+
+            self.llm = ChatOllama(**ollama_kwargs)
+            logger.info(f"Initialized Ollama LLM Client (ChatOllama) with model: {self.config.LLM_MODEL}")
+        except ImportError:
+            logger.error("langchain_ollama is not installed.")
+            raise
+
+    def _init_gemini_client(self):
+        """Initializes the Gemini LLM client."""
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            gemini_kwargs = {
+                "model": self.config.LLM_MODEL,
+                "temperature": self.config.LLM_TEMPERATURE,
+                "max_output_tokens": self.config.LLM_MAX_TOKENS,
+                "google_api_key": self.config.GOOGLE_API_KEY
+            }
+            self.llm = ChatGoogleGenerativeAI(**gemini_kwargs)
+            logger.info(f"Initialized Gemini LLM Client with model: {self.config.LLM_MODEL}")
+        except ImportError:
+            logger.error("langchain_google_genai is not installed.")
+            raise
+        except Exception as e:
+            logger.error(f"Error initializing ChatGoogleGenerativeAI: {e}", exc_info=True)
+            raise
+
+    def _init_placeholder_client(self):
+        """Initializes a placeholder LLM client for testing or fallback."""
+        if self.config.LLM_PROVIDER == "placeholder_llm":
             logger.info("Initialized Placeholder LLM Client.")
-            self.llm = "PlaceholderLLMInstance"
         else:
             logger.info(f"LLM Provider is '{self.config.LLM_PROVIDER}'. Using placeholder.")
-            self.llm = "PlaceholderLLMInstance"
+        self.llm = "PlaceholderLLMInstance"
 
     async def _wait_for_rate_limit(self):
         """Waits to respect the rate limit before EACH request."""
