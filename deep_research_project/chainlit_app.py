@@ -238,7 +238,7 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                     if not json_obj: continue
 
                     net = Network(notebook=False, height="600px", width="100%", directed=True)
-                    # ... [net options and node/edge logic remains same] ...
+                    # Options for a nicer look
                     net.set_options("""
                     var options = { "physics": { "barnesHut": { "gravitationalConstant": -3000, "centralGravity": 0.3, "springLength": 150 } } }
                     """)
@@ -252,8 +252,9 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                         
                     for edge in json_obj.get('edges', []):
                         net.add_edge(str(edge['from']), str(edge['to']), title=edge.get('label', ''), label=edge.get('label', ''))
-                        
-                    tmp_path = tempfile.mktemp(suffix=".html", prefix=f"visual_summary_{idx}_")
+                    
+                    with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
+                        tmp_path = tf.name
                     net.save_graph(tmp_path)
                     
                     file_elements.append(
@@ -264,27 +265,31 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                         )
                     )
                 except Exception as e:
-                    logging.error(f"Failed to process graph {idx}: {e}")
+                    logging.exception(f"Failed to process graph {idx}: {e}")
 
             # 2. Clean the report text
-            # Remove JSON blocks
+            # Remove JSON blocks for clean display
             clean_report = re.sub(json_pattern, "", report, flags=re.DOTALL)
             # Remove "## Visual Summary" or similar headers if they exist
             clean_report = re.sub(r"##\s*Visual\s*Summary.*?\n", "", clean_report, flags=re.IGNORECASE)
             clean_report = clean_report.strip()
 
             # 3. Create report file element
-            report_path = tempfile.mktemp(suffix=".md", prefix="research_report_")
-            with open(report_path, "w", encoding="utf-8") as f:
-                f.write(report) # Save original full report including JSON
-            
-            file_elements.append(
-                cl.File(
-                    name="research_report.md",
-                    path=report_path,
-                    display="inline"
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
+                    report_path = tf.name
+                with open(report_path, "w", encoding="utf-8") as f:
+                    f.write(report) # Save original full report including JSON
+                
+                file_elements.append(
+                    cl.File(
+                        name="research_report.md",
+                        path=report_path,
+                        display="inline"
+                    )
                 )
-            )
+            except Exception as e:
+                logging.exception(f"Failed to create report file: {e}")
 
             # 4. Send single consolidated message
             await cl.Message(content=clean_report, elements=file_elements).send()
