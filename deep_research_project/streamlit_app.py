@@ -17,7 +17,7 @@ from deep_research_project.core.state import ResearchState
 from deep_research_project.core.research_loop import ResearchLoop
 from streamlit_agraph import agraph, Node, Edge, Config
 from pyvis.network import Network
-from typing import Callable, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
