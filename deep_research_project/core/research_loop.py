@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import List, Dict, Optional, Any, Callable
+from typing import List, Optional, Any, Callable
 
 from deep_research_project.config.config import Configuration
 from deep_research_project.core.state import ResearchState, Source, SearchResult, SectionPlan
