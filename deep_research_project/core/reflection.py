@@ -43,30 +43,40 @@ class ResearchReflector:
             logger.error(f"KG extraction or merge failed: {e}")
 
     def _merge_nodes(self, new_nodes: List[KGNode], existing_nodes: List[dict]):
-        """Merges new nodes into the existing nodes list."""
+        """Merges new nodes into the existing nodes list with O(N) complexity."""
         node_map = {n['id']: n for n in existing_nodes}
         for new_node in new_nodes:
-            if new_node.id in node_map:
-                existing_node = node_map[new_node.id]
-                existing_node.setdefault('properties', {}).update(new_node.properties)
+            node_id = new_node.id
+            if node_id in node_map:
+                existing_node = node_map[node_id]
                 
-                # Merge source URLs (unique)
-                existing_urls = set(existing_node.get('source_urls', []))
-                existing_urls.update(new_node.source_urls)
-                existing_node['source_urls'] = list(existing_urls)
+                # Merge properties
+                if new_node.properties:
+                    existing_node.setdefault('properties', {}).update(new_node.properties)
                 
                 # Update Centrality (mention_count)
-                props = existing_node['properties']
+                props = existing_node.setdefault('properties', {})
                 try:
-                    current_count = int(props.get('mention_count', 1))
+                    current_count = int(props.get('mention_count', '1'))
                     props['mention_count'] = str(current_count + 1)
                 except (ValueError, TypeError):
                     props['mention_count'] = "2"
+
+                # Merge source URLs (unique)
+                new_urls = new_node.source_urls
+                if new_urls:
+                    existing_urls = existing_node.get('source_urls', [])
+                    if not existing_urls:
+                        existing_node['source_urls'] = list(new_urls)
+                    else:
+                        u_set = set(existing_urls)
+                        u_set.update(new_urls)
+                        existing_node['source_urls'] = list(u_set)
             else:
                 node_data = new_node.model_dump()
                 node_data.setdefault('properties', {})['mention_count'] = "1"
                 existing_nodes.append(node_data)
-                node_map[new_node.id] = node_data
+                node_map[node_id] = node_data
 
     def _merge_edges(self, new_edges: List[KGEdge], existing_edges: List[dict]):
         """Merges new edges into the existing edges list."""
@@ -75,12 +85,17 @@ class ResearchReflector:
             edge_key = (new_edge.source, new_edge.target, new_edge.label)
             if edge_key in edge_map:
                 existing_edge = edge_map[edge_key]
-                existing_edge.setdefault('properties', {}).update(new_edge.properties)
+                if new_edge.properties:
+                    existing_edge.setdefault('properties', {}).update(new_edge.properties)
                 
-                # Merge source URLs
-                existing_urls = set(existing_edge.get('source_urls', []))
-                existing_urls.update(new_edge.source_urls)
-                existing_edge['source_urls'] = list(existing_urls)
+                if new_edge.source_urls:
+                    existing_urls = existing_edge.get('source_urls', [])
+                    if not existing_urls:
+                        existing_edge['source_urls'] = list(new_edge.source_urls)
+                    else:
+                        u_set = set(existing_urls)
+                        u_set.update(new_edge.source_urls)
+                        existing_edge['source_urls'] = list(u_set)
             else:
                 edge_data = new_edge.model_dump()
                 existing_edges.append(edge_data)
