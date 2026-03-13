@@ -33,13 +33,8 @@ def format_combined_download_data(final_report: Optional[str], follow_up_log: li
     report = final_report if final_report else "No report generated."
     return f"{report}\n\n---\n\n{format_follow_up_log_for_download(follow_up_log)}"
 
-def main():
-    st.set_page_config(layout="wide", page_title="Modern Research Assistant")
-    st.title("Modern Research Assistant (Async)")
-
-    if "messages" not in st.session_state: st.session_state.messages = []
-    if "selected_sources" not in st.session_state: st.session_state.selected_sources = {}
-
+def render_sidebar():
+    """Render the configuration sidebar and handle research controls."""
     with st.sidebar:
         st.header("Controls")
         config_default = Configuration()
@@ -108,184 +103,214 @@ def main():
                     asyncio.run(st.session_state.research_loop._generate_research_plan())
                     st.rerun()
 
+def render_research_progress(state: ResearchState):
+    """Display the progress of research sections."""
+    if state.research_plan:
+        st.markdown("**Research Progress:**")
+        cols = st.columns(len(state.research_plan))
+        for i, section in enumerate(state.research_plan):
+            with cols[i]:
+                icon = "✅" if section['status'] == 'completed' else "⏳" if section['status'] == 'researching' else "⚪"
+                st.markdown(f"{icon} {section['title']}")
+
+def handle_interactive_inputs(state: ResearchState, loop: ResearchLoop) -> bool:
+    """Handle interactive steps requiring user approval. Returns True if execution should pause/rerun."""
+    # Interactive Plan Approval
+    if loop.interactive_mode and state.research_plan and not state.plan_approved:
+        st.divider()
+        st.subheader("Plan Approval")
+        for i, sec in enumerate(state.research_plan):
+            with st.expander(f"Section {i+1}: {sec['title']}", expanded=True):
+                state.research_plan[i]['title'] = st.text_input(f"Title {i}", value=sec['title'], key=f"t_{i}")
+                state.research_plan[i]['description'] = st.text_area(f"Desc {i}", value=sec['description'], key=f"d_{i}")
+        if st.button("Approve & Start"):
+            state.plan_approved = True
+            with st.status("Processing research based on approved plan...", expanded=True) as status:
+                async def progress_update(msg: str):
+                    status.write(msg)
+                loop.progress_callback = progress_update
+                asyncio.run(loop.run_loop())
+            st.rerun()
+        return True
+
+    # Interactive Query Approval
+    if loop.interactive_mode and state.proposed_query and not state.current_query:
+        st.divider()
+        st.subheader("Query Approval")
+        q = st.text_input("Review Query:", value=state.proposed_query)
+        if st.button("Search with this Query"):
+            state.current_query = q
+            state.proposed_query = None
+            with st.status(f"Searching for '{q}'...", expanded=True) as status:
+                async def progress_update(msg: str):
+                    status.write(msg)
+                loop.progress_callback = progress_update
+                asyncio.run(loop.run_loop())
+            st.rerun()
+        return True
+
+    # Interactive Source Selection
+    if loop.interactive_mode and state.pending_source_selection and state.search_results:
+        st.divider()
+        st.subheader("Select Sources")
+        selected = []
+        for res in state.search_results:
+            if st.checkbox(res.title, key=f"src_{res.link}"):
+                selected.append(res)
+        if st.button("Summarize Selected"):
+            with st.status("Summarizing selected sources and continuing research...", expanded=True) as status:
+                async def progress_update(msg: str):
+                    status.write(msg)
+                loop.progress_callback = progress_update
+                asyncio.run(loop._summarize_sources(selected))
+                asyncio.run(loop.run_loop())
+            st.rerun()
+        return True
+
+    return False
+
+def render_knowledge_graph(state: ResearchState):
+    """Render the interactive knowledge graph."""
+    if not state.knowledge_graph_nodes:
+        return
+
+    st.divider()
+    st.subheader("Knowledge Graph")
+    try:
+        # Color mapping for entity types
+        type_colors = {
+            "Person": "#FF6B6B",
+            "Organization": "#4ECDC4",
+            "Concept": "#45B7D1",
+            "Event": "#FFA07A",
+            "Technology": "#98D8C8",
+            "Location": "#F0E68C"
+        }
+
+        nodes = []
+        for n in state.knowledge_graph_nodes:
+            props = n.get('properties', {})
+            mention_count = int(props.get('mention_count', 1))
+            node_size = 20 + min(mention_count * 5, 40)
+
+            # Security: Escape LLM-generated content
+            esc_label = html.escape(n['label'])
+            esc_type = html.escape(n['type'])
+
+            # Build detailed title for hover
+            # NOTE: streamlit-agraph also does NOT render HTML in tooltips
+            hover_info = f"{esc_label} ({esc_type})\n"
+            for k, v in props.items():
+                if k not in ['mention_count', 'section']:
+                    hover_info += f"- {html.escape(str(k))}: {html.escape(str(v))}\n"
+            
+            source_urls = n.get('source_urls', [])
+            if source_urls:
+                hover_info += "\nSources:\n" + "\n".join([f"• {html.escape(str(url))}" for url in source_urls])
+
+            nodes.append(Node(
+                id=n['id'],
+                label=esc_label,
+                size=node_size,
+                group=n['type'],
+                color=type_colors.get(n['type'], "#CCCCCC"),
+                title=hover_info # title is used for mouseover in agraph/vis.js
+            ))
+
+        edges = [Edge(source=e['source'], target=e['target'], label=html.escape(e['label'])) for e in state.knowledge_graph_edges]
+
+        config = Config(
+            width=900,
+            height=600,
+            directed=True,
+            nodeHighlightBehavior=True,
+            highlightColor="#F7A7A6",
+            staticGraph=False,
+            collapsible=False
+        )
+
+        # agraph returns the clicked node id
+        return_value = agraph(nodes=nodes, edges=edges, config=config)
+
+        if return_value:
+            # Find the node and open URL if available
+            clicked_node = next((n for n in state.knowledge_graph_nodes if n['id'] == return_value), None)
+            if clicked_node and clicked_node.get('source_urls'):
+                url_to_open = clicked_node['source_urls'][0]
+                # Security: Validate URL to prevent XSS (e.g., javascript: links)
+                if url_to_open.startswith(("http://", "https://")):
+                    st.info(f"Opening source: {url_to_open}")
+                    st.link_button("Click here to open the source in a new tab", url_to_open)
+                else:
+                    st.error(f"Invalid or unsafe source URL: {url_to_open}")
+
+    except Exception as e:
+        st.error(f"Error rendering graph: {e}")
+
+def render_research_results(state: ResearchState, loop: ResearchLoop):
+    """Display the final report and handle follow-up questions."""
+    if state.final_report:
+        st.success("Final Report Generated")
+        if state.is_interrupted:
+            st.warning("Note: This report is partial as research was interrupted.")
+
+        st.download_button(
+            label="📥 レポートをダウンロード (Download Report)",
+            data=format_combined_download_data(state.final_report, state.follow_up_log),
+            file_name="research_report.md",
+            mime="text/markdown"
+        )
+
+        with st.expander("View Report", expanded=True):
+            st.markdown(state.final_report)
+
+        with st.expander("テキストエリアからコピー (Copy Manually)", expanded=False):
+            st.text_area("以下のテキストを全選択(Ctrl+A)してコピー(Ctrl+C)してください", value=state.final_report, height=300)
+
+        # Knowledge Graph
+        render_knowledge_graph(state)
+
+        # Follow-up
+        st.divider()
+        st.subheader("Follow-up Questions")
+        for qa in state.follow_up_log:
+            with st.chat_message("user"): st.write(qa['question'])
+            with st.chat_message("assistant"): st.write(qa['answer'])
+
+        fq = st.chat_input("Ask a follow-up question...")
+        if fq:
+            state.follow_up_log.append({"question": fq, "answer": "Thinking..."})
+            # Re-run logic for follow-up
+            prompt = loop.format_follow_up_prompt(state.final_report, fq)
+            ans = asyncio.run(loop.llm_client.generate_text(prompt))
+            state.follow_up_log[-1]["answer"] = ans
+            st.rerun()
+    else:
+        if state.new_information:
+            st.info("Latest Findings:")
+            st.write(state.new_information)
+
+def main():
+    st.set_page_config(layout="wide", page_title="Modern Research Assistant")
+    st.title("Modern Research Assistant (Async)")
+
+    if "messages" not in st.session_state: st.session_state.messages = []
+    if "selected_sources" not in st.session_state: st.session_state.selected_sources = {}
+
+    render_sidebar()
+
     if "research_state" in st.session_state:
         state = st.session_state.research_state
         loop = st.session_state.research_loop
 
         st.subheader(f"Topic: {state.research_topic}")
 
-        # Progress UI
-        if state.research_plan:
-            st.markdown("**Research Progress:**")
-            cols = st.columns(len(state.research_plan))
-            for i, section in enumerate(state.research_plan):
-                with cols[i]:
-                    icon = "✅" if section['status'] == 'completed' else "⏳" if section['status'] == 'researching' else "⚪"
-                    st.markdown(f"{icon} {section['title']}")
+        render_research_progress(state)
 
-        # Interactive Plan Approval
-        if loop.interactive_mode and state.research_plan and not state.plan_approved:
-            st.divider()
-            st.subheader("Plan Approval")
-            for i, sec in enumerate(state.research_plan):
-                with st.expander(f"Section {i+1}: {sec['title']}", expanded=True):
-                    state.research_plan[i]['title'] = st.text_input(f"Title {i}", value=sec['title'], key=f"t_{i}")
-                    state.research_plan[i]['description'] = st.text_area(f"Desc {i}", value=sec['description'], key=f"d_{i}")
-            if st.button("Approve & Start"):
-                state.plan_approved = True
-                with st.status("Processing research based on approved plan...", expanded=True) as status:
-                    async def progress_update(msg: str):
-                        status.write(msg)
-                    loop.progress_callback = progress_update
-                    asyncio.run(loop.run_loop())
-                st.rerun()
+        if handle_interactive_inputs(state, loop):
             return
 
-        # Interactive Query Approval
-        if loop.interactive_mode and state.proposed_query and not state.current_query:
-            st.divider()
-            st.subheader("Query Approval")
-            q = st.text_input("Review Query:", value=state.proposed_query)
-            if st.button("Search with this Query"):
-                state.current_query = q
-                state.proposed_query = None
-                with st.status(f"Searching for '{q}'...", expanded=True) as status:
-                    async def progress_update(msg: str):
-                        status.write(msg)
-                    loop.progress_callback = progress_update
-                    asyncio.run(loop.run_loop())
-                st.rerun()
-
-        # Interactive Source Selection
-        if loop.interactive_mode and state.pending_source_selection and state.search_results:
-            st.divider()
-            st.subheader("Select Sources")
-            selected = []
-            for res in state.search_results:
-                if st.checkbox(res.title, key=f"src_{res.link}"):
-                    selected.append(res)
-            if st.button("Summarize Selected"):
-                with st.status("Summarizing selected sources and continuing research...", expanded=True) as status:
-                    async def progress_update(msg: str):
-                        status.write(msg)
-                    loop.progress_callback = progress_update
-                    asyncio.run(loop._summarize_sources(selected))
-                    asyncio.run(loop.run_loop())
-                st.rerun()
-
-        # Results Display
-        if state.final_report:
-            st.success("Final Report Generated")
-            if state.is_interrupted:
-                st.warning("Note: This report is partial as research was interrupted.")
-            
-            st.download_button(
-                label="📥 レポートをダウンロード (Download Report)",
-                data=format_combined_download_data(state.final_report, state.follow_up_log),
-                file_name="research_report.md",
-                mime="text/markdown"
-            )
-
-            with st.expander("View Report", expanded=True):
-                st.markdown(state.final_report)
-
-            with st.expander("テキストエリアからコピー (Copy Manually)", expanded=False):
-                st.text_area("以下のテキストを全選択(Ctrl+A)してコピー(Ctrl+C)してください", value=state.final_report, height=300)
-
-            # Knowledge Graph
-            if state.knowledge_graph_nodes:
-                st.divider()
-                st.subheader("Knowledge Graph")
-                try:
-                    # Color mapping for entity types
-                    type_colors = {
-                        "Person": "#FF6B6B",
-                        "Organization": "#4ECDC4",
-                        "Concept": "#45B7D1",
-                        "Event": "#FFA07A",
-                        "Technology": "#98D8C8",
-                        "Location": "#F0E68C"
-                    }
-
-                    nodes = []
-                    for n in state.knowledge_graph_nodes:
-                        props = n.get('properties', {})
-                        mention_count = int(props.get('mention_count', 1))
-                        node_size = 20 + min(mention_count * 5, 40)
-                        
-                        # Security: Escape LLM-generated content
-                        esc_label = html.escape(n['label'])
-                        esc_type = html.escape(n['type'])
-
-                        # Build detailed title for hover
-                        # NOTE: streamlit-agraph also does NOT render HTML in tooltips
-                        hover_info = f"{esc_label} ({esc_type})\n"
-                        for k, v in props.items():
-                            if k not in ['mention_count', 'section']:
-                                hover_info += f"- {html.escape(str(k))}: {html.escape(str(v))}\n"
-                        
-                        source_urls = n.get('source_urls', [])
-                        if source_urls:
-                             hover_info += "\nSources:\n" + "\n".join([f"• {html.escape(str(url))}" for url in source_urls])
-
-                        nodes.append(Node(
-                            id=n['id'], 
-                            label=esc_label,
-                            size=node_size, 
-                            group=n['type'],
-                            color=type_colors.get(n['type'], "#CCCCCC"),
-                            title=hover_info # title is used for mouseover in agraph/vis.js
-                        ))
-
-                    edges = [Edge(source=e['source'], target=e['target'], label=html.escape(e['label'])) for e in state.knowledge_graph_edges]
-                    
-                    config = Config(
-                        width=900, 
-                        height=600, 
-                        directed=True, 
-                        nodeHighlightBehavior=True, 
-                        highlightColor="#F7A7A6", 
-                        staticGraph=False,
-                        collapsible=False
-                    )
-                    
-                    # agraph returns the clicked node id
-                    return_value = agraph(nodes=nodes, edges=edges, config=config)
-                    
-                    if return_value:
-                        # Find the node and open URL if available
-                        clicked_node = next((n for n in state.knowledge_graph_nodes if n['id'] == return_value), None)
-                        if clicked_node and clicked_node.get('source_urls'):
-                            url_to_open = clicked_node['source_urls'][0]
-                            # Security: Validate URL to prevent XSS (e.g., javascript: links)
-                            if url_to_open.startswith(("http://", "https://")):
-                                st.info(f"Opening source: {url_to_open}")
-                                st.link_button("Click here to open the source in a new tab", url_to_open)
-                            else:
-                                st.error(f"Invalid or unsafe source URL: {url_to_open}")
-
-                except Exception as e:
-                    st.error(f"Error rendering graph: {e}")
-
-            # Follow-up
-            st.divider()
-            st.subheader("Follow-up Questions")
-            for qa in state.follow_up_log:
-                with st.chat_message("user"): st.write(qa['question'])
-                with st.chat_message("assistant"): st.write(qa['answer'])
-
-            fq = st.chat_input("Ask a follow-up question...")
-            if fq:
-                state.follow_up_log.append({"question": fq, "answer": "Thinking..."})
-                # Re-run logic for follow-up
-                prompt = loop.format_follow_up_prompt(state.final_report, fq)
-                ans = asyncio.run(loop.llm_client.generate_text(prompt))
-                state.follow_up_log[-1]["answer"] = ans
-                st.rerun()
-        else:
-            if state.new_information:
-                st.info("Latest Findings:")
-                st.write(state.new_information)
+        render_research_results(state, loop)
 
 if __name__ == "__main__":
     main()
