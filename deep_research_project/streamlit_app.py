@@ -1,12 +1,8 @@
 import streamlit as st
 import sys
 import os
-import datetime
 import asyncio
-import logging
-import traceback
 import json
-import tempfile
 import html
 
 # Adjust path to import from sibling directories
@@ -18,8 +14,6 @@ from deep_research_project.core.research_loop import ResearchLoop
 from streamlit_agraph import agraph, Node, Edge, Config
 from pyvis.network import Network
 from typing import Callable, Optional
-
-logger = logging.getLogger(__name__)
 
 def format_follow_up_log_for_download(follow_up_log: list) -> str:
     if not follow_up_log: return "No follow-up Q&A recorded."
