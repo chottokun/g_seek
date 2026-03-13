@@ -284,20 +284,20 @@ async def final_reporter_node(state: AgentState, reporter: ResearchReporter):
     )
     return {"final_report": report, "is_complete": True}
 
-# --- Graph Construction ---
+# --- Graph Construction Helpers ---
 
-def create_research_graph(app_config: Configuration, llm_client: LLMClient, search_client: Any, content_retriever: Any):
-    # Initialize components
-    from deep_research_project.core.skills_manager import SkillRegistry
-    from deep_research_project.core.sub_agents import Orchestrator
-    planner = ResearchPlanner(app_config, llm_client)
-    executor = ResearchExecutor(app_config, llm_client, search_client, content_retriever)
-    reflector = ResearchReflector(app_config, llm_client)
-    reporter = ResearchReporter(llm_client)
-    skills_mgr = SkillRegistry()
-    orchestrator = Orchestrator(skills_mgr, llm_client)
-    
-    workflow = StateGraph(AgentState)
+def _add_nodes_to_graph(
+    workflow: StateGraph,
+    app_config: Configuration,
+    llm_client: LLMClient,
+    planner: ResearchPlanner,
+    executor: ResearchExecutor,
+    reflector: ResearchReflector,
+    reporter: ResearchReporter,
+    skills_mgr: Any,
+    orchestrator: Any
+):
+    """Defines and adds all research nodes to the StateGraph."""
     
     # Define Nodes with explicit signature that LangGraph can inspect reliably
     async def _planner_node(s, config: RunnableConfig): 
@@ -320,8 +320,10 @@ def create_research_graph(app_config: Configuration, llm_client: LLMClient, sear
     workflow.add_node("reflector", _reflector_node)
     workflow.add_node("skills_extractor", _skills_extractor_node)
     workflow.add_node("final_reporter", _final_reporter_node)
-    
-    # Define Edges
+
+
+def _add_edges_to_graph(workflow: StateGraph):
+    """Defines edges and conditional routing for the research workflow."""
     workflow.set_entry_point("planner")
     workflow.add_edge("planner", "researcher")
     workflow.add_edge("researcher", "reflector")
@@ -342,6 +344,30 @@ def create_research_graph(app_config: Configuration, llm_client: LLMClient, sear
     )
     workflow.add_edge("skills_extractor", "final_reporter")
     workflow.add_edge("final_reporter", END)
+
+
+# --- Graph Construction ---
+
+def create_research_graph(app_config: Configuration, llm_client: LLMClient, search_client: Any, content_retriever: Any):
+    # Initialize components
+    from deep_research_project.core.skills_manager import SkillRegistry
+    from deep_research_project.core.sub_agents import Orchestrator
+    planner = ResearchPlanner(app_config, llm_client)
+    executor = ResearchExecutor(app_config, llm_client, search_client, content_retriever)
+    reflector = ResearchReflector(app_config, llm_client)
+    reporter = ResearchReporter(llm_client)
+    skills_mgr = SkillRegistry()
+    orchestrator = Orchestrator(skills_mgr, llm_client)
+
+    workflow = StateGraph(AgentState)
+
+    # Add nodes and edges using helper functions
+    _add_nodes_to_graph(
+        workflow, app_config, llm_client,
+        planner, executor, reflector, reporter,
+        skills_mgr, orchestrator
+    )
+    _add_edges_to_graph(workflow)
     
     # Initialize MemorySaver for Human-In-The-Loop and state persistence
     checkpointer = MemorySaver()

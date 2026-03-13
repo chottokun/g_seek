@@ -28,6 +28,7 @@ class TestInterruption(unittest.IsolatedAsyncioTestCase):
         self.content_patcher = patch('deep_research_project.core.research_loop.ContentRetriever')
 
         self.mock_llm_client = self.llm_patcher.start().return_value
+        self.mock_llm_client.config = self.mock_config
         self.mock_search_client = self.search_patcher.start().return_value
         self.mock_content_retriever = self.content_patcher.start().return_value
 
