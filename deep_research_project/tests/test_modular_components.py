@@ -24,6 +24,7 @@ class TestModularComponents(unittest.IsolatedAsyncioTestCase):
         self.config.USE_SNIPPETS_ONLY_MODE = False
         
         self.mock_llm = MagicMock(spec=LLMClient)
+        self.mock_llm.config = self.config
         self.mock_search = MagicMock(spec=SearchClient)
         self.mock_retriever = MagicMock(spec=ContentRetriever)
 
@@ -123,6 +124,7 @@ class TestModularComponents(unittest.IsolatedAsyncioTestCase):
         sources = [Source(title="Source 1", link="url1")]
         
         self.mock_llm.generate_text = AsyncMock(side_effect=["Final synthesized report text with [1].", "```json\n{}\n```"])
+        self.mock_llm.generate_structured = AsyncMock(return_value=MagicMock())
         
         report = await reporter.finalize_report("Topic", findings, sources, "English")
         
