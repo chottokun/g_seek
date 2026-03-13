@@ -118,6 +118,8 @@ class TestModularComponents(unittest.IsolatedAsyncioTestCase):
 
     # --- ResearchReporter Tests ---
     async def test_reporter_finalize_report_citations(self):
+        from deep_research_project.config.config import Configuration
+        self.mock_llm.config = Configuration()
         reporter = ResearchReporter(self.mock_llm)
         findings = ["Found X."]
         sources = [Source(title="Source 1", link="url1")]

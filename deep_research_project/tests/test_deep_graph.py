@@ -11,6 +11,7 @@ class TestDeepGraph(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.config = Configuration()
         self.llm_client = AsyncMock()
+        self.llm_client.config = self.config
         self.search_client = AsyncMock()
         self.content_retriever = AsyncMock()
         
@@ -72,7 +73,7 @@ class TestDeepGraph(unittest.IsolatedAsyncioTestCase):
         # Run graph
         result = await self.graph.ainvoke(
             initial_state,
-            config={"configurable": {"thread_id": "test_thread"}}
+            config={"configurable": {"thread_id": "test_thread", "config": self.config}}
         )
         
         # Assertions
