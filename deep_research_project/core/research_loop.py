@@ -78,7 +78,7 @@ class ResearchLoop:
         if callback: 
             await callback(f"Initial query: {self.state.current_query}")
 
-    async def _web_search(self):
+    async def _web_search(self, callback_override=None):
         """Delegates web search to the execution module with relevance filtering."""
         if not self.state.current_query: return
         
@@ -165,7 +165,7 @@ class ResearchLoop:
         if callback:
             await callback(f"Found {len(results)} relevant results.")
 
-    async def _summarize_sources(self, selected_results: List[SearchResult]):
+    async def _summarize_sources(self, selected_results: List[SearchResult], callback_override=None):
         """Delegates retrieval and summarization to the execution module."""
         # Handle empty results (from relevance filtering)
         if not selected_results:
@@ -197,7 +197,7 @@ class ResearchLoop:
         
         self.state.pending_source_selection = False
 
-    async def _extract_entities_and_relations(self):
+    async def _extract_entities_and_relations(self, callback_override=None):
         """Delegates KG extraction and merging to the reflection module."""
         current_section = self._get_current_section()
         section_title = current_section['title'] if current_section else "General"
