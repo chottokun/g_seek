@@ -1,0 +1,16 @@
+# SearXNG settings
+use_default_settings: true
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "ultrasecretkey" # Change this!
+search:
+  safe_search: 0
+  autocomplete: ""
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg

@@ -122,10 +122,16 @@ class ResearchReflector:
         next_query = None
         for line in lines:
             if "EVALUATION:" in line.upper(): 
-                evaluation = line.split(":", 1)[-1].strip().upper()
+                val = line.split(":", 1)[-1].strip().upper()
+                if "CONTINUE" in val:
+                    evaluation = "CONTINUE"
+                else:
+                    evaluation = "CONCLUDE"
             if "QUERY:" in line.upper():
                 q = line.split(":", 1)[-1].strip()
-                if q.lower() != "none": 
+                # Clean up potential markdown or quotes
+                q = q.replace("`", "").replace("\"", "").strip()
+                if q.lower() != "none" and len(q) > 2: 
                     # Sanitize the reflected query similarly to the initial query
                     next_query = sanitize_query(q)
         

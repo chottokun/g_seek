@@ -45,6 +45,9 @@ class Configuration(BaseSettings):
     MAX_RESEARCH_LOOPS: int = Field(default=5)
     MAX_SEARCH_RESULTS_PER_QUERY: int = Field(default=10)
 
+    # Skill Configuration
+    EVOLVE_SKILLS: bool = Field(default=True, description="Whether to extract and save new domain skills during research.")
+
     # Output Configuration
     OUTPUT_FILENAME: str = Field(default="research_report.md")
 
@@ -62,17 +65,19 @@ class Configuration(BaseSettings):
     SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = Field(default=500)
 
     # Optimization Configuration
-    MAX_CONCURRENT_CHUNKS: int = Field(default=5)
+    MAX_CONCURRENT_CHUNKS: int = Field(default=10)
+    MAX_CONCURRENT_SECTIONS: int = Field(default=3, description="Maximum number of sections processed in parallel")
     LLM_RATE_LIMIT_RPM: int = Field(default=60)
     LLM_RATE_LIMIT_TPM: int = Field(default=40000, description="Tokens Per Minute limit")
+    LLM_RETRY_BASE_DELAY: float = Field(default=2.0, description="Base delay for exponential backoff in seconds")
 
     ENABLE_CACHING: bool = Field(default=True, description="Enable persistent caching")
     CACHE_DIR: str = Field(default=".cache", description="Directory for cache files")
     
-    MAX_CONCURRENT_RETRIEVALS: int = Field(default=5, description="Maximum concurrent web content retrievals")
+    MAX_CONCURRENT_RETRIEVALS: int = Field(default=20, description="Maximum concurrent web content retrievals")
     BATCH_SIZE_RELEVANCE: int = Field(default=5, description="Number of results to score in one LLM call")
 
-    USE_SNIPPETS_ONLY_MODE: bool = Field(default=False)
+    USE_SNIPPETS_ONLY_MODE: bool = Field(default=False, validation_alias=AliasChoices("USE_SNIPPETS_ONLY_MODE", "SNIPPETS_ONLY"))
     MAX_TEXT_LENGTH_PER_SOURCE_CHARS: int = Field(default=0)
     PROCESS_PDF_FILES: bool = Field(default=True)
 
@@ -88,6 +93,7 @@ class Configuration(BaseSettings):
     REPORT_DIR: str = Field(default="temp_reports")
     CLEANUP_AGE_SECONDS: int = Field(default=3600)
     DEFAULT_LANGUAGE: str = Field(default="Japanese")
+    MAX_FINAL_REPORT_CONTEXT_CHARS: int = Field(default=102400, description="Max characters of context passed to final report generation to prevent overflow.")
     
     # Relevance Filtering Configuration (Phase 6)
     ENABLE_RELEVANCE_FILTERING: bool = Field(default=True, description="Enable relevance filtering for search results")
@@ -95,7 +101,7 @@ class Configuration(BaseSettings):
         default="snippet",
         description="Relevance filtering mode: 'snippet' (pre-filter with snippets), 'full_content' (filter after retrieval), 'disabled' (no filtering)"
     )
-    RELEVANCE_THRESHOLD: float = Field(default=0.4, ge=0.0, le=1.0, description="Minimum relevance score (0.0-1.0)")
+    RELEVANCE_THRESHOLD: float = Field(default=0.3, ge=0.0, le=1.0, description="Minimum relevance score (0.0-1.0)")
     MAX_RELEVANT_RESULTS: int = Field(default=5, ge=1, description="Maximum number of results after filtering")
     ENABLE_QUERY_REGENERATION: bool = Field(
         default=True,
@@ -240,6 +246,7 @@ class Configuration(BaseSettings):
             f"  Relevance Threshold: {self.RELEVANCE_THRESHOLD}",
             f"  Max Relevant Results: {self.MAX_RELEVANT_RESULTS}",
             f"  Query Regeneration Enabled: {self.ENABLE_QUERY_REGENERATION}",
+            f"  Evolve Skills: {self.EVOLVE_SKILLS}",
         ])
         return "Configuration:\n" + "\n".join(config_details)
 

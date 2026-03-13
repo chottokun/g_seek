@@ -86,6 +86,12 @@ class ResearchExecutor:
             if isinstance(s, Exception):
                 logger.error(f"Error summarizing chunk: {s}")
             elif s:
+                # Defensive check: ensure s is a string (handles potential list returns or stale cache)
+                if isinstance(s, list):
+                    s = " ".join([str(item) for item in s])
+                elif not isinstance(s, str):
+                    s = str(s)
+                    
                 valid_summaries.append(s)
         
         if not valid_summaries:

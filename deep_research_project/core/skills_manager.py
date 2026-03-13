@@ -11,18 +11,24 @@ logger = logging.getLogger(__name__)
 class SkillRegistry:
     """Manages discovery, loading, and registration of modular skills (Anthropic style)."""
     
-    def __init__(self, skills_dir: str = "data/skills"):
-        self.skills_dir = Path(skills_dir)
-        self.skills_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, static_skills_dir: str = ".agents/skills", dynamic_skills_dir: str = "data/skills"):
+        self.static_skills_dir = Path(static_skills_dir)
+        self.dynamic_skills_dir = Path(dynamic_skills_dir)
+        self.static_skills_dir.mkdir(parents=True, exist_ok=True)
+        self.dynamic_skills_dir.mkdir(parents=True, exist_ok=True)
         self.skills: Dict[str, Dict] = {}
         self._discover_skills()
 
     def _discover_skills(self):
-        """Scans the skills directory for folders containing SKILL.md."""
-        if not self.skills_dir.exists():
+        """Scans the static and dynamic directories for folders containing SKILL.md."""
+        self._scan_directory(self.static_skills_dir, is_dynamic=False)
+        self._scan_directory(self.dynamic_skills_dir, is_dynamic=True)
+
+    def _scan_directory(self, target_dir: Path, is_dynamic: bool):
+        if not target_dir.exists():
             return
 
-        for skill_path in self.skills_dir.iterdir():
+        for skill_path in target_dir.iterdir():
             if skill_path.is_dir():
                 skill_file = skill_path / "SKILL.md"
                 if skill_file.exists():
@@ -30,8 +36,9 @@ class SkillRegistry:
                         skill_data = self._parse_skill_file(skill_file)
                         skill_data["id"] = skill_path.name
                         skill_data["path"] = str(skill_path)
+                        skill_data["is_dynamic"] = is_dynamic
                         self.skills[skill_path.name] = skill_data
-                        logger.info(f"Discovered skill: {skill_data['name']} ({skill_path.name})")
+                        logger.info(f"Discovered {'dynamic' if is_dynamic else 'static'} skill: {skill_data.get('name', skill_path.name)} ({skill_path.name})")
                     except Exception as e:
                         logger.error(f"Failed to parse skill at {skill_file}: {e}")
 
@@ -72,8 +79,8 @@ class SkillRegistry:
         return self.skills.get(skill_id)
 
     async def save_skill(self, skill_id: str, name: str, description: str, content: str, created_at: Optional[str] = None):
-        """Saves or updates a skill in the folder structure asynchronously."""
-        skill_path = self.skills_dir / skill_id
+        """Saves or updates a skill in the dynamic folder structure asynchronously."""
+        skill_path = self.dynamic_skills_dir / skill_id
         
         frontmatter = {
             "name": name,
@@ -99,7 +106,8 @@ class SkillRegistry:
             "name": name,
             "description": description,
             "content": content,
-            "path": str(skill_path)
+            "path": str(skill_path),
+            "is_dynamic": True
         }
 
 # For backward compatibility during migration

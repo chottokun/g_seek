@@ -20,9 +20,14 @@ def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> Li
         start += (chunk_size - chunk_overlap)
     return chunks
 
-def sanitize_query(query: str) -> str:
+def sanitize_query(query) -> str:
     """Cleans and truncates the query to prevent API errors."""
     if not query: return ""
+    
+    # Defensive check: if query is a list, join it (rare but seen with some LLM outputs)
+    if isinstance(query, list):
+        query = " ".join([str(item) for item in query])
+        
     # Remove markdown bold/italic/code fences
     clean = query.strip().replace("**", "").replace("__", "").replace("`", "").replace('"', '')
     # Take only the first line if multiple lines returned

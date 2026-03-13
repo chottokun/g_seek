@@ -19,10 +19,11 @@ async def start():
     config = Configuration()
     cl.user_session.set("config", config)
     
-    # Minimal UI Settings to prevent overrides
+    # Minimal UI Settings
     await cl.ChatSettings([
         Select(id="language", label="Language", values=["Japanese", "English"], initial_value=config.DEFAULT_LANGUAGE),
         Switch(id="interactive_mode", label="Interactive Mode (Plan Approval)", initial=config.INTERACTIVE_MODE),
+        Switch(id="snippets_only", label="Snippet Only Mode (Fast)", initial=config.USE_SNIPPETS_ONLY_MODE),
     ]).send()
     
     await cl.Message(content="# Deep Research Assistant\nAIを活用したリサーチを開始します。テーマを入力してください。\n（※ 一から作り直したクリーンなUI実装です）").send()
@@ -33,6 +34,7 @@ async def setup_agent(settings):
     if config:
         cl.user_session.set("language", settings["language"])
         config.INTERACTIVE_MODE = settings["interactive_mode"]
+        config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -65,6 +67,9 @@ async def main(message: cl.Message):
         else:
             topic_with_ctx = base_topic
             
+        async def progress_cb(msg):
+            await cl.Message(content=msg).send()
+            
         initial_state = {
             "topic": topic_with_ctx,
             "language": language,
@@ -76,15 +81,31 @@ async def main(message: cl.Message):
             "research_plan": [],
             "current_section_index": 0,
             "plan_approved": not config.INTERACTIVE_MODE,
-            "is_interrupted": False
+            "is_interrupted": False,
+            "progress_callback": None # Keeping as None in State, passing real one via Config
         }
-        config_dict = {"configurable": {"thread_id": thread_id}}
+        config_dict = {
+            "configurable": {
+                "thread_id": thread_id,
+                "progress_callback": progress_cb,
+                "config": config
+            }
+        }
         
         await run_graph_and_render(graph, initial_state, config_dict, config)
         return
 
     # 2. Resume Interrupted Graph (e.g. Plan Approval)
-    config_dict = {"configurable": {"thread_id": thread_id}}
+    async def progress_cb(msg):
+        await cl.Message(content=msg).send()
+        
+    config_dict = {
+        "configurable": {
+            "thread_id": thread_id,
+            "progress_callback": progress_cb,
+            "config": config
+        }
+    }
     state = graph.get_state(config_dict)
     
     if state and state.next:
@@ -173,15 +194,105 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                     if new_skill:
                         await cl.Message(content=f"💡 **New Domain Skill Extracted:** `{new_skill}`").send()
                         
-                elif node == "final_reporter":
-                    await cl.Message(content="📝 *Synthesizing gathered information into the final research report...*").send()
+            # Send final report if available
+            if node == "final_reporter":
+                await cl.Message(content="📝 *Synthesizing gathered information into the final research report...*").send()
 
-                        
         # Check if complete
         final_state = graph.get_state(config_dict).values
         if final_state.get("final_report"):
             report = final_state["final_report"]
-            await cl.Message(content=f"## 📄 Final Research Report\n\n{report}").send()
+            
+            import re
+            import json
+            import tempfile
+            from pyvis.network import Network
+            import logging
+
+            # 1. Extract JSON blocks and create temporary HTML files
+            # More flexible pattern: allow the block to end with or without a final newline before the ```
+            json_pattern = r"```json\s*\n(.*?)\n?```"
+            json_matches = re.findall(json_pattern, report, re.DOTALL)
+            
+            # Fallback: if no code blocks, look for a raw JSON-like structure starting with "{" and ending with "}"
+            if not json_matches:
+                raw_json_match = re.search(r"(\{\s*\"nodes\":.*?\})", report, re.DOTALL | re.IGNORECASE)
+                if raw_json_match:
+                    json_matches = [raw_json_match.group(1)]
+            
+            file_elements = []
+            
+            for idx, json_str in enumerate(json_matches):
+                try:
+                    def try_repair_json(s):
+                        try:
+                            return json.loads(s)
+                        except json.JSONDecodeError:
+                            last_brace = s.rfind('}')
+                            if last_brace != -1:
+                                try: return json.loads(s[:last_brace+1])
+                                except: pass
+                            return None
+
+                    json_obj = try_repair_json(json_str)
+                    if not json_obj: continue
+
+                    net = Network(notebook=False, height="600px", width="100%", directed=True)
+                    # Options for a nicer look
+                    net.set_options("""
+                    var options = { "physics": { "barnesHut": { "gravitationalConstant": -3000, "centralGravity": 0.3, "springLength": 150 } } }
+                    """)
+                    
+                    for node in json_obj.get('nodes', []):
+                        color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
+                        title_html = f"<b>{node.get('label', str(node['id']))}</b>"
+                        if 'description' in node and node['description']: title_html += f"<br><br>{node['description']}"
+                        if 'url' in node and node['url']: title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
+                        net.add_node(node['id'], label=node.get('label', str(node['id'])), color=color, shape="box", title=title_html)
+                        
+                    for edge in json_obj.get('edges', []):
+                        net.add_edge(str(edge['from']), str(edge['to']), title=edge.get('label', ''), label=edge.get('label', ''))
+                    
+                    with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
+                        tmp_path = tf.name
+                    net.save_graph(tmp_path)
+                    
+                    file_elements.append(
+                        cl.File(
+                            name=f"Visual_Summary_{idx+1}.html",
+                            path=tmp_path,
+                            display="inline"
+                        )
+                    )
+                except Exception as e:
+                    logging.exception(f"Failed to process graph {idx}: {e}")
+
+            # 2. Clean the report text
+            # Remove JSON blocks for clean display
+            clean_report = re.sub(json_pattern, "", report, flags=re.DOTALL)
+            # Remove "## Visual Summary" or similar headers if they exist
+            clean_report = re.sub(r"##\s*Visual\s*Summary.*?\n", "", clean_report, flags=re.IGNORECASE)
+            clean_report = clean_report.strip()
+
+            # 3. Create report file element
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
+                    report_path = tf.name
+                with open(report_path, "w", encoding="utf-8") as f:
+                    f.write(report) # Save original full report including JSON
+                
+                file_elements.append(
+                    cl.File(
+                        name="research_report.md",
+                        path=report_path,
+                        display="inline"
+                    )
+                )
+            except Exception as e:
+                logging.exception(f"Failed to create report file: {e}")
+
+            # 4. Send single consolidated message
+            await cl.Message(content=clean_report, elements=file_elements).send()
             
     except Exception as e:
         import traceback

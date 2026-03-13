@@ -199,5 +199,12 @@ research_report.md
 # Deep Research Reports
 temp_reports/
 
+# Chainlit
+.chainlit/
+chainlit.md
+
+# Application Data
+data/
+
 .agent
 .agents
