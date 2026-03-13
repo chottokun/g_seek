@@ -1,6 +1,5 @@
 from typing import List, Dict, Optional, TypedDict, Annotated, Any
 import operator
-from pydantic import BaseModel
 from deep_research_project.core.state import SectionPlan, Source
 
 class AgentState(TypedDict):
