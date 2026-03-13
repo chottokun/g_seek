@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from typing import List, Dict, Optional
 from pathlib import Path
 import yaml
@@ -77,12 +78,9 @@ class SkillRegistry:
         """Retrieves the full content of a specific skill."""
         return self.skills.get(skill_id)
 
-    def save_skill(self, skill_id: str, name: str, description: str, content: str, created_at: Optional[str] = None):
-        """Saves or updates a skill in the dynamic folder structure to prevent overwriting static skills."""
+    async def save_skill(self, skill_id: str, name: str, description: str, content: str, created_at: Optional[str] = None):
+        """Saves or updates a skill in the dynamic folder structure asynchronously."""
         skill_path = self.dynamic_skills_dir / skill_id
-        skill_path.mkdir(parents=True, exist_ok=True)
-        
-        skill_file = skill_path / "SKILL.md"
         
         frontmatter = {
             "name": name,
@@ -91,11 +89,16 @@ class SkillRegistry:
         if created_at:
             frontmatter["created_at"] = created_at
             
-        yaml_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
-        full_content = f"---\n{yaml_str}\n---\n\n{content}"
-        
-        with open(skill_file, "w", encoding="utf-8") as f:
-            f.write(full_content)
+        def _sync_save():
+            skill_path.mkdir(parents=True, exist_ok=True)
+            skill_file = skill_path / "SKILL.md"
+            yaml_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
+            full_content = f"---\n{yaml_str}\n---\n\n{content}"
+
+            with open(skill_file, "w", encoding="utf-8") as f:
+                f.write(full_content)
+
+        await asyncio.to_thread(_sync_save)
         
         # Partially reload registry (optimized)
         self.skills[skill_id] = {
