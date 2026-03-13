@@ -2,6 +2,8 @@ import chainlit as cl
 import uuid
 import os
 import sys
+import asyncio
+import aiofiles
 
 # Ensure we can import from core
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -255,7 +257,7 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                     
                     with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
                         tmp_path = tf.name
-                    net.save_graph(tmp_path)
+                    await asyncio.to_thread(net.save_graph, tmp_path)
                     
                     file_elements.append(
                         cl.File(
@@ -278,8 +280,8 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
             try:
                 with tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
                     report_path = tf.name
-                with open(report_path, "w", encoding="utf-8") as f:
-                    f.write(report) # Save original full report including JSON
+                async with aiofiles.open(report_path, "w", encoding="utf-8") as f:
+                    await f.write(report) # Save original full report including JSON
                 
                 file_elements.append(
                     cl.File(
