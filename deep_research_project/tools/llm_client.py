@@ -116,27 +116,32 @@ class LLMClient:
             self.llm = "PlaceholderLLMInstance"
 
     async def _wait_for_rate_limit(self):
-        """Waits to respect the rate limit."""
+        """Waits to respect the rate limit before EACH request."""
         rpm = getattr(self.config, "LLM_RATE_LIMIT_RPM", 60)
-        if not isinstance(rpm, (int, float)):
+        if not isinstance(rpm, (int, float)) or rpm <= 0:
             rpm = 60
-        limit_interval = 60.0 / rpm if rpm > 0 else 0
+        
+        # Calculate interval to stay strictly below RPM
+        # We add a 5% buffer to be safe
+        limit_interval = (60.0 / rpm) * 1.05 
 
         async with self._rate_limit_lock:
             current_time = asyncio.get_event_loop().time()
-            time_since_last = current_time - self._last_request_time
-            if time_since_last < limit_interval:
-                await asyncio.sleep(limit_interval - time_since_last)
+            elapsed = current_time - self._last_request_time
+            if elapsed < limit_interval:
+                wait_time = limit_interval - elapsed
+                logger.debug(f"Rate limit shielding: Sleeping for {wait_time:.3f}s (RPM: {rpm})")
+                await asyncio.sleep(wait_time)
             self._last_request_time = asyncio.get_event_loop().time()
 
     async def _invoke_with_retry(self, func, *args, **kwargs):
         """Helper to invoke an async LLM function with exponential backoff retry logic."""
         max_retries = 3
-        base_delay = 2.0
+        base_delay = getattr(self.config, "LLM_RETRY_BASE_DELAY", 2.0)
         
         for attempt in range(max_retries + 1):
             try:
-                # Always respect the base rate limit before any call
+                # Always wait for the rate limit shield before the call
                 await self._wait_for_rate_limit()
                 return await func(*args, **kwargs)
             except Exception as e:
@@ -192,9 +197,30 @@ class LLMClient:
                     llm_to_call = self.llm.bind(temperature=temperature)
                 
                 response = await llm_to_call.ainvoke(prompt)
+                
+                # Robustly extract content and handle potential list returns (e.g., from Gemini)
+                content = None
                 if hasattr(response, 'content'):
-                    return response.content
-                return str(response)
+                    content = response.content
+                else:
+                    content = response
+                
+                if isinstance(content, list):
+                    # Robustly handle list of strings or list of dictionaries (Common in some LLM providers like Gemini)
+                    parts = []
+                    for item in content:
+                        if isinstance(item, dict):
+                            # Try to extract common text fields
+                            parts.append(str(item.get('text', item.get('content', str(item)))))
+                        else:
+                            parts.append(str(item))
+                    return "\n".join(parts)
+                elif isinstance(content, dict):
+                    # Handle single dictionary response
+                    return str(content.get('text', content.get('content', str(content))))
+                elif content is None:
+                    return ""
+                return str(content)
 
             try:
                 result = await self._invoke_with_retry(_call)

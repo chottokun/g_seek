@@ -3,6 +3,7 @@ import json
 import hashlib
 import aiofiles
 import logging
+import time
 from typing import Optional, Any
 from pathlib import Path
 
@@ -29,7 +30,12 @@ class CacheManager:
             try:
                 async with aiofiles.open(cache_file, mode="r", encoding="utf-8") as f:
                     data = json.loads(await f.read())
-                    return data.get("response")
+                    timestamp = data.get("timestamp", 0)
+                    # 12 hours TTL = 43200 seconds
+                    if time.time() - timestamp < 43200:
+                        return data.get("response")
+                    else:
+                        logger.debug("LLM cache expired (TTL > 12h).")
             except Exception as e:
                 logger.warning(f"Failed to read LLM cache: {e}")
         return None
@@ -41,7 +47,11 @@ class CacheManager:
         cache_file = self.cache_dir / "llm" / f"{self._get_hash(prompt)}.json"
         try:
             async with aiofiles.open(cache_file, mode="w", encoding="utf-8") as f:
-                await f.write(json.dumps({"prompt": prompt, "response": response}, ensure_ascii=False))
+                await f.write(json.dumps({
+                    "prompt": prompt, 
+                    "response": response,
+                    "timestamp": time.time()
+                }, ensure_ascii=False))
         except Exception as e:
             logger.warning(f"Failed to write LLM cache: {e}")
 

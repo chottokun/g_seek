@@ -45,7 +45,7 @@ class TestInterruption(unittest.IsolatedAsyncioTestCase):
             Section(title="Sec 2", description="Desc 2")
         ])
         self.mock_llm_client.generate_structured = AsyncMock(return_value=mock_plan)
-        self.mock_llm_client.generate_text = AsyncMock(return_value="Test Result")
+        self.mock_llm_client.generate_text = AsyncMock(side_effect=["Test Result", "```json\n{}\n```"])
 
         # Start the loop but it should see is_interrupted immediately
         self.state.is_interrupted = True

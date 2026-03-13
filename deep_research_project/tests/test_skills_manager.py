@@ -17,7 +17,10 @@ class TestSkillRegistry(unittest.TestCase):
 
     def test_discover_skills_empty(self):
         # Test with no skills directory
-        registry = SkillRegistry(skills_dir=str(self.skills_dir))
+        # Use another temp dir for static to ensure isolation
+        static_dir = Path(self.test_dir) / "static_skills"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        registry = SkillRegistry(static_skills_dir=str(static_dir), dynamic_skills_dir=str(self.skills_dir))
         self.assertEqual(len(registry.skills), 0)
 
     def test_discover_skills_success(self):
@@ -36,7 +39,10 @@ Skill body content
         with open(skill_file, "w", encoding="utf-8") as f:
             f.write(content)
 
-        registry = SkillRegistry(skills_dir=str(self.skills_dir))
+        # Use another temp dir for static to ensure isolation
+        static_dir = Path(self.test_dir) / "static_skills"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        registry = SkillRegistry(static_skills_dir=str(static_dir), dynamic_skills_dir=str(self.skills_dir))
 
         self.assertIn(skill_id, registry.skills)
         skill_data = registry.skills[skill_id]
@@ -56,7 +62,10 @@ Skill body content
         with open(skill_file, "w", encoding="utf-8") as f:
             f.write(content)
 
-        registry = SkillRegistry(skills_dir=str(self.skills_dir))
+        # Use another temp dir for static to ensure isolation
+        static_dir = Path(self.test_dir) / "static_skills"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        registry = SkillRegistry(static_skills_dir=str(static_dir), dynamic_skills_dir=str(self.skills_dir))
 
         self.assertIn(skill_id, registry.skills)
         skill_data = registry.skills[skill_id]
@@ -73,7 +82,10 @@ Skill body content
         some_file = self.skills_dir / "random.txt"
         some_file.write_text("hello")
 
-        registry = SkillRegistry(skills_dir=str(self.skills_dir))
+        # Use another temp dir for static to ensure isolation
+        static_dir = Path(self.test_dir) / "static_skills"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        registry = SkillRegistry(static_skills_dir=str(static_dir), dynamic_skills_dir=str(self.skills_dir))
         self.assertEqual(len(registry.skills), 0)
 
     def test_list_skills(self):
@@ -84,7 +96,10 @@ Skill body content
             skill_path.mkdir(parents=True)
             (skill_path / "SKILL.md").write_text(f"---\nname: Name {i}\ndescription: Desc {i}\n---\nContent {i}")
 
-        registry = SkillRegistry(skills_dir=str(self.skills_dir))
+        # Use another temp dir for static to ensure isolation
+        static_dir = Path(self.test_dir) / "static_skills"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        registry = SkillRegistry(static_skills_dir=str(static_dir), dynamic_skills_dir=str(self.skills_dir))
         skills_list = registry.list_skills()
 
         self.assertEqual(len(skills_list), 2)
@@ -102,7 +117,10 @@ Skill body content
         skill_path.mkdir(parents=True)
         (skill_path / "SKILL.md").write_text("---\nname: Target\ndescription: Target Desc\n---\nFull Content")
 
-        registry = SkillRegistry(skills_dir=str(self.skills_dir))
+        # Use another temp dir for static to ensure isolation
+        static_dir = Path(self.test_dir) / "static_skills"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        registry = SkillRegistry(static_skills_dir=str(static_dir), dynamic_skills_dir=str(self.skills_dir))
 
         # Success case
         skill = registry.get_skill(skill_id)
@@ -114,7 +132,10 @@ Skill body content
         self.assertIsNone(registry.get_skill("non_existent"))
 
     def test_save_skill(self):
-        registry = SkillRegistry(skills_dir=str(self.skills_dir))
+        # Use another temp dir for static to ensure isolation
+        static_dir = Path(self.test_dir) / "static_skills"
+        static_dir.mkdir(parents=True, exist_ok=True)
+        registry = SkillRegistry(static_skills_dir=str(static_dir), dynamic_skills_dir=str(self.skills_dir))
 
         skill_id = "new_skill"
         name = "New Skill"
@@ -133,6 +154,47 @@ Skill body content
         file_content = skill_file.read_text(encoding="utf-8")
         self.assertIn("name: New Skill", file_content)
         self.assertIn("New Content", file_content)
+
+    def test_skill_registry_directories(self):
+        """Test that SkillRegistry correctly separates static and dynamic skills."""
+        with tempfile.TemporaryDirectory() as static_dir, tempfile.TemporaryDirectory() as dynamic_dir:
+            # Create a mock static skill
+            static_skill_path = Path(static_dir) / "static-skill-1"
+            static_skill_path.mkdir()
+            with open(static_skill_path / "SKILL.md", "w", encoding="utf-8") as f:
+                f.write("---\nname: Static Skill\ndescription: A static skill\n---\nStatic content")
+
+            # Create a mock dynamic skill
+            dynamic_skill_path = Path(dynamic_dir) / "dynamic-skill-1"
+            dynamic_skill_path.mkdir()
+            with open(dynamic_skill_path / "SKILL.md", "w", encoding="utf-8") as f:
+                f.write("---\nname: Dynamic Skill\ndescription: A dynamic skill\n---\nDynamic content")
+
+            # Initialize registry
+            registry = SkillRegistry(static_skills_dir=static_dir, dynamic_skills_dir=dynamic_dir)
+            
+            # Verify discovery
+            self.assertEqual(len(registry.skills), 2)
+            self.assertIn("static-skill-1", registry.skills)
+            self.assertIn("dynamic-skill-1", registry.skills)
+            
+            # Verify static/dynamic flag
+            self.assertFalse(registry.skills["static-skill-1"]["is_dynamic"])
+            self.assertTrue(registry.skills["dynamic-skill-1"]["is_dynamic"])
+
+            # Test save_skill (should save to dynamic dir)
+            registry.save_skill("new-dynamic-skill", "New Skill", "Desc", "Content")
+            
+            new_skill_path = Path(dynamic_dir) / "new-dynamic-skill" / "SKILL.md"
+            self.assertTrue(new_skill_path.exists(), "New skill must be saved in the dynamic directory")
+            
+            # Static directory should not contain the new skill
+            new_skill_static_path = Path(static_dir) / "new-dynamic-skill" / "SKILL.md"
+            self.assertFalse(new_skill_static_path.exists(), "New skill must NOT be saved in the static directory")
+            
+            # Registry memory should be updated
+            self.assertIn("new-dynamic-skill", registry.skills)
+            self.assertTrue(registry.skills["new-dynamic-skill"]["is_dynamic"])
 
 if __name__ == '__main__':
     unittest.main()

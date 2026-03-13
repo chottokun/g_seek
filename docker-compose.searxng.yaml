@@ -1,0 +1,25 @@
+services:
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: searxng
+    restart: always
+    networks:
+      - default
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
+    depends_on:
+      - redis
+
+  redis:
+    image: docker.io/library/redis:alpine
+    container_name: redis
+    restart: always
+    command: redis-server --save "" --appendonly no
+    networks:
+      - default
+    tmpfs:
+      - /data

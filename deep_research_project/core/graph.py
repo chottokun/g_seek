@@ -75,48 +75,71 @@ async def planner_node(state: AgentState, config: Configuration, planner: Resear
         "sources": []
     }
 
-async def researcher_node(state: AgentState, config: Configuration, planner: ResearchPlanner, executor: ResearchExecutor, orchestrator: Any):
+from langchain_core.runnables import RunnableConfig
+
+async def researcher_node(state: AgentState, config: RunnableConfig, planner: ResearchPlanner, executor: ResearchExecutor, orchestrator: Any):
     """Execution node. Performs web search or delegates to specialized sub-agents."""
     idx = state["current_section_index"]
     
-    # Boundary check to prevent IndexError
+    # Boundary check
     if idx < 0 or idx >= len(state["plan"]):
-        logger.warning(f"Researcher node called with invalid index {idx}. Plan length: {len(state['plan'])}")
         return {"is_complete": True}
         
     section = state["plan"][idx]
-    logger.info(f"--- RESEARCHER NODE: {section['title']} ---")
-    print(f"DEBUG: Researcher Node Hit for section index {idx}, title: {section['title']}")
     
-    # Standard Web Search Workflow
-    # Generate Query (only if no current_query provided by Reflector)
-    query = state.get("current_query")
-    if not query:
-        print("DEBUG: Generating initial query...")
-        query = await planner.generate_initial_query(
-            topic=state["topic"],
-            section_title=section["title"],
-            section_description=section.get("description", ""),
-            language=state["language"]
-        )
-    print(f"DEBUG: Search Query: {query}")
+    # Access configurable from RunnableConfig
+    configurable = config.get("configurable", {})
+    # Get the actual config object from configurable if it was passed that way, 
+    # or use the one from the node argument (which might be the full config)
+    # In LangGraph nodes, 'config' IS the RunnableConfig.
+    app_config = configurable.get("config") # This is our Pydantic Configuration
+    progress_cb = configurable.get("progress_callback")
     
-    # Search
-    print(f"DEBUG: Executing search for: {query}")
-    results = await executor.search(query, getattr(config, "MAX_SEARCH_RESULTS_PER_QUERY", 3))
-    print(f"DEBUG: Found {len(results)} raw search results")
-    
-    # Filter
+    # Logic to decide next move...
+    expert_guidance = await orchestrator.delegate_if_relevant(
+        section_title=section["title"],
+        section_description=section.get("description", ""),
+        activated_skill_ids=state.get("activated_skill_ids", []),
+        findings=state.get("findings", []),
+        language=state["language"]
+    )
+    expert_context = f"\n\n--- EXPERT GUIDANCE ---\n{expert_guidance}" if expert_guidance else ""
+
+    # If Not interactive and first section, we use ResearchLoop to finish all sections in parallel
+    if not app_config.INTERACTIVE_MODE:
+        from deep_research_project.core.research_loop import ResearchLoop
+        from deep_research_project.core.state import ResearchState
+        
+        r_state = ResearchState(research_topic=state["topic"], language=state["language"])
+        r_state.research_plan = state["plan"]
+        r_state.current_section_index = idx
+        
+        loop = ResearchLoop(app_config, r_state, progress_callback=progress_cb)
+        await loop.run_loop()
+        
+        all_findings = []
+        all_sources = []
+        for sec in r_state.research_plan:
+            if sec.get('summary'): all_findings.append(sec['summary'])
+            if sec.get('sources'): all_sources.extend(sec['sources'])
+        
+        return {
+            "findings": all_findings,
+            "sources": all_sources,
+            "is_complete": True,
+            "current_section_index": len(state["plan"])
+        }
+
+    # Sequential fallback
+    query = await planner.generate_initial_query(
+        topic=state["topic"],
+        section_title=section["title"],
+        section_description=section.get("description", "") + expert_context,
+        language=state["language"]
+    )
+    results = await executor.search(query, getattr(app_config, "MAX_SEARCH_RESULTS_PER_QUERY", 3))
     relevant = await executor.filter_by_relevance(query, results, state["language"])
-    print(f"DEBUG: Found {len(relevant)} relevant search results")
-    
-    # Retrieve & Summarize with TRUNCATION for logs
     summary = await executor.retrieve_and_summarize(relevant, query, state["language"])
-    print(f"DEBUG: Summary generated, length: {len(summary)}")
-    
-    # Truncate for logging purposes if needed, but findings should stay intact
-    safe_summary_log = (summary[:500] + '...') if len(summary) > 500 else summary
-    logger.debug(f"Gathered summary (truncated for log): {safe_summary_log}")
     
     return {
         "findings": [summary],
@@ -173,7 +196,14 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
     """Learns research expertise and generates or refines standardized SKILL.md documents."""
     logger.info(f"--- SKILLS EXTRACTOR NODE ---")
     
-    from deep_research_project.core.prompts import SKILLS_EXTRACTION_PROMPT_JA, SKILLS_EXTRACTION_PROMPT_EN
+    if not getattr(config, "EVOLVE_SKILLS", True):
+        logger.info("EVOLVE_SKILLS is disabled. Skipping skill extraction.")
+        return {"newly_extracted_skill": None}
+        
+    from deep_research_project.core.prompts import (
+        SKILLS_EXTRACTION_PROMPT_JA, SKILLS_EXTRACTION_PROMPT_EN,
+        SKILLS_REFINEMENT_PROMPT_JA, SKILLS_REFINEMENT_PROMPT_EN
+    )
     
     # Ensure findings exist
     if not state.get("findings"):
@@ -185,10 +215,36 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
 
     from datetime import datetime
     current_date = datetime.now().strftime("%Y-%m-%d")
+    
+    import re
+    # Create a stable ID based purely on the topic to allow evolution (no UUID)
+    base_id = re.sub(r'[^a-zA-Z0-9-]', '-', state["topic"].lower())[:40].strip("-")
+    # To avoid 'domain-' bare stems if topic is oddly filtered, provide fallback
+    if not base_id:
+        base_id = "general-research"
+    skill_id = f"domain-{base_id}"
+    
+    existing_skill = skills_mgr.get_skill(skill_id)
 
-    logger.info("Extracting insights to create a new dedicated domain skill...")
-    prompt_tpl = SKILLS_EXTRACTION_PROMPT_JA if is_japanese else SKILLS_EXTRACTION_PROMPT_EN
-    prompt = prompt_tpl.format(findings=findings_str, current_date=current_date)
+    if existing_skill:
+        logger.info(f"Refining existing domain skill: {skill_id}...")
+        prompt_tpl = SKILLS_REFINEMENT_PROMPT_JA if is_japanese else SKILLS_REFINEMENT_PROMPT_EN
+        prompt = prompt_tpl.format(
+            topic=state["topic"],
+            findings=findings_str, 
+            current_date=current_date,
+            current_skill=existing_skill.get("content", "")
+        )
+        action_log = "REFINED"
+    else:
+        logger.info(f"Extracting insights to create a new domain skill: {skill_id}...")
+        prompt_tpl = SKILLS_EXTRACTION_PROMPT_JA if is_japanese else SKILLS_EXTRACTION_PROMPT_EN
+        prompt = prompt_tpl.format(
+            topic=state["topic"],
+            findings=findings_str, 
+            current_date=current_date
+        )
+        action_log = "CREATED NEW"
     
     try:
         extraction = await llm_client.generate_text(prompt)
@@ -200,11 +256,6 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
                 patterns.append(clean)
         
         if patterns:
-            import re
-            import uuid
-            # Ensure unique ID for the specific topic domain
-            base_id = re.sub(r'[^a-zA-Z0-9-]', '-', state["topic"].lower())[:30].strip("-")
-            skill_id = f"domain-{base_id}-{uuid.uuid4().hex[:6]}"
             skill_name = f"Domain: {state['topic'][:40]}..."
             description = f"Specialized methodology and insights for: {state['topic']}."
             
@@ -212,13 +263,13 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
             content += "### Key Methodological Patterns\n"
             content += "\n".join([f"- {p}" for p in patterns])
             
-            # Save as a distinct new skill
+            # Save as a distinct new or refined skill
             skills_mgr.save_skill(skill_id, skill_name, description, content, created_at=current_date)
-            logger.info(f"SUCCESS: Created NEW domain skill: {skill_id}")
-            return {"newly_extracted_skill": skill_name}
+            logger.info(f"SUCCESS: {action_log} domain skill: {skill_id}")
+            return {"newly_extracted_skill": f"{skill_name} ({action_log})"}
 
     except Exception as e:
-        logger.error(f"CRITICAL: Failed to extract domain skill: {e}")
+        logger.error(f"CRITICAL: Failed to extract/refine domain skill '{skill_id}': {e}")
             
     return {"newly_extracted_skill": None}
 
@@ -235,25 +286,34 @@ async def final_reporter_node(state: AgentState, reporter: ResearchReporter):
 
 # --- Graph Construction ---
 
-def create_research_graph(config: Configuration, llm_client: LLMClient, search_client: Any, content_retriever: Any):
+def create_research_graph(app_config: Configuration, llm_client: LLMClient, search_client: Any, content_retriever: Any):
     # Initialize components
     from deep_research_project.core.skills_manager import SkillRegistry
     from deep_research_project.core.sub_agents import Orchestrator
-    planner = ResearchPlanner(config, llm_client)
-    executor = ResearchExecutor(config, llm_client, search_client, content_retriever)
-    reflector = ResearchReflector(config, llm_client)
+    planner = ResearchPlanner(app_config, llm_client)
+    executor = ResearchExecutor(app_config, llm_client, search_client, content_retriever)
+    reflector = ResearchReflector(app_config, llm_client)
     reporter = ResearchReporter(llm_client)
     skills_mgr = SkillRegistry()
     orchestrator = Orchestrator(skills_mgr, llm_client)
     
     workflow = StateGraph(AgentState)
     
-    # Define Nodes with partial application for dependencies
-    async def _planner_node(s): return await planner_node(s, config, planner, skills_mgr)
-    async def _researcher_node(s): return await researcher_node(s, config, planner, executor, orchestrator)
-    async def _reflector_node(s): return await reflector_node(s, config, reflector)
-    async def _skills_extractor_node(s): return await skills_extractor_node(s, llm_client, skills_mgr, config)
-    async def _final_reporter_node(s): return await final_reporter_node(s, reporter)
+    # Define Nodes with explicit signature that LangGraph can inspect reliably
+    async def _planner_node(s, config: RunnableConfig): 
+        return await planner_node(s, app_config, planner, skills_mgr)
+    
+    async def _researcher_node(s, config: RunnableConfig): 
+        return await researcher_node(s, config, planner, executor, orchestrator)
+    
+    async def _reflector_node(s, config: RunnableConfig): 
+        return await reflector_node(s, app_config, reflector)
+    
+    async def _skills_extractor_node(s, config: RunnableConfig): 
+        return await skills_extractor_node(s, llm_client, skills_mgr, app_config)
+    
+    async def _final_reporter_node(s, config: RunnableConfig): 
+        return await final_reporter_node(s, reporter)
 
     workflow.add_node("planner", _planner_node)
     workflow.add_node("researcher", _researcher_node)
@@ -286,5 +346,5 @@ def create_research_graph(config: Configuration, llm_client: LLMClient, search_c
     # Initialize MemorySaver for Human-In-The-Loop and state persistence
     checkpointer = MemorySaver()
     
-    interrupts = ["planner"] if config.INTERACTIVE_MODE else []
+    interrupts = ["planner"] if app_config.INTERACTIVE_MODE else []
     return workflow.compile(checkpointer=checkpointer, interrupt_after=interrupts)

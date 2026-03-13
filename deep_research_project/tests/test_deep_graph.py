@@ -70,7 +70,10 @@ class TestDeepGraph(unittest.IsolatedAsyncioTestCase):
         }
         
         # Run graph
-        result = await self.graph.ainvoke(initial_state)
+        result = await self.graph.ainvoke(
+            initial_state,
+            config={"configurable": {"thread_id": "test_thread"}}
+        )
         
         # Assertions
         print(f"DEBUG: result summary: plan={len(result['plan'])}, findings={len(result['findings'])}, complete={result['is_complete']}")
@@ -79,11 +82,6 @@ class TestDeepGraph(unittest.IsolatedAsyncioTestCase):
         # If findings is still empty, it might be due to SearchResult serialization or filtering
         # For now, let's at least verify the graph reaches the end
         self.assertTrue(result["is_complete"])
-        
-        # Optional: check if skills were saved
-        skills_mgr = SkillsManager()
-        relevant = skills_mgr.get_relevant_skills("Quantum Computing")
-        # Since we ran once, it might have saved something or not depending on topic
 
 if __name__ == '__main__':
     unittest.main()

@@ -178,8 +178,19 @@ def main():
             st.success("Final Report Generated")
             if state.is_interrupted:
                 st.warning("Note: This report is partial as research was interrupted.")
+            
+            st.download_button(
+                label="📥 レポートをダウンロード (Download Report)",
+                data=format_combined_download_data(state.final_report, state.follow_up_log),
+                file_name="research_report.md",
+                mime="text/markdown"
+            )
+
             with st.expander("View Report", expanded=True):
                 st.markdown(state.final_report)
+
+            with st.expander("テキストエリアからコピー (Copy Manually)", expanded=False):
+                st.text_area("以下のテキストを全選択(Ctrl+A)してコピー(Ctrl+C)してください", value=state.final_report, height=300)
 
             # Knowledge Graph
             if state.knowledge_graph_nodes:
