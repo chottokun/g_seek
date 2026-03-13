@@ -4,7 +4,6 @@ import os
 import datetime
 import asyncio
 import logging
-import traceback
 import json
 import tempfile
 import html
