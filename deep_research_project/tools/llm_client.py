@@ -5,6 +5,7 @@ import asyncio
 import json
 import re
 from pydantic import BaseModel, ValidationError
+from langchain_core.messages import SystemMessage, HumanMessage
 from deep_research_project.tools.cache_manager import CacheManager
 
 logger = logging.getLogger(__name__)
@@ -175,28 +176,39 @@ class LLMClient:
 
         return any(pattern in model_name_lower for pattern in patterns)
 
-    async def generate_text(self, prompt: str, temperature: Optional[float] = None) -> str:
+    async def generate_text(self, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = None) -> str:
         """Asynchronously generates text from a prompt with retry logic and caching."""
         if self._is_fixed_temperature_model(self.config.LLM_MODEL):
             if temperature is not None and temperature != 1.0:
                 logger.info(f"Overriding provided temperature {temperature} to 1.0 for GPT-5 model.")
             temperature = 1.0
 
+        cache_key = prompt
+        if system_prompt:
+            cache_key = f"SYSTEM: {system_prompt}\nUSER: {prompt}"
+
         if getattr(self.config, "ENABLE_CACHING", True):
-            cached = await self.cache_manager.get_llm_cache(prompt)
+            cached = await self.cache_manager.get_llm_cache(cache_key)
             if cached:
                 logger.info("LLM result retrieved from cache.")
                 return cached
 
         if self.llm == "PlaceholderLLMInstance":
-            result = self._simulate_placeholder(prompt)
+            result = self._simulate_placeholder(prompt, system_prompt=system_prompt)
         else:
             async def _call():
                 llm_to_call = self.llm
                 if temperature is not None and hasattr(self.llm, "bind"):
                     llm_to_call = self.llm.bind(temperature=temperature)
                 
-                response = await llm_to_call.ainvoke(prompt)
+                if system_prompt:
+                    messages = [
+                        SystemMessage(content=system_prompt),
+                        HumanMessage(content=prompt)
+                    ]
+                    response = await llm_to_call.ainvoke(messages)
+                else:
+                    response = await llm_to_call.ainvoke(prompt)
                 
                 # Robustly extract content and handle potential list returns (e.g., from Gemini)
                 content = None
@@ -229,7 +241,7 @@ class LLMClient:
                 return ""
         
         if getattr(self.config, "ENABLE_CACHING", True) and result:
-            await self.cache_manager.set_llm_cache(prompt, result)
+            await self.cache_manager.set_llm_cache(cache_key, result)
         
         return result
 
@@ -363,8 +375,8 @@ class LLMClient:
             # Last resort: try to return a very basic instance
             return response_model.model_validate({})
 
-    def _simulate_placeholder(self, prompt: str) -> str:
-        logger.debug(f"LLMClient (Placeholder) generating text for prompt: '{prompt[:80]}...'")
+    def _simulate_placeholder(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        logger.debug(f"LLMClient (Placeholder) generating text for prompt: '{prompt[:80]}...' (System prompt present: {system_prompt is not None})")
         if "evaluate if the summary has sufficiently explored" in prompt.lower():
             return "EVALUATION: CONCLUDE\nQUERY: None"
         return f"Simulated LLM response to: {prompt[:50]}..."
