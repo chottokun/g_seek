@@ -230,8 +230,10 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                         except json.JSONDecodeError:
                             last_brace = s.rfind('}')
                             if last_brace != -1:
-                                try: return json.loads(s[:last_brace+1])
-                                except: pass
+                                try:
+                                    return json.loads(s[:last_brace+1])
+                                except Exception:
+                                    pass
                             return None
 
                     json_obj = try_repair_json(json_str)
