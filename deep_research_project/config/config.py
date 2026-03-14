@@ -15,7 +15,7 @@ class Configuration(BaseSettings):
     LLM_PROVIDER: str = Field(default="placeholder_llm")
     LLM_MODEL: str = Field(default="default_model_name")
     LLM_TEMPERATURE: float = Field(default=0.7)
-    LLM_MAX_TOKENS: int = Field(default=1024)
+    LLM_MAX_TOKENS: int = Field(default=8192)
     FIXED_TEMPERATURE_MODELS: str = Field(default="gpt-5,o1,o3", description="Comma-separated model name patterns that require fixed temperature (1.0)")
 
     # OpenAI Specific Configuration

@@ -104,7 +104,8 @@ class ResearchExecutor:
         else:
             prompt = COMBINE_SUMMARIES_PROMPT_EN.format(query=query, combined=combined)
         
-        return await self.llm_client.generate_text(prompt=prompt)
+        # INCREASED MAX TOKENS for synthesis to prevent truncation of combined detail
+        return await self.llm_client.generate_text(prompt=prompt, temperature=0.3)
 
     async def score_relevance_batch(self, query: str, results: List[SearchResult], language: str) -> List[float]:
         """

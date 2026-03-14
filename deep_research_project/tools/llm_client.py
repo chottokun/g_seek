@@ -199,7 +199,10 @@ class LLMClient:
             async def _call():
                 llm_to_call = self.llm
                 if temperature is not None and hasattr(self.llm, "bind"):
-                    llm_to_call = self.llm.bind(temperature=temperature)
+                    if self.config.LLM_PROVIDER == "ollama":
+                        llm_to_call = self.llm.bind(options={"temperature": temperature})
+                    else:
+                        llm_to_call = self.llm.bind(temperature=temperature)
                 
                 if system_prompt:
                     messages = [

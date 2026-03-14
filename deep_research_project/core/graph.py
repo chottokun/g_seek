@@ -276,10 +276,25 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
 async def final_reporter_node(state: AgentState, reporter: ResearchReporter):
     """Generates the final research report."""
     logger.info(f"--- FINAL REPORTER NODE ---")
+    
+    findings = state.get("findings", [])
+    sources = state.get("sources", [])
+    
+    logger.info(f"Synthesis input - Findings: {len(findings)} sections, Sources: {len(sources)} links")
+    
+    # Debug nested list structure if any
+    if findings and isinstance(findings[0], list):
+        logger.warning(f"Detected nested findings list! Flattening for reporter.")
+        flattened_findings = []
+        for f in findings:
+            if isinstance(f, list): flattened_findings.extend(f)
+            else: flattened_findings.append(f)
+        findings = flattened_findings
+
     report = await reporter.finalize_report(
         topic=state["topic"],
-        findings=state["findings"],
-        sources=state["sources"],
+        findings=findings,
+        sources=sources,
         language=state["language"]
     )
     return {"final_report": report, "is_complete": True}

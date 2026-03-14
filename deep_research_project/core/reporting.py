@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.state import VisualSummaryModel
@@ -22,21 +23,33 @@ class ResearchReporter:
         logger.info("Synthesizing final report.")
         
         # Findings are already accumulated text summaries from the research loops
-        full_context = "\n\n".join(findings)
+        # We add section headers if findings are separate pieces to help the LLM structure the final report
+        full_context = ""
+        for i, f in enumerate(findings):
+            full_context += f"\n\n--- SECTION {i+1} ---\n{f}"
 
-        # Context length protection for OpenAI-compatible models with smaller windows
-        # Typically 128k character limit is safe even for 32k token models (average 4 chars/token)
+        # Context length protection
         max_context_chars = getattr(self.llm_client.config, "MAX_FINAL_REPORT_CONTEXT_CHARS", 100000)
         if len(full_context) > max_context_chars:
             logger.warning(f"Full context ({len(full_context)} chars) exceeds safety limit ({max_context_chars}). Truncating.")
-            full_context = full_context[:max_context_chars] + "\n\n[...一部の内容はコンテキストの制限により割愛されました / Some content truncated due to context limits...]"
+            full_context = full_context[:max_context_chars] + "\n\n[...一部の内容はコンテキストの制限により割愛されました / Some content truncated...]"
 
         all_sources = []
         seen_links = set()
         for s in sources:
-            # s might be a dict if coming from graph state
-            link = s.get('link') if isinstance(s, dict) else (getattr(s, 'link', None))
-            title = s.get('title') if isinstance(s, dict) else (getattr(s, 'title', 'Unknown'))
+            if not s:
+                continue
+            
+            # Extract link and title reliably regardless of type
+            if hasattr(s, 'link'):
+                link = getattr(s, 'link')
+                title = getattr(s, 'title', 'Unknown')
+            elif isinstance(s, dict):
+                link = s.get('link')
+                title = s.get('title', 'Unknown')
+            else:
+                logger.warning(f"Unexpected source type: {type(s)}")
+                continue
             
             if link and link not in seen_links:
                 all_sources.append({"title": title, "link": link})
@@ -81,18 +94,23 @@ class ResearchReporter:
             )
             visual_summary_prompt = VISUAL_SUMMARY_PROMPT_EN.format(topic=topic)
 
-        report = await self.llm_client.generate_text(prompt=prompt)
+        # We increase temperature slightly to allow for more creative synthesis of details
+        report = await self.llm_client.generate_text(prompt=prompt, temperature=0.3)
         
         # Safety cleanup: Remove any LLM-generated reference sections to prevent duplicates
-        import re
+        # We only match if it looks like a header (starting with #) at the beginning of a line
         ref_patterns = [
-            r"##?\s*(?:参考文献|References?|Sources?|出典(?::|：)?|情報源(?::|：)?).*",
-            r"\d+\.\s+\[?参考文献\]?.*"
+            r"^##?\s*(?:参考文献|References?|Sources?|出典(?::|：)?|情報源(?::|：)?)\b",
+            r"^\d+\.\s+\[?参考文献\]?\b"
         ]
         for pattern in ref_patterns:
-            report = re.split(pattern, report, flags=re.IGNORECASE | re.DOTALL)[0].strip()
+            # Use MULTILINE flag to ensure ^ matches start of lines within the report
+            # We don't use DOTALL here because we want to match the header line itself
+            parts = re.split(pattern, report, flags=re.IGNORECASE | re.MULTILINE)
+            if len(parts) > 1:
+                report = parts[0].strip()
 
-        # Generate structural visual summary (JSON) using structured output for high reliability
+        # Generate structural visual summary (JSON)
         visual_full_prompt = f"--- CONTEXT ---\n{full_context}\n\n{visual_summary_prompt}"
         try:
             visual_model = await self.llm_client.generate_structured(prompt=visual_full_prompt, response_model=VisualSummaryModel)
@@ -100,13 +118,11 @@ class ResearchReporter:
         except Exception as e:
             logger.warning(f"Structured visual summary failed: {e}. Falling back to text generation.")
             visual_data_raw = await self.llm_client.generate_text(prompt=visual_full_prompt)
-            # Basic cleanup for fallback
             if "```json" in visual_data_raw:
                 visual_data = visual_data_raw
             else:
                 visual_data = f"```json\n{visual_data_raw.strip()}\n```"
         
-        # Ensure block wrapping for the UI if it's not already there (for the structured dump)
         if not visual_data.strip().startswith("```"):
             visual_data = f"```json\n{visual_data}\n```"
 

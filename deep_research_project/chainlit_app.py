@@ -13,6 +13,9 @@ from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
 from langgraph.checkpoint.memory import MemorySaver
 from chainlit.input_widget import Select, Switch
+import logging
+
+logger = logging.getLogger(__name__)
 
 @cl.on_chat_start
 async def start():
@@ -167,7 +170,7 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                     # Get FULL accumulated sources
                     sources = full_state.get("sources", [])
                     recent_sources = sources[-5:] if len(sources) >= 5 else sources
-                    sources_md = "\n".join([f"- [{getattr(s, 'title', 'Title')}]({getattr(s, 'link', '#')})" if hasattr(s, 'title') else f"- [{s.get('title', 'Title')}]({s.get('link', '#')})" for s in recent_sources]) if recent_sources else "None found."
+                    sources_md = "\n".join([f"- [{getattr(s, 'title', 'Title')}]({getattr(s, 'link') or '#'})" if hasattr(s, 'title') else f"- [{s.get('title', 'Title')}]({s.get('link') or '#'})" for s in recent_sources]) if recent_sources else "None found."
                     
                     findings = full_state.get("findings", [])
                     recent_finding = findings[-1] if findings else "No findings."
@@ -194,14 +197,17 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                     if new_skill:
                         await cl.Message(content=f"💡 **New Domain Skill Extracted:** `{new_skill}`").send()
                         
-            # Send final report if available
-            if node == "final_reporter":
-                await cl.Message(content="📝 *Synthesizing gathered information into the final research report...*").send()
-
-        # Check if complete
+            # End of Node loop
+            
+        # Graph Execution Finished
         final_state = graph.get_state(config_dict).values
-        if final_state.get("final_report"):
-            report = final_state["final_report"]
+        report = final_state.get("final_report")
+        
+        await cl.Message(content="📑 **リサーチ結果を統合し、最終レポートを作成中...**").send()
+        
+        if report:
+            # 1. Processing and Guarding
+            logger.info(f"DEBUG: Processing final report. Length: {len(report)}")
             
             import re
             import json
@@ -209,12 +215,9 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
             from pyvis.network import Network
             import logging
 
-            # 1. Extract JSON blocks and create temporary HTML files
-            # More flexible pattern: allow the block to end with or without a final newline before the ```
             json_pattern = r"```json\s*\n(.*?)\n?```"
             json_matches = re.findall(json_pattern, report, re.DOTALL)
             
-            # Fallback: if no code blocks, look for a raw JSON-like structure starting with "{" and ending with "}"
             if not json_matches:
                 raw_json_match = re.search(r"(\{\s*\"nodes\":.*?\})", report, re.DOTALL | re.IGNORECASE)
                 if raw_json_match:
@@ -222,9 +225,11 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
             
             file_elements = []
             
+            # --- Visual Summary Creation (Wrapped in total safety) ---
             for idx, json_str in enumerate(json_matches):
                 try:
                     def try_repair_json(s):
+                        if not s: return None
                         try:
                             return json.loads(s)
                         except json.JSONDecodeError:
@@ -235,66 +240,117 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
                             return None
 
                     json_obj = try_repair_json(json_str)
-                    if not json_obj: continue
+                    if not json_obj or not isinstance(json_obj, dict): 
+                        logger.warning(f"DEBUG: JSON match {idx} is not a valid object.")
+                        continue
 
+                    # ENHANCED SAFETY: Ensure edges exists to prevent Pydantic-like skip
+                    if 'nodes' not in json_obj: 
+                        logger.warning(f"DEBUG: JSON match {idx} is missing 'nodes'.")
+                        continue
+                    
                     net = Network(notebook=False, height="600px", width="100%", directed=True)
-                    # Options for a nicer look
-                    net.set_options("""
-                    var options = { "physics": { "barnesHut": { "gravitationalConstant": -3000, "centralGravity": 0.3, "springLength": 150 } } }
-                    """)
+                    net.set_options('{"physics": {"enabled": true}}')
                     
+                    node_count = 0
                     for node in json_obj.get('nodes', []):
+                        if not node or not isinstance(node, dict) or 'id' not in node: continue
+                        nid = str(node['id'])
+                        label = str(node.get('label', nid))
                         color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
-                        title_html = f"<b>{node.get('label', str(node['id']))}</b>"
-                        if 'description' in node and node['description']: title_html += f"<br><br>{node['description']}"
-                        if 'url' in node and node['url']: title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
-                        net.add_node(node['id'], label=node.get('label', str(node['id'])), color=color, shape="box", title=title_html)
+                        title_html = f"<b>{label}</b>"
+                        if node.get('description'): title_html += f"<br><br>{str(node['description'])}"
+                        net.add_node(nid, label=label, color=color, shape="box", title=title_html)
+                        node_count += 1
                         
+                    edge_count = 0
                     for edge in json_obj.get('edges', []):
-                        net.add_edge(str(edge['from']), str(edge['to']), title=edge.get('label', ''), label=edge.get('label', ''))
+                        if not edge or not isinstance(edge, dict): continue
+                        u, v = edge.get('from'), edge.get('to')
+                        if u is not None and v is not None:
+                            net.add_edge(str(u), str(v), color="#999999")
+                            edge_count += 1
                     
-                    with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
-                        tmp_path = tf.name
-                    net.save_graph(tmp_path)
-                    
-                    file_elements.append(
-                        cl.File(
-                            name=f"Visual_Summary_{idx+1}.html",
-                            path=tmp_path,
-                            display="inline"
+                    if node_count > 0:
+                        with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"viz_{idx}_", delete=False) as tf:
+                            tmp_path = tf.name
+                        net.save_graph(tmp_path)
+                        
+                        file_elements.append(
+                            cl.File(name=f"Visual_Summary_{idx+1}.html", path=tmp_path, display="side")
                         )
-                    )
+                        logger.info(f"DEBUG: Created Visual Summary {idx+1} with {node_count} nodes.")
+
                 except Exception as e:
-                    logging.exception(f"Failed to process graph {idx}: {e}")
+                    logger.error(f"CRITICAL: Failed to process Graph {idx}: {e}", exc_info=True)
 
-            # 2. Clean the report text
-            # Remove JSON blocks for clean display
-            clean_report = re.sub(json_pattern, "", report, flags=re.DOTALL)
-            # Remove "## Visual Summary" or similar headers if they exist
-            clean_report = re.sub(r"##\s*Visual\s*Summary.*?\n", "", clean_report, flags=re.IGNORECASE)
-            clean_report = clean_report.strip()
-
-            # 3. Create report file element
+            # --- Report File Creation ---
             try:
-                with tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
+                with tempfile.NamedTemporaryFile(suffix=".md", prefix="report_", delete=False) as tf:
                     report_path = tf.name
                 with open(report_path, "w", encoding="utf-8") as f:
-                    f.write(report) # Save original full report including JSON
+                    f.write(report)
                 
                 file_elements.append(
-                    cl.File(
-                        name="research_report.md",
-                        path=report_path,
-                        display="inline"
-                    )
+                    cl.File(name="research_report.md", path=report_path, display="side")
                 )
             except Exception as e:
-                logging.exception(f"Failed to create report file: {e}")
+                logger.error(f"DEBUG: Failed to create report file: {e}")
 
-            # 4. Send single consolidated message
-            await cl.Message(content=clean_report, elements=file_elements).send()
+            # --- Final Messaging Flow (SPLIT TO PREVENT UI CRASH) ---
             
+            # Step 1: Clean the text for chat display
+            # The report is structured as: [Body] --- [Visual Summary] --- [Sources]
+            # We want to show Body and Sources in chat, but remove the Visual Summary JSON.
+            
+            clean_report = report
+            if "---" in report:
+                parts = report.split("---")
+                if len(parts) >= 3:
+                    # parts[0] is body, parts[1] is visual summary, parts[2] is sources
+                    body = parts[0].strip()
+                    sources = parts[2].strip()
+                    # Remove the header "## Sources" if we are adding it back clearly
+                    clean_report = f"{body}\n\n---\n\n{sources}"
+                elif len(parts) == 2:
+                    # Only one separator? 
+                    # If it has JSON, it's probably Body --- Visual Summary
+                    if "```json" in parts[1]:
+                        clean_report = parts[0].strip() + "\n\n*(リサーチが完了しました)*"
+                    else:
+                        clean_report = report # Keep as is
+            
+            # Final safety: remove any large JSON blocks from chat message
+            clean_report = re.sub(r"```json.*?```", "\n*(詳細は添付の視覚的要約ファイルをご確認ください)*\n", clean_report, flags=re.DOTALL)
+            clean_report = re.sub(r"##\s*Visual\s*Summary", "", clean_report, flags=re.IGNORECASE)
+            
+            clean_report = clean_report.strip()
+            if not clean_report:
+                clean_report = "リサーチが完了しました。詳細は添付のレポートファイルをご確認ください。"
+
+            # Step 2: Send the text and files correctly
+            # In latest Chainlit, we should send the message with elements.
+            # Using display="side" in cl.File keeps them in the sidebar,
+            # but we also want them prominently attached to the final report.
+            
+            await cl.Message(content=clean_report, elements=file_elements).send()
+            logger.info(f"DEBUG: Sent final report with {len(file_elements)} attachments.")
+            
+            # Step 3: Clear session for next request
+            cl.user_session.set("previous_context", report)
+            cl.user_session.set("graph", None)
+            logger.info("DEBUG: Research cycle finished and state reset.")
+
+        else:
+            logger.warning("DEBUG: Final report synthesis finished but 'final_report' is missing from state.")
+            await cl.Message(content="⚠️ レポートの生成に失敗しました。以前のステップに問題があった可能性があります。").send()
+            cl.user_session.set("graph", None)
+
     except Exception as e:
         import traceback
         err = traceback.format_exc()
-        await cl.Message(content=f"❌ **Error during execution:**\n```python\n{err}\n```").send()
+        logger.error(f"FATAL ERROR in run_graph_and_render: {err}")
+        try:
+            await cl.Message(content=f"❌ **Error during execution:**\n```python\n{err}\n```").send()
+        except: pass
+        cl.user_session.set("graph", None)
