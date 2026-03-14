@@ -3,11 +3,10 @@ import logging
 from typing import List, Dict, Optional, Any, Callable
 
 from deep_research_project.config.config import Configuration
-from deep_research_project.core.state import ResearchState, Source, SearchResult, SectionPlan
+from deep_research_project.core.state import ResearchState, Source, SearchResult
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
-from deep_research_project.core.prompts import FOLLOW_UP_PROMPT_JA, FOLLOW_UP_PROMPT_EN
 
 # New modular components
 from deep_research_project.core.planning import ResearchPlanner
