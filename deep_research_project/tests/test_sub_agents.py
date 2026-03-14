@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from deep_research_project.core.sub_agents import SkillAgent, Orchestrator
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.config.config import Configuration
@@ -82,14 +82,17 @@ async def test_run_task_success():
 
     # Verify prompt construction
     args, kwargs = mock_llm.generate_text.call_args
-    prompt = args[0]
-    assert "Test Agent" in prompt
-    assert "Test Description" in prompt
-    assert "Test Instructions" in prompt
-    assert section_title in prompt
-    assert section_description in prompt
-    assert "Context item 1" in prompt
-    assert "Context item 2" in prompt
+    user_prompt = args[0]
+    system_prompt = kwargs.get("system_prompt", "")
+    
+    assert "Test Agent" in system_prompt
+    assert "Test Description" in system_prompt
+    assert "Test Instructions" in system_prompt
+    assert section_title in system_prompt
+    assert section_description in system_prompt
+    
+    assert "Context item 1" in user_prompt
+    assert "Context item 2" in user_prompt
 
 @pytest.mark.asyncio
 async def test_run_task_empty_context():
