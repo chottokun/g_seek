@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 from deep_research_project.core.skills_manager import SkillRegistry
 
-class TestSkillRegistry(unittest.TestCase):
+class TestSkillRegistry(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         # Create a temporary directory for skills
         self.test_dir = tempfile.mkdtemp()
@@ -131,7 +131,7 @@ Skill body content
         # Failure case
         self.assertIsNone(registry.get_skill("non_existent"))
 
-    def test_save_skill(self):
+    async def test_save_skill(self):
         # Use another temp dir for static to ensure isolation
         static_dir = Path(self.test_dir) / "static_skills"
         static_dir.mkdir(parents=True, exist_ok=True)
@@ -142,7 +142,7 @@ Skill body content
         desc = "New Description"
         content = "New Content"
 
-        registry.save_skill(skill_id, name, desc, content)
+        await registry.save_skill(skill_id, name, desc, content)
 
         # Verify in memory
         self.assertIn(skill_id, registry.skills)
@@ -155,7 +155,7 @@ Skill body content
         self.assertIn("name: New Skill", file_content)
         self.assertIn("New Content", file_content)
 
-    def test_skill_registry_directories(self):
+    async def test_skill_registry_directories(self):
         """Test that SkillRegistry correctly separates static and dynamic skills."""
         with tempfile.TemporaryDirectory() as static_dir, tempfile.TemporaryDirectory() as dynamic_dir:
             # Create a mock static skill
@@ -183,7 +183,7 @@ Skill body content
             self.assertTrue(registry.skills["dynamic-skill-1"]["is_dynamic"])
 
             # Test save_skill (should save to dynamic dir)
-            registry.save_skill("new-dynamic-skill", "New Skill", "Desc", "Content")
+            await registry.save_skill("new-dynamic-skill", "New Skill", "Desc", "Content")
             
             new_skill_path = Path(dynamic_dir) / "new-dynamic-skill" / "SKILL.md"
             self.assertTrue(new_skill_path.exists(), "New skill must be saved in the dynamic directory")

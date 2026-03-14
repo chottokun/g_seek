@@ -39,9 +39,9 @@ class ResearchLoop:
         self.reflector = ResearchReflector(config, self.llm_client)
         self.reporter = ResearchReporter(self.llm_client)
 
-    async def _generate_research_plan(self, callback_override=None):
+    async def _generate_research_plan(self):
         """Delegates research plan generation to the planner module."""
-        callback = callback_override or self.progress_callback
+        callback = self.progress_callback
         self.state.research_plan = await self.planner.generate_plan(
             self.state.research_topic, self.state.language, callback
         )
@@ -66,7 +66,7 @@ class ResearchLoop:
             section_title = current_section['title']
             section_description = current_section.get('description', section_title)
         
-        callback = callback_override or self.progress_callback
+        callback = self.progress_callback
         self.state.current_query = await self.planner.generate_initial_query(
             topic=topic,
             section_title=section_title,
@@ -160,7 +160,7 @@ class ResearchLoop:
         self.state.search_results = results
         self.state.pending_source_selection = True
         
-        callback = callback_override or self.progress_callback
+        callback = self.progress_callback
         if callback:
             await callback(f"Found {len(results)} relevant results.")
 
@@ -177,14 +177,14 @@ class ResearchLoop:
             self.state.pending_source_selection = False
             return
         
-        callback = callback_override or self.progress_callback
+        callback = self.progress_callback
         self.state.new_information = await self.executor.retrieve_and_summarize(
             selected_results, self.state.current_query, self.state.language,
             self.state.fetched_content, callback
         )
         
         if self.state.new_information:
-            self.state.accumulated_summary += f"\n\n## {self.state.current_query}\n{self.state.new_information}"
+            self.state.accumulated_summary.append(f"\n\n## {self.state.current_query}\n{self.state.new_information}")
         
         # Add new sources to gathered list (O(N) source deduplication)
 
@@ -207,7 +207,7 @@ class ResearchLoop:
             self.state.knowledge_graph_nodes, self.state.knowledge_graph_edges
         )
         
-        callback = callback_override or self.progress_callback
+        callback = self.progress_callback
         if callback: 
             await callback(f"Knowledge graph enhanced: {len(self.state.knowledge_graph_nodes)} nodes, {len(self.state.knowledge_graph_edges)} edges.")
 
@@ -225,7 +225,7 @@ class ResearchLoop:
             topic=self.state.research_topic,
             section_title=title,
             section_description=description,
-            accumulated_summary=self.state.accumulated_summary,
+            accumulated_summary="".join(self.state.accumulated_summary),
             language=self.state.language
         )
 
@@ -234,9 +234,9 @@ class ResearchLoop:
         else:
             self.state.proposed_query = next_query
 
-    async def _finalize_summary(self, callback_override=None):
+    async def _finalize_summary(self):
         """Delegates final report synthesis to the reporting module."""
-        callback = callback_override or self.progress_callback
+        callback = self.progress_callback
         if callback: await callback("Synthesizing final research report...")
         
         # Extract findings and sources from the completed research plan

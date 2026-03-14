@@ -28,6 +28,7 @@ class TestInterruption(unittest.IsolatedAsyncioTestCase):
         self.content_patcher = patch('deep_research_project.core.research_loop.ContentRetriever')
 
         self.mock_llm_client = self.llm_patcher.start().return_value
+        self.mock_llm_client.config = self.mock_config
         self.mock_search_client = self.search_patcher.start().return_value
         self.mock_content_retriever = self.content_patcher.start().return_value
 
@@ -45,7 +46,7 @@ class TestInterruption(unittest.IsolatedAsyncioTestCase):
             Section(title="Sec 2", description="Desc 2")
         ])
         self.mock_llm_client.generate_structured = AsyncMock(return_value=mock_plan)
-        self.mock_llm_client.generate_text = AsyncMock(side_effect=["Test Result", "```json\n{}\n```"])
+        self.mock_llm_client.generate_text = AsyncMock(side_effect=["Test Result", "Test Result 2", "```json\n{}\n```"])
 
         # Start the loop but it should see is_interrupted immediately
         self.state.is_interrupted = True
@@ -54,7 +55,10 @@ class TestInterruption(unittest.IsolatedAsyncioTestCase):
 
         # It should have called _generate_research_plan (since state.research_plan was empty)
         # but then broken out of the while loop.
-        self.assertEqual(self.state.current_section_index, 0)
+        # Index is initialized to -1, then _generate_research_plan is called.
+        # Since it's not interactive, it calls parallel processing.
+        # But parallel processing also checks for interrupted.
+        self.assertEqual(self.state.current_section_index, -1)
         # Final report should still be generated (with whatever was there)
         self.assertIsNotNone(self.state.final_report)
 

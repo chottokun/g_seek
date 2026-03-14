@@ -73,7 +73,7 @@ class ResearchState:
         self.search_results: Optional[List[SearchResult]] = None
         self.new_information: Optional[str] = None # Summary of the latest search results
         self.sources_gathered: List[Source] = []
-        self.accumulated_summary: str = "" # Initialize as empty string
+        self.accumulated_summary: List[str] = [] # Initialize as empty list
         self.completed_loops: int = 0
         self.final_report: Optional[str] = None
         self.pending_source_selection: bool = False
@@ -106,7 +106,7 @@ class ResearchState:
             f"  Search Results Count: {len(self.search_results) if self.search_results else 0}\n"
             f"  New Information: {'Yes' if self.new_information else 'No'}\n"
             f"  Sources Gathered Count: {len(self.sources_gathered)}\n"
-            f"  Accumulated Summary Length: {len(self.accumulated_summary)}\n"
+            f"  Accumulated Summary (pieces): {len(self.accumulated_summary)}\n"
             f"  Completed Loops: {self.completed_loops}\n"
             f"  Pending Source Selection: {self.pending_source_selection}\n"
             f"  Fetched Content Count: {len(self.fetched_content) if self.fetched_content else 0}\n"

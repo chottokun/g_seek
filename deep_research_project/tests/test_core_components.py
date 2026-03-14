@@ -31,6 +31,7 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         self.mock_config.MAX_QUERY_WORDS = 10
         self.mock_config.ENABLE_RELEVANCE_FILTERING = True
         self.mock_config.RELEVANCE_FILTER_MODE = "enabled"
+        self.mock_config.MAX_FINAL_REPORT_CONTEXT_CHARS = 100000
 
         self.state = ResearchState(research_topic="AI in Healthcare")
 
@@ -87,7 +88,7 @@ class TestAsyncResearchLoop(unittest.IsolatedAsyncioTestCase):
         await self.loop._summarize_sources(selected)
 
         self.assertEqual(self.state.new_information, "Final Summary")
-        self.assertIn("## Query A", self.state.accumulated_summary)
+        self.assertIn("## Query A", "".join(self.state.accumulated_summary))
         self.assertEqual(len(self.state.sources_gathered), 1)
 
     async def test_finalize_summary_with_citations(self):
