@@ -36,11 +36,8 @@ class SkillAgent:
             f"Please provide a detailed summary for '{section_title}' based on your expertise."
         )
         
-        full_prompt = f"SYSTEM INSTRUCTIONS:\n{system_prompt}\n\nUSER REQUEST:\n{user_prompt}"
-        
         try:
-            # Fix: current LLMClient.generate_text doesn't support system_prompt arg
-            response = await self.llm_client.generate_text(full_prompt)
+            response = await self.llm_client.generate_text(user_prompt, system_prompt=system_prompt)
             return response
         except Exception as e:
             logger.error(f"Sub-Agent {self.name} failed: {e}")

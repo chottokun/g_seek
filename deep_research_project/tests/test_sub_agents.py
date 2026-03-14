@@ -8,7 +8,7 @@ from deep_research_project.config.config import Configuration
 
 class MockLLMClient:
     """A mock LLM client for fast, deterministic unit tests."""
-    async def generate_text(self, prompt: str) -> str:
+    async def generate_text(self, prompt: str, system_prompt: Optional[str] = None) -> str:
         return f"MOCK RESPONSE based on prompt length {len(prompt)}"
 
 @pytest.mark.asyncio
