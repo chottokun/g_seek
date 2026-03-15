@@ -63,8 +63,8 @@ class TestResearchReporter(unittest.IsolatedAsyncioTestCase):
         self.assertIn("トピック: 'AIの動向'", prompt)
 
     async def test_finalize_report_truncation(self):
-        self.mock_llm_client.config.MAX_FINAL_REPORT_CONTEXT_CHARS = 20
-        findings = ["This is a very long finding that exceeds twenty characters."]
+        self.mock_llm_client.config.MAX_FINAL_REPORT_CONTEXT_CHARS = 50
+        findings = ["This is a very long finding that exceeds fifty characters."]
 
         self.mock_llm_client.generate_text = AsyncMock(return_value="Report")
         self.mock_llm_client.generate_structured = AsyncMock(return_value=VisualSummaryModel(nodes=[], edges=[]))
@@ -72,7 +72,7 @@ class TestResearchReporter(unittest.IsolatedAsyncioTestCase):
         await self.reporter.finalize_report("Topic", findings, [], "English")
 
         prompt = self.mock_llm_client.generate_text.call_args_list[0].kwargs['prompt']
-        # The first 20 chars of findings joined: "This is a very long "
+        # The first 50 chars of context includes the section header (approx 20 chars) and some finding content
         self.assertIn("This is a very long ", prompt)
         self.assertIn("Some content truncated", prompt)
 
@@ -99,15 +99,31 @@ class TestResearchReporter(unittest.IsolatedAsyncioTestCase):
 
         report = await self.reporter.finalize_report("Topic", [], [], "English")
 
-        # Should contain "Report body." but not the LLM's "## References" (it will have our "## Visual Summary" etc)
+        # Should contain "Report body." but not the LLM's "## References"
         self.assertIn("Report body.", report)
-        # Check that the doubled "## References" or "## Sources" from LLM is gone
-        # The reporter adds "## Visual Summary" and optionally "## Sources"
-        # We want to make sure the specific string "## References" (from LLM) is not there if we didn't add it.
-        # Actually reporter adds "## Sources" at the end if sources exist.
-
-        # Let's check with no sources to be sure
         self.assertNotIn("## References", report)
+
+    async def test_finalize_report_reference_stripping_japanese(self):
+        # Test Japanese reference headers
+        llm_response = "レポート本文。\n\n## 参考文献\n[1] 出典"
+        self.mock_llm_client.generate_text = AsyncMock(return_value=llm_response)
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=VisualSummaryModel(nodes=[], edges=[]))
+
+        report = await self.reporter.finalize_report("トピック", [], [], "Japanese")
+
+        self.assertIn("レポート本文。", report)
+        self.assertNotIn("## 参考文献", report)
+
+    async def test_finalize_report_reference_stripping_numbered(self):
+        # Test numbered reference headers
+        llm_response = "Report body.\n\n1. [参考文献]\n[1] Source"
+        self.mock_llm_client.generate_text = AsyncMock(return_value=llm_response)
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=VisualSummaryModel(nodes=[], edges=[]))
+
+        report = await self.reporter.finalize_report("Topic", [], [], "English")
+
+        self.assertIn("Report body.", report)
+        self.assertNotIn("1. [参考文献]", report)
 
     async def test_finalize_report_visual_summary_fallback(self):
         self.mock_llm_client.generate_text = AsyncMock(side_effect=[
@@ -121,7 +137,19 @@ class TestResearchReporter(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("## Visual Summary", report)
         self.assertIn("Fallback", report)
-        self.assertIn("```json", report) # Fallback wraps in ```json
+        self.assertIn("```json\n{\"nodes\": [{\"id\": \"1\", \"label\": \"Fallback\"}], \"edges\": []}\n```", report) # Fallback wraps in ```json
+
+    async def test_finalize_report_visual_summary_no_wrapping_initially(self):
+        # Test when generate_structured returns a JSON string without wrapping (happens in the fallback logic)
+        self.mock_llm_client.generate_text = AsyncMock(return_value="Report")
+
+        mock_visual_model = VisualSummaryModel(nodes=[], edges=[])
+        # mock_visual_model.model_dump_json() returns raw JSON
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=mock_visual_model)
+
+        report = await self.reporter.finalize_report("Topic", [], [], "English")
+
+        self.assertIn("```json\n{\n  \"nodes\": [],\n  \"edges\": []\n}\n```", report)
 
     async def test_finalize_report_no_sources(self):
         self.mock_llm_client.generate_text = AsyncMock(return_value="Report")
@@ -132,6 +160,24 @@ class TestResearchReporter(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("## Sources", report)
         prompt = self.mock_llm_client.generate_text.call_args_list[0].kwargs['prompt']
         self.assertIn("No source information available", prompt)
+
+    async def test_finalize_report_malformed_sources(self):
+        # Test handling of unexpected source types
+        sources = [
+            None,
+            "not a dict or object",
+            {"title": "Valid"}, # Missing link
+            {"link": "http://valid.com", "title": "Valid"},
+            {"link": "http://valid.com"} # Duplicate link, will be ignored but good to test title fallback
+        ]
+        self.mock_llm_client.generate_text = AsyncMock(return_value="Report")
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=VisualSummaryModel(nodes=[], edges=[]))
+
+        report = await self.reporter.finalize_report("Topic", [], sources, "English")
+
+        # Only the one with link should be present
+        self.assertIn("[1] Valid (http://valid.com)", report)
+        # Verify it doesn't crash on None or string
 
     async def test_finalize_report_empty_findings(self):
         self.mock_llm_client.generate_text = AsyncMock(return_value="Report")
