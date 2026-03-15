@@ -29,7 +29,7 @@ async def start():
         Switch(id="snippets_only", label="Snippet Only Mode (Fast)", initial=config.USE_SNIPPETS_ONLY_MODE),
     ]).send()
     
-    await cl.Message(content="# Deep Research Assistant\nAIを活用したリサーチを開始します。テーマを入力してください。\n（※ 一から作り直したクリーンなUI実装です）").send()
+    await cl.Message(content="# Deep Research Assistant\nAIを活用したリサーチを開始します。テーマを入力してください。\n").send()
 
 @cl.on_settings_update
 async def setup_agent(settings):

@@ -55,13 +55,13 @@ class Configuration(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO")
 
     # Interactive Mode Configuration
-    INTERACTIVE_MODE: bool = Field(default=False)
+    INTERACTIVE_MODE: bool = Field(default=True)
 
     # Security Configuration
     BLOCK_LOCAL_IP_ACCESS: bool = Field(default=False)
 
     # Summarization Configuration
-    SUMMARIZATION_CHUNK_SIZE_CHARS: int = Field(default=10000)
+    SUMMARIZATION_CHUNK_SIZE_CHARS: int = Field(default=12000)
     SUMMARIZATION_CHUNK_OVERLAP_CHARS: int = Field(default=500)
 
     # Optimization Configuration
