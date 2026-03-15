@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class SkillRegistry:
     """Manages discovery, loading, and registration of modular skills (Anthropic style)."""
     
-    def __init__(self, static_skills_dir: str = ".agents/skills", dynamic_skills_dir: str = "data/skills"):
+    def __init__(self, static_skills_dir: str = "data/skills/static", dynamic_skills_dir: str = "data/skills/dynamic"):
         self.static_skills_dir = Path(static_skills_dir)
         self.dynamic_skills_dir = Path(dynamic_skills_dir)
         self.static_skills_dir.mkdir(parents=True, exist_ok=True)

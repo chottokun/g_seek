@@ -1,5 +1,6 @@
 import logging
 import asyncio
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -135,11 +136,12 @@ async def researcher_node(state: AgentState, config: RunnableConfig, planner: Re
         topic=state["topic"],
         section_title=section["title"],
         section_description=section.get("description", "") + expert_context,
-        language=state["language"]
+        language=state["language"],
+        progress_callback=progress_cb
     )
     results = await executor.search(query, getattr(app_config, "MAX_SEARCH_RESULTS_PER_QUERY", 3))
-    relevant = await executor.filter_by_relevance(query, results, state["language"])
-    summary = await executor.retrieve_and_summarize(relevant, query, state["language"])
+    relevant = await executor.filter_by_relevance(query, results, state["language"], progress_callback=progress_cb)
+    summary = await executor.retrieve_and_summarize(relevant, query, state["language"], progress_callback=progress_cb)
     
     return {
         "findings": [summary],
@@ -309,7 +311,14 @@ def create_research_graph(app_config: Configuration, llm_client: LLMClient, sear
     executor = ResearchExecutor(app_config, llm_client, search_client, content_retriever)
     reflector = ResearchReflector(app_config, llm_client)
     reporter = ResearchReporter(llm_client)
-    skills_mgr = SkillRegistry()
+    
+    # Ensure SkillRegistry uses a local directory within the project
+    base_dir = Path(__file__).parent.parent
+    skills_mgr = SkillRegistry(
+        static_skills_dir=str(base_dir / "data" / "skills" / "static"),
+        dynamic_skills_dir=str(base_dir / "data" / "skills" / "dynamic")
+    )
+    
     orchestrator = Orchestrator(skills_mgr, llm_client)
     
     workflow = StateGraph(AgentState)

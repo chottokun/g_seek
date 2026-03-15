@@ -2,8 +2,16 @@ import chainlit as cl
 import uuid
 import os
 import sys
+import re
+import json
+import tempfile
+import logging
+import traceback
+import asyncio
+from typing import Dict, Optional, List
+from pyvis.network import Network
 
-# Ensure we can import from core
+# Ensure imports from parent directory
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from deep_research_project.config.config import Configuration
@@ -13,23 +21,159 @@ from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
 from langgraph.checkpoint.memory import MemorySaver
 from chainlit.input_widget import Select, Switch
-import logging
 
+# Logger setup
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# --- UI Helper Classes ---
+
+class UIProgressManager:
+    """Manages hierarchical progress updates using Chainlit Steps."""
+    def __init__(self):
+        self.section_steps: Dict[str, cl.Step] = {}
+        self.main_step: Optional[cl.Step] = None
+
+    async def handle_callback(self, msg: str):
+        """Processes progress messages from the research core."""
+        # Detect section-specific messages: "[Section Title] Detail message"
+        match = re.match(r"\[(.*?)\] (.*)", msg)
+        if match:
+            section_title = match.group(1)
+            details = match.group(2)
+            
+            if section_title not in self.section_steps:
+                # Create a new step for this section
+                step = cl.Step(name=f"🔍 {section_title}", parent_id=self.main_step.id if self.main_step else None)
+                await step.send()
+                self.section_steps[section_title] = step
+            
+            # Update the section step
+            self.section_steps[section_title].output = details
+            await self.section_steps[section_title].update()
+        else:
+            # General progress message
+            if "Processing" in msg and "parallel" in msg:
+                # Start of parallel processing
+                self.main_step = cl.Step(name="🚀 リサーチ実行中 (並列処理)")
+                await self.main_step.send()
+            else:
+                # Fallback to a simple message or update main step
+                if self.main_step:
+                    self.main_step.output = msg
+                    await self.main_step.update()
+                else:
+                    await cl.Message(content=f"ℹ️ {msg}").send()
+
+# --- Utility Functions ---
+
+def robust_json_repair(json_str: str):
+    """Attempts to repair common LLM JSON output issues."""
+    json_str = json_str.strip()
+    if not json_str: return None
+    
+    # Remove markdown code blocks if present
+    json_str = re.sub(r'^```json\s*', '', json_str)
+    json_str = re.sub(r'\s*```$', '', json_str)
+    
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        # Try to fix truncated JSON by adding missing closing braces
+        for i in range(1, 10):
+            try:
+                return json.loads(json_str + '}' * i)
+            except: continue
+            
+        # Try to find the last complete object
+        last_brace = json_str.rfind('}')
+        if last_brace != -1:
+            try:
+                return json.loads(json_str[:last_brace+1])
+            except: pass
+            
+    return None
+
+async def process_visual_summary(report: str):
+    """Extracts Visual Summary JSON and creates network visualization."""
+    # Find JSON blocks
+    json_pattern = r"```json\s*\n(.*?)\n?```"
+    json_matches = re.findall(json_pattern, report, re.DOTALL)
+    
+    if not json_matches:
+        # Loose search for anything that looks like nodes/edges JSON
+        raw_match = re.search(r"(\{.*\"nodes\".*\"edges\".*\})", report, re.DOTALL | re.IGNORECASE)
+        if raw_match:
+            json_matches = [raw_match.group(1)]
+            
+    elements = []
+    for idx, json_str in enumerate(json_matches):
+        data = robust_json_repair(json_str)
+        if not data or 'nodes' not in data:
+            continue
+            
+        try:
+            net = Network(notebook=False, height="600px", width="100%", directed=True)
+            # Use a nice template with localized labels if possible
+            net.set_options("""
+            var options = {
+              "physics": {
+                "forceAtlas2Based": { "gravitationalConstant": -50, "centralGravity": 0.01, "springLength": 100, "springConstant": 0.08 },
+                "maxVelocity": 50, "solver": "forceAtlas2Based", "timestep": 0.35, "stabilization": { "iterations": 150 }
+              }
+            }
+            """)
+            
+            for node in data.get('nodes', []):
+                if 'id' not in node: continue
+                nid = str(node['id'])
+                label = str(node.get('label', nid))
+                color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
+                desc = node.get('description', '')
+                net.add_node(nid, label=label, color=color, shape="box", title=desc)
+                
+            for edge in data.get('edges', []):
+                u, v = edge.get('from'), edge.get('to')
+                if u is not None and v is not None:
+                    net.add_edge(str(u), str(v), color="#999999", label=edge.get('label', ''))
+            
+            with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"viz_{idx}_", delete=False) as tf:
+                tmp_path = tf.name
+            net.save_graph(tmp_path)
+            elements.append(cl.File(name=f"Network_Graph_{idx+1}.html", path=tmp_path, display="side"))
+            
+        except Exception as e:
+            logger.error(f"Visualization error: {e}")
+            
+    return elements
+
+def clean_report_for_display(report: str):
+    """Removes the large JSON blocks and internal technical sections from the chat display."""
+    # Remove Visual Summary section completely from chat display
+    report = re.sub(r'##\s*(?:Visual\s*Summary|視覚的要約).*?(?=##|---|$)', '', report, flags=re.DOTALL | re.IGNORECASE)
+    # Remove any remaining raw JSON blocks
+    report = re.sub(r'```json.*?```', '', report, flags=re.DOTALL)
+    return report.strip()
+
+# --- Chainlit Event Handlers ---
 
 @cl.on_chat_start
 async def start():
     config = Configuration()
     cl.user_session.set("config", config)
     
-    # Minimal UI Settings
     await cl.ChatSettings([
         Select(id="language", label="Language", values=["Japanese", "English"], initial_value=config.DEFAULT_LANGUAGE),
         Switch(id="interactive_mode", label="Interactive Mode (Plan Approval)", initial=config.INTERACTIVE_MODE),
         Switch(id="snippets_only", label="Snippet Only Mode (Fast)", initial=config.USE_SNIPPETS_ONLY_MODE),
     ]).send()
     
-    await cl.Message(content="# Deep Research Assistant\nAIを活用したリサーチを開始します。テーマを入力してください。\n").send()
+    welcome_msg = (
+        "# Deep Research Assistant v3 🔬\n\n"
+        "AIを活用して深いリサーチを行い、構造化されたレポートを作成します。\n"
+        "調査したいテーマを詳しく入力してください。"
+    )
+    await cl.Message(content=welcome_msg).send()
 
 @cl.on_settings_update
 async def setup_agent(settings):
@@ -38,6 +182,7 @@ async def setup_agent(settings):
         cl.user_session.set("language", settings["language"])
         config.INTERACTIVE_MODE = settings["interactive_mode"]
         config.USE_SNIPPETS_ONLY_MODE = settings["snippets_only"]
+        await cl.Message(content=f"⚙️ 設定を更新しました: 言語={settings['language']}, 対話モード={settings['interactive_mode']}").send()
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -47,7 +192,7 @@ async def main(message: cl.Message):
     graph = cl.user_session.get("graph")
     thread_id = cl.user_session.get("thread_id")
     
-    # 1. Initialize Graph for new request
+    # 1. New Research Session
     if not graph:
         memory = MemorySaver()
         llm = LLMClient(config)
@@ -59,22 +204,16 @@ async def main(message: cl.Message):
         cl.user_session.set("graph", graph)
         cl.user_session.set("thread_id", thread_id)
         
-        # Include previous report context if following up
-        prev_ctx = cl.user_session.get("previous_context", "")
-        base_topic = message.content
-        if prev_ctx:
+        prev_report = cl.user_session.get("previous_context", "")
+        topic = message.content
+        if prev_report:
             if language == "Japanese":
-                topic_with_ctx = f"以下の前回の調査レポートを踏まえて、次の追加調査を行ってください。\n\n【追加調査の指示】\n{base_topic}\n\n【前回のレポート（参考）】\n{prev_ctx}"
+                topic = f"【前回の調査内容】\n{prev_report}\n\n【追加・詳細リクエスト】\n{topic}"
             else:
-                topic_with_ctx = f"Based on the previous research report below, please conduct the following follow-up research.\n\n[Follow-up Request]\n{base_topic}\n\n[Previous Report (Reference)]\n{prev_ctx}"
-        else:
-            topic_with_ctx = base_topic
-            
-        async def progress_cb(msg):
-            await cl.Message(content=msg).send()
+                topic = f"[Previous Report]\n{prev_report}\n\n[Follow-up Request]\n{topic}"
             
         initial_state = {
-            "topic": topic_with_ctx,
+            "topic": topic,
             "language": language,
             "max_iterations": config.MAX_RESEARCH_LOOPS,
             "current_query": "",
@@ -84,273 +223,136 @@ async def main(message: cl.Message):
             "research_plan": [],
             "current_section_index": 0,
             "plan_approved": not config.INTERACTIVE_MODE,
-            "is_interrupted": False,
-            "progress_callback": None # Keeping as None in State, passing real one via Config
+            "is_complete": False
         }
+        
+        ui_manager = UIProgressManager()
+        cl.user_session.set("ui_manager", ui_manager)
+        
         config_dict = {
             "configurable": {
-                "thread_id": thread_id,
-                "progress_callback": progress_cb,
-                "config": config
+                "thread_id": thread_id, 
+                "config": config,
+                "progress_callback": ui_manager.handle_callback
             }
         }
         
-        await run_graph_and_render(graph, initial_state, config_dict, config)
+        await execute_research(graph, initial_state, config_dict)
         return
 
-    # 2. Resume Interrupted Graph (e.g. Plan Approval)
-    async def progress_cb(msg):
-        await cl.Message(content=msg).send()
-        
+    # 2. Handle Plan Approval or Feedback
     config_dict = {
         "configurable": {
-            "thread_id": thread_id,
-            "progress_callback": progress_cb,
-            "config": config
+            "thread_id": thread_id, 
+            "config": config,
+            "progress_callback": cl.user_session.get("ui_manager").handle_callback
         }
     }
-    state = graph.get_state(config_dict)
     
-    if state and state.next:
-        user_input = message.content.strip().lower()
-        if user_input in ["y", "yes", "はい", "ok", "承認", "approve"]:
-            try:
-                graph.update_state(config_dict, {"plan_approved": True}, as_node="planner")
-            except Exception:
-                graph.update_state(config_dict, {"plan_approved": True})
-            await cl.Message(content="✅ プランを承認しました。リサーチを開始します。").send()
-            await run_graph_and_render(graph, None, config_dict, config)
-        else:
-            # Simple Plan Edit
-            try:
-                graph.update_state(config_dict, {
-                    "plan_approved": True,
-                    "plan": [{"title": "User Custom Plan", "description": message.content}]
-                }, as_node="planner")
-            except Exception:
-                graph.update_state(config_dict, {
-                    "plan_approved": True,
-                    "plan": [{"title": "User Custom Plan", "description": message.content}]
-                })
-            await cl.Message(content="✏️ プランをカスタム内容に変更し、開始します。").send()
-            await run_graph_and_render(graph, None, config_dict, config)
+    user_input = message.content.strip().lower()
+    if user_input in ["y", "yes", "はい", "ok", "承認", "approve"]:
+        graph.update_state(config_dict, {"plan_approved": True})
+        await cl.Message(content="✅ プランを承認しました。詳細リサーチを開始します。").send()
+        await execute_research(graph, None, config_dict)
     else:
-        # Start fresh if previous graph finished, but keep the previous report as context
-        old_report = state.values.get("final_report", "") if state else ""
-        if old_report:
-            cl.user_session.set("previous_context", old_report)
-        cl.user_session.set("graph", None)
-        await main(message)
+        # Custom plan override
+        graph.update_state(config_dict, {
+            "plan_approved": True,
+            "plan": [{"title": "User Custom Plan", "description": message.content}]
+        })
+        await cl.Message(content="✏️ プランを修正し、リサーチを開始します。").send()
+        await execute_research(graph, None, config_dict)
 
-async def run_graph_and_render(graph, input_state, config_dict, config):
+async def execute_research(graph, input_state, config_dict):
+    config = config_dict["configurable"]["config"]
+    ui_manager = cl.user_session.get("ui_manager")
+    
     try:
-        current_step_msg = None
         async for event in graph.astream(input_state, config_dict):
-            # Fetch the actual full state from the checkpointer to ensure lists like 'sources' are accumulated
+            node_name = list(event.keys())[0]
+            # State can be large, only get what's needed or use get_state for accumulation
             full_state = graph.get_state(config_dict).values
             
-            for node, state_update in event.items():
+            if node_name == "planner":
+                plan = full_state.get("plan", [])
+                plan_text = "### 📋 リサーチ計画案\n"
+                for i, p in enumerate(plan):
+                    plan_text += f"{i+1}. **{p['title']}**: {p['description']}\n"
                 
-                if node == "planner":
-                    plan = full_state.get("plan", [])
-                    plan_text = "### 📋 Proposed Research Plan\n"
-                    for i, p in enumerate(plan):
-                        plan_text += f"{i+1}. **{p['title']}**: {p['description']}\n"
-                    
-                    if config.INTERACTIVE_MODE and not full_state.get("plan_approved"):
-                        plan_text += "\n\n⚠️ **Please review the plan.** Type `OK` or `承認` to start researching (Or type a custom plan to override)."
-                    
+                if config.INTERACTIVE_MODE and not full_state.get("plan_approved"):
+                    plan_text += "\n\n---\n⚠️ **このプランで進めてよろしいですか？**\n`はい` または `OK` で承認、別の指示を入力するとプランを修正します。"
                     await cl.Message(content=plan_text).send()
+                else:
+                    async with cl.Step(name="研究計画の策定") as step:
+                        step.output = plan_text
 
-                elif node == "researcher":
-                    query = state_update.get("current_query", full_state.get("current_query", "Unknown"))
-                    idx = full_state.get("current_section_index", 0)
-                    total = len(full_state.get("plan", []))
-                    
-                    # Get FULL accumulated sources
-                    sources = full_state.get("sources", [])
-                    recent_sources = sources[-5:] if len(sources) >= 5 else sources
-                    sources_md = "\n".join([f"- [{getattr(s, 'title', 'Title')}]({getattr(s, 'link') or '#'})" if hasattr(s, 'title') else f"- [{s.get('title', 'Title')}]({s.get('link') or '#'})" for s in recent_sources]) if recent_sources else "None found."
-                    
-                    findings = full_state.get("findings", [])
-                    recent_finding = findings[-1] if findings else "No findings."
-                    safe_finding = (recent_finding[:200] + "...") if len(recent_finding) > 200 else recent_finding
-                    
-                    msg = f"### 🔍 Researching Section {idx+1}/{total}\n**Query:** `{query}`\n\n**Findings (Preview):**\n{safe_finding}\n\n**Recent Citations (Total: {len(sources)}):**\n{sources_md}"
-                    
-                    if not current_step_msg:
-                        current_step_msg = cl.Message(content=msg)
-                        await current_step_msg.send()
-                    else:
-                        current_step_msg.content = msg
-                        await current_step_msg.update()
-                        
-                elif node == "reflector":
-                    if current_step_msg:
-                        msg = current_step_msg.content + "\n\n🧠 *Reflecting on findings...*"
-                        current_step_msg.content = msg
-                        await current_step_msg.update()
-                        current_step_msg = None 
-                    
-                elif node == "skills_extractor":
-                    new_skill = state_update.get("newly_extracted_skill")
-                    if new_skill:
-                        await cl.Message(content=f"💡 **New Domain Skill Extracted:** `{new_skill}`").send()
-                        
-            # End of Node loop
-            
-        # Graph Execution Finished
-        final_state = graph.get_state(config_dict).values
-        report = final_state.get("final_report")
-        
-        await cl.Message(content="📑 **リサーチ結果を統合し、最終レポートを作成中...**").send()
+            elif node_name == "researcher" and config.INTERACTIVE_MODE:
+                # In sequential mode, show current progress
+                idx = full_state.get("current_section_index", 0)
+                plan = full_state.get("plan", [])
+                total = len(plan)
+                query = full_state.get("current_query", "検索中...")
+                
+                async with cl.Step(name=f"調査中: {plan[idx]['title'] if idx < total else '最終段階'}") as step:
+                    step.output = f"🔍 検索中...\nクエリ: `{query}`"
+
+            elif node_name == "reflector" and config.INTERACTIVE_MODE:
+                # This node proposes the NEXT query
+                next_query = event[node_name].get("current_query")
+                if next_query:
+                    await cl.Message(content=f"🧠 **分析完了。次の視点で深掘りします:**\n`{next_query}`").send()
+
+            elif node_name == "skills_extractor":
+                skill = event[node_name].get("newly_extracted_skill")
+                if skill:
+                    await cl.Message(content=f"💡 **新しいスキルを学習しました:** `{skill}`").send()
+
+            elif node_name == "final_reporter":
+                await cl.Message(content="📑 **最終レポートを作成中...**").send()
+
+        # --- Check if Interrupted ---
+        full_state = graph.get_state(config_dict)
+        if full_state.next:
+            logger.info(f"Research interrupted at: {full_state.next}. Waiting for user input.")
+            return
+
+        # --- Report Delivery ---
+        report = full_state.values.get("final_report", "")
         
         if report:
-            # 1. Processing and Guarding
-            logger.info(f"DEBUG: Processing final report. Length: {len(report)}")
+            # Prepare files
+            elements = await process_visual_summary(report)
             
-            import re
-            import json
-            import tempfile
-            from pyvis.network import Network
-            import logging
-
-            json_pattern = r"```json\s*\n(.*?)\n?```"
-            json_matches = re.findall(json_pattern, report, re.DOTALL)
+            # Save full report as file
+            with tempfile.NamedTemporaryFile(suffix=".md", prefix="final_report_", delete=False) as tf:
+                md_path = tf.name
+            with open(md_path, "w", encoding="utf-8") as f:
+                f.write(report)
+            elements.append(cl.File(name="research_report.md", path=md_path, display="side"))
             
-            if not json_matches:
-                raw_json_match = re.search(r"(\{\s*\"nodes\":.*?\})", report, re.DOTALL | re.IGNORECASE)
-                if raw_json_match:
-                    json_matches = [raw_json_match.group(1)]
+            # Clean text for chat
+            display_text = clean_report_for_display(report)
             
-            file_elements = []
+            # Truncate if too long for UI
+            if len(display_text) > 15000:
+                display_text = display_text[:15000] + "\n\n---\n\n> ⚠️ **レポートが長いため一部を省略しました。全内容は添付の `research_report.md` を参照してください。**"
             
-            # --- Visual Summary Creation (Wrapped in total safety) ---
-            for idx, json_str in enumerate(json_matches):
-                try:
-                    def try_repair_json(s):
-                        if not s: return None
-                        try:
-                            return json.loads(s)
-                        except json.JSONDecodeError:
-                            last_brace = s.rfind('}')
-                            if last_brace != -1:
-                                try: return json.loads(s[:last_brace+1])
-                                except: pass
-                            return None
-
-                    json_obj = try_repair_json(json_str)
-                    if not json_obj or not isinstance(json_obj, dict): 
-                        logger.warning(f"DEBUG: JSON match {idx} is not a valid object.")
-                        continue
-
-                    # ENHANCED SAFETY: Ensure edges exists to prevent Pydantic-like skip
-                    if 'nodes' not in json_obj: 
-                        logger.warning(f"DEBUG: JSON match {idx} is missing 'nodes'.")
-                        continue
-                    
-                    net = Network(notebook=False, height="600px", width="100%", directed=True)
-                    net.set_options('{"physics": {"enabled": true}}')
-                    
-                    node_count = 0
-                    for node in json_obj.get('nodes', []):
-                        if not node or not isinstance(node, dict) or 'id' not in node: continue
-                        nid = str(node['id'])
-                        label = str(node.get('label', nid))
-                        color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
-                        title_html = f"<b>{label}</b>"
-                        if node.get('description'): title_html += f"<br><br>{str(node['description'])}"
-                        net.add_node(nid, label=label, color=color, shape="box", title=title_html)
-                        node_count += 1
-                        
-                    edge_count = 0
-                    for edge in json_obj.get('edges', []):
-                        if not edge or not isinstance(edge, dict): continue
-                        u, v = edge.get('from'), edge.get('to')
-                        if u is not None and v is not None:
-                            net.add_edge(str(u), str(v), color="#999999")
-                            edge_count += 1
-                    
-                    if node_count > 0:
-                        with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"viz_{idx}_", delete=False) as tf:
-                            tmp_path = tf.name
-                        net.save_graph(tmp_path)
-                        
-                        file_elements.append(
-                            cl.File(name=f"Visual_Summary_{idx+1}.html", path=tmp_path, display="side")
-                        )
-                        logger.info(f"DEBUG: Created Visual Summary {idx+1} with {node_count} nodes.")
-
-                except Exception as e:
-                    logger.error(f"CRITICAL: Failed to process Graph {idx}: {e}", exc_info=True)
-
-            # --- Report File Creation ---
-            try:
-                with tempfile.NamedTemporaryFile(suffix=".md", prefix="report_", delete=False) as tf:
-                    report_path = tf.name
-                with open(report_path, "w", encoding="utf-8") as f:
-                    f.write(report)
-                
-                file_elements.append(
-                    cl.File(name="research_report.md", path=report_path, display="side")
-                )
-            except Exception as e:
-                logger.error(f"DEBUG: Failed to create report file: {e}")
-
-            # --- Final Messaging Flow (SPLIT TO PREVENT UI CRASH) ---
+            await cl.Message(content=display_text, elements=elements).send()
             
-            # Step 1: Clean the text for chat display
-            # The report is structured as: [Body] --- [Visual Summary] --- [Sources]
-            # We want to show Body and Sources in chat, but remove the Visual Summary JSON.
-            
-            clean_report = report
-            if "---" in report:
-                parts = report.split("---")
-                if len(parts) >= 3:
-                    # parts[0] is body, parts[1] is visual summary, parts[2] is sources
-                    body = parts[0].strip()
-                    sources = parts[2].strip()
-                    # Remove the header "## Sources" if we are adding it back clearly
-                    clean_report = f"{body}\n\n---\n\n{sources}"
-                elif len(parts) == 2:
-                    # Only one separator? 
-                    # If it has JSON, it's probably Body --- Visual Summary
-                    if "```json" in parts[1]:
-                        clean_report = parts[0].strip() + "\n\n*(リサーチが完了しました)*"
-                    else:
-                        clean_report = report # Keep as is
-            
-            # Final safety: remove any large JSON blocks from chat message
-            clean_report = re.sub(r"```json.*?```", "\n*(詳細は添付の視覚的要約ファイルをご確認ください)*\n", clean_report, flags=re.DOTALL)
-            clean_report = re.sub(r"##\s*Visual\s*Summary", "", clean_report, flags=re.IGNORECASE)
-            
-            clean_report = clean_report.strip()
-            if not clean_report:
-                clean_report = "リサーチが完了しました。詳細は添付のレポートファイルをご確認ください。"
-
-            # Step 2: Send the text and files correctly
-            # In latest Chainlit, we should send the message with elements.
-            # Using display="side" in cl.File keeps them in the sidebar,
-            # but we also want them prominently attached to the final report.
-            
-            await cl.Message(content=clean_report, elements=file_elements).send()
-            logger.info(f"DEBUG: Sent final report with {len(file_elements)} attachments.")
-            
-            # Step 3: Clear session for next request
+            # Session cleanup/maintenance
             cl.user_session.set("previous_context", report)
             cl.user_session.set("graph", None)
-            logger.info("DEBUG: Research cycle finished and state reset.")
-
+            logger.info("Research session completed successfully.")
         else:
-            logger.warning("DEBUG: Final report synthesis finished but 'final_report' is missing from state.")
-            await cl.Message(content="⚠️ レポートの生成に失敗しました。以前のステップに問題があった可能性があります。").send()
+            await cl.Message(content="⚠️ レポートの生成に失敗しました。").send()
             cl.user_session.set("graph", None)
 
-    except Exception as e:
-        import traceback
-        err = traceback.format_exc()
-        logger.error(f"FATAL ERROR in run_graph_and_render: {err}")
-        try:
-            await cl.Message(content=f"❌ **Error during execution:**\n```python\n{err}\n```").send()
-        except: pass
+    except Exception:
+        err_msg = traceback.format_exc()
+        logger.error(f"Execution Error: {err_msg}")
+        await cl.Message(content=f"❌ **システムエラーが発生しました:**\n```python\n{err_msg}\n```").send()
         cl.user_session.set("graph", None)
+
+if __name__ == "__main__":
+    # Standard entry point for debugging, but typically run via `chainlit run`
+    pass
