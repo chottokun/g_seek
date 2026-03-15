@@ -120,7 +120,7 @@ class LLMClient:
         """Waits to respect the rate limit before EACH request."""
         rpm = getattr(self.config, "LLM_RATE_LIMIT_RPM", 60)
         if not isinstance(rpm, (int, float)) or rpm <= 0:
-            rpm = 60
+            return
         
         # Calculate interval to stay strictly below RPM
         # We add a 5% buffer to be safe
