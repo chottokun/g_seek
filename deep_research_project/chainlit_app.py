@@ -43,19 +43,20 @@ class UIProgressManager:
             details = match.group(2)
             
             if section_title not in self.section_steps:
-                # Create a new step for this section
-                step = cl.Step(name=f"🔍 {section_title}", parent_id=self.main_step.id if self.main_step else None)
+                # Use a fixed name for the Step to avoid avatar lookup errors with long dynamic titles
+                step = cl.Step(name="Researcher", parent_id=self.main_step.id if self.main_step else None)
                 await step.send()
                 self.section_steps[section_title] = step
             
-            # Update the section step
-            self.section_steps[section_title].output = details
+            # Update the section step with the dynamic title and details
+            self.section_steps[section_title].output = f"### {section_title}\n{details}"
             await self.section_steps[section_title].update()
         else:
             # General progress message
             if "Processing" in msg and "parallel" in msg:
                 # Start of parallel processing
-                self.main_step = cl.Step(name="🚀 リサーチ実行中 (並列処理)")
+                self.main_step = cl.Step(name="Manager")
+                self.main_step.output = msg
                 await self.main_step.send()
             else:
                 # Fallback to a simple message or update main step
@@ -94,58 +95,10 @@ def robust_json_repair(json_str: str):
             
     return None
 
-async def process_visual_summary(report: str):
-    """Extracts Visual Summary JSON and creates network visualization."""
-    # Find JSON blocks
-    json_pattern = r"```json\s*\n(.*?)\n?```"
-    json_matches = re.findall(json_pattern, report, re.DOTALL)
-    
-    if not json_matches:
-        # Loose search for anything that looks like nodes/edges JSON
-        raw_match = re.search(r"(\{.*\"nodes\".*\"edges\".*\})", report, re.DOTALL | re.IGNORECASE)
-        if raw_match:
-            json_matches = [raw_match.group(1)]
-            
-    elements = []
-    for idx, json_str in enumerate(json_matches):
-        data = robust_json_repair(json_str)
-        if not data or 'nodes' not in data:
-            continue
-            
-        try:
-            net = Network(notebook=False, height="600px", width="100%", directed=True)
-            # Use a nice template with localized labels if possible
-            net.set_options("""
-            var options = {
-              "physics": {
-                "forceAtlas2Based": { "gravitationalConstant": -50, "centralGravity": 0.01, "springLength": 100, "springConstant": 0.08 },
-                "maxVelocity": 50, "solver": "forceAtlas2Based", "timestep": 0.35, "stabilization": { "iterations": 150 }
-              }
-            }
-            """)
-            
-            for node in data.get('nodes', []):
-                if 'id' not in node: continue
-                nid = str(node['id'])
-                label = str(node.get('label', nid))
-                color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
-                desc = node.get('description', '')
-                net.add_node(nid, label=label, color=color, shape="box", title=desc)
-                
-            for edge in data.get('edges', []):
-                u, v = edge.get('from'), edge.get('to')
-                if u is not None and v is not None:
-                    net.add_edge(str(u), str(v), color="#999999", label=edge.get('label', ''))
-            
-            with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"viz_{idx}_", delete=False) as tf:
-                tmp_path = tf.name
-            net.save_graph(tmp_path)
-            elements.append(cl.File(name=f"Network_Graph_{idx+1}.html", path=tmp_path, display="side"))
-            
-        except Exception as e:
-            logger.error(f"Visualization error: {e}")
-            
-    return elements
+async def process_visual_summary(report: str, thread_id: str):
+    """(Temporarily disabled cl.File due to Chainlit bug) Extracts Visual Summary JSON."""
+    # We'll just return a placeholder or raw info since cl.File crashes the UI
+    return ""
 
 def clean_report_for_display(report: str):
     """Removes the large JSON blocks and internal technical sections from the chat display."""
@@ -154,6 +107,29 @@ def clean_report_for_display(report: str):
     # Remove any remaining raw JSON blocks
     report = re.sub(r'```json.*?```', '', report, flags=re.DOTALL)
     return report.strip()
+
+# --- Action Callbacks ---
+
+@cl.action_callback("copy_report")
+async def on_copy_report(action: cl.Action):
+    """Sends the full report in a code block for easy copying."""
+    logger.info("Copy report action triggered.")
+    full_report = cl.user_session.get("full_report")
+    
+    if full_report:
+        # Inform the user what to do next
+        await cl.Message(
+            content=(
+                "### 📋 レポート全文 (コピー用)\n"
+                "以下のブロックの右上にある **'Copy'** ボタンをクリックしてください。\n"
+                "※ ボタンが表示されない場合は、枠内のテキストを全選択してコピーしてください。\n\n"
+                f"```markdown\n{full_report}\n```"
+            )
+        ).send()
+        logger.info(f"Full report sent to UI for copying (Length: {len(full_report)})")
+    else:
+        logger.error("Failed to find full_report in user_session.")
+        await cl.Message(content="⚠️ レポートのデータがセッション内に見つかりませんでした。再度リサーチを実行してください。").send()
 
 # --- Chainlit Event Handlers ---
 
@@ -283,7 +259,7 @@ async def execute_research(graph, input_state, config_dict):
                     plan_text += "\n\n---\n⚠️ **このプランで進めてよろしいですか？**\n`はい` または `OK` で承認、別の指示を入力するとプランを修正します。"
                     await cl.Message(content=plan_text).send()
                 else:
-                    async with cl.Step(name="研究計画の策定") as step:
+                    async with cl.Step(name="Planner") as step:
                         step.output = plan_text
 
             elif node_name == "researcher" and config.INTERACTIVE_MODE:
@@ -292,9 +268,10 @@ async def execute_research(graph, input_state, config_dict):
                 plan = full_state.get("plan", [])
                 total = len(plan)
                 query = full_state.get("current_query", "検索中...")
+                section_title = plan[idx]['title'] if idx < total else '最終段階'
                 
-                async with cl.Step(name=f"調査中: {plan[idx]['title'] if idx < total else '最終段階'}") as step:
-                    step.output = f"🔍 検索中...\nクエリ: `{query}`"
+                async with cl.Step(name="Researcher") as step:
+                    step.output = f"🔍 調査中: **{section_title}**\nクエリ: `{query}`"
 
             elif node_name == "reflector" and config.INTERACTIVE_MODE:
                 # This node proposes the NEXT query
@@ -318,31 +295,29 @@ async def execute_research(graph, input_state, config_dict):
 
         # --- Report Delivery ---
         report = full_state.values.get("final_report", "")
+        # Store in session for the action callback
+        cl.user_session.set("full_report", report)
         
         if report:
-            # Prepare files
-            elements = await process_visual_summary(report)
-            
-            # Save full report as file
-            with tempfile.NamedTemporaryFile(suffix=".md", prefix="final_report_", delete=False) as tf:
-                md_path = tf.name
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write(report)
-            elements.append(cl.File(name="research_report.md", path=md_path, display="side"))
-            
-            # Clean text for chat
+            # 1. Clean text for chat display
             display_text = clean_report_for_display(report)
             
-            # Truncate if too long for UI
-            if len(display_text) > 15000:
-                display_text = display_text[:15000] + "\n\n---\n\n> ⚠️ **レポートが長いため一部を省略しました。全内容は添付の `research_report.md` を参照してください。**"
+            # 2. Prepare the action button
+            actions = [
+                cl.Action(name="copy_report", value="copy", label="📋 全文をコピー用に表示", payload={})
+            ]
             
-            await cl.Message(content=display_text, elements=elements).send()
+            # Truncate preview if very long
+            if len(display_text) > 10000:
+                display_text = display_text[:10000] + "\n\n---\n> ⚠️ **レポートが長いため一部を省略しました。全内容は下のボタンを押して取得してください。**"
             
-            # Session cleanup/maintenance
+            # Final message (STRICTLY NO ELEMENTS)
+            await cl.Message(content=display_text, actions=actions).send()
+            
+            # Reset session for next research
             cl.user_session.set("previous_context", report)
             cl.user_session.set("graph", None)
-            logger.info("Research session completed successfully.")
+            logger.info("Research completed. Action button sent.")
         else:
             await cl.Message(content="⚠️ レポートの生成に失敗しました。").send()
             cl.user_session.set("graph", None)
