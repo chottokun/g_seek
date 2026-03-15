@@ -1,291 +1,352 @@
 import streamlit as st
-import sys
-import os
-import datetime
 import asyncio
-import logging
-import traceback
+import os
+import sys
+import re
 import json
 import tempfile
+import logging
+import traceback
+import uuid
 import html
+from typing import Dict, List, Optional, Any
+from pyvis.network import Network
 
-# Adjust path to import from sibling directories
+# Adjust path to import from core
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from deep_research_project.config.config import Configuration
-from deep_research_project.core.state import ResearchState
-from deep_research_project.core.research_loop import ResearchLoop
-from streamlit_agraph import agraph, Node, Edge, Config
-from pyvis.network import Network
-from typing import Callable, Optional
+from deep_research_project.core.graph import create_research_graph
+from deep_research_project.tools.llm_client import LLMClient
+from deep_research_project.tools.search_client import SearchClient
+from deep_research_project.tools.content_retriever import ContentRetriever
+from langgraph.checkpoint.memory import MemorySaver
 
+# Logger setup
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def format_follow_up_log_for_download(follow_up_log: list) -> str:
-    if not follow_up_log: return "No follow-up Q&A recorded."
-    formatted_log = ["# Follow-up Q&A Log\n"]
-    for i, qa in enumerate(follow_up_log):
-        formatted_log.append(f"## Question {i+1}: {qa.get('question', 'N/A')}\n")
-        formatted_log.append(f"**Answer:**\n{qa.get('answer', 'N/A')}\n---\n")
-    return "\n".join(formatted_log)
+# --- Utility Functions ---
 
-def format_combined_download_data(final_report: Optional[str], follow_up_log: list) -> str:
-    report = final_report if final_report else "No report generated."
-    return f"{report}\n\n---\n\n{format_follow_up_log_for_download(follow_up_log)}"
+def robust_json_repair(json_str: str):
+    """Attempts to repair common LLM JSON output issues."""
+    json_str = json_str.strip()
+    if not json_str: return None
+    json_str = re.sub(r'^```json\s*', '', json_str)
+    json_str = re.sub(r'\s*```$', '', json_str)
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        for i in range(1, 10):
+            try: return json.loads(json_str + '}' * i)
+            except: continue
+        last_brace = json_str.rfind('}')
+        if last_brace != -1:
+            try: return json.loads(json_str[:last_brace+1])
+            except: pass
+    return None
+
+def create_viz_html(report: str):
+    """Generates HTML strings for network visualizations found in the report."""
+    json_pattern = r"```json\s*\n(.*?)\n?```"
+    json_matches = re.findall(json_pattern, report, re.DOTALL)
+    if not json_matches:
+        raw_match = re.search(r"(\{.*\"nodes\".*\"edges\".*\})", report, re.DOTALL | re.IGNORECASE)
+        if raw_match: json_matches = [raw_match.group(1)]
+            
+    html_files = []
+    for idx, json_str in enumerate(json_matches):
+        data = robust_json_repair(json_str)
+        if not data or 'nodes' not in data: continue
+        try:
+            net = Network(notebook=False, height="600px", width="100%", directed=True)
+            net.set_options('{"physics": {"enabled": true}}')
+            for node in data.get('nodes', []):
+                if 'id' not in node: continue
+                nid = str(node['id'])
+                label = str(node.get('label', nid))
+                color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
+                desc = node.get('description', '')
+                net.add_node(nid, label=label, color=color, shape="box", title=desc)
+            for edge in data.get('edges', []):
+                u, v = edge.get('from'), edge.get('to')
+                if u is not None and v is not None:
+                    net.add_edge(str(u), str(v), color="#999999", label=edge.get('label', ''))
+            
+            with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tf:
+                tmp_path = tf.name
+            net.save_graph(tmp_path)
+            with open(tmp_path, "r", encoding="utf-8") as f:
+                html_files.append({"name": f"Visual_Summary_{idx+1}.html", "content": f.read()})
+            os.unlink(tmp_path)
+        except Exception as e:
+            logger.error(f"Visualization error: {e}")
+    return html_files
+
+# --- UI Application ---
+
+async def run_research_graph(topic: str, config: Configuration, language: str):
+    """Executes the LangGraph research workflow and updates the UI state."""
+    # 1. Initialization
+    llm = LLMClient(config)
+    search = SearchClient(config)
+    retriever = ContentRetriever(config)
+    graph = create_research_graph(config, llm, search, retriever)
+    
+    thread_id = str(uuid.uuid4())
+    st.session_state.thread_id = thread_id
+    st.session_state.graph = graph
+    st.session_state.logs = [] 
+    st.session_state.app_config = config
+    
+    initial_state = {
+        "topic": topic,
+        "language": language,
+        "max_iterations": config.MAX_RESEARCH_LOOPS,
+        "current_query": "",
+        "iteration_count": 0,
+        "findings": [],
+        "sources": [],
+        "research_plan": [],
+        "current_section_index": 0,
+        "plan_approved": not config.INTERACTIVE_MODE,
+        "is_complete": False
+    }
+    
+    # UI Setup
+    status_placeholder = st.empty()
+    with status_placeholder.status("🚀 リサーチ進行中...", expanded=True) as status:
+        p_bar = st.progress(0, text="準備中...")
+
+        async def progress_cb(msg: str):
+            st.session_state.logs.append(msg)
+            status.write(msg) # Write directly to status for guaranteed visibility
+            
+            # Progress bar logic
+            if "Section" in msg and "/" in msg:
+                try:
+                    # Extract "Section X/Y"
+                    match = re.search(r"Section (\d+)/(\d+)", msg)
+                    if match:
+                        current = int(match.group(1))
+                        total = int(match.group(2))
+                        p_bar.progress(current / total, text=f"進捗: セクション {current}/{total}")
+                except: pass
+            
+        config_dict = {
+            "configurable": {
+                "thread_id": thread_id,
+                "config": config,
+                "progress_callback": progress_cb
+            }
+        }
+        
+        # 2. Execution Loop
+        try:
+            async for event in graph.astream(initial_state, config_dict):
+                node_name = list(event.keys())[0]
+                full_state = graph.get_state(config_dict).values
+                
+                if node_name == "planner":
+                    status.write("📋 リサーチ計画が生成されました。")
+                    if config.INTERACTIVE_MODE and not full_state.get("plan_approved"):
+                        st.session_state.interrupted = True
+                        status.update(label="✋ 計画の承認待ち", state="complete", expanded=True)
+                        break
+                elif node_name == "researcher":
+                    query = full_state.get("current_query", "検索中...")
+                    status.write(f"🔍 クエリ実行: `{query}`")
+                elif node_name == "final_reporter":
+                    status.write("📑 最終レポートを合成中...")
+            
+            # 3. Completion
+            final_state = graph.get_state(config_dict).values
+            st.session_state.final_report = final_state.get("final_report", "")
+            if st.session_state.final_report:
+                status.update(label="✅ 全て完了しました！", state="complete", expanded=False)
+            
+        except Exception as e:
+            st.error(f"エラーが発生しました: {str(e)}")
+            logger.error(traceback.format_exc())
 
 def main():
-    st.set_page_config(layout="wide", page_title="Modern Research Assistant")
-    st.title("Modern Research Assistant (Async)")
+    st.set_page_config(page_title="Deep Research AI", page_icon="🔬", layout="wide")
+    
+    st.title("🔬 Deep Research Assistant")
 
-    if "messages" not in st.session_state: st.session_state.messages = []
-    if "selected_sources" not in st.session_state: st.session_state.selected_sources = {}
+    # State Initialization
+    if "final_report" not in st.session_state: st.session_state.final_report = ""
+    if "thread_id" not in st.session_state: st.session_state.thread_id = None
+    if "interrupted" not in st.session_state: st.session_state.interrupted = False
+    if "logs" not in st.session_state: st.session_state.logs = []
+    if "executing" not in st.session_state: st.session_state.executing = False
+    if "start_requested" not in st.session_state: st.session_state.start_requested = False
+    if "resume_requested" not in st.session_state: st.session_state.resume_requested = False
 
+    # Sidebar Settings
     with st.sidebar:
-        st.header("Controls")
-        config_default = Configuration()
-        languages = ["Japanese", "English"]
-        default_lang = config_default.DEFAULT_LANGUAGE
-        lang_index = languages.index(default_lang) if default_lang in languages else 0
-        language = st.selectbox("Prompt Language", languages, index=lang_index)
-
-        llm_providers = config_default.get_available_providers()
+        st.header("⚙️ システム設定")
+        config = Configuration()
         
-        # Ensure current provider is available, otherwise default to first available
-        current_provider = config_default.LLM_PROVIDER
-        if current_provider not in llm_providers:
-            current_provider = llm_providers[0] if llm_providers else "placeholder_llm"
-            
-        provider_index = llm_providers.index(current_provider) if current_provider in llm_providers else 0
-        llm_provider = st.selectbox("LLM Provider", llm_providers, index=provider_index)
-        llm_model = st.text_input("LLM Model", value=config_default.LLM_MODEL)
+        language = st.selectbox("出力言語", ["Japanese", "English"], index=0, disabled=st.session_state.executing)
+        
+        st.subheader("対話オプション")
+        interactive = st.toggle("リサーチ計画を自分で編集・承認する", value=config.INTERACTIVE_MODE, help="ONにすると、調査開始前にAIが作成したプランを確認・修正できます。", disabled=st.session_state.executing)
+        
+        st.subheader("詳細設定")
+        snippets_only = st.toggle("高速モード (スニペットのみ使用)", value=config.USE_SNIPPETS_ONLY_MODE, disabled=st.session_state.executing)
+        max_loops = st.slider("最大試行回数 (セクション毎)", 1, 10, config.MAX_RESEARCH_LOOPS, disabled=st.session_state.executing)
+        
+        if st.button("🗑️ セッションをリセット", disabled=st.session_state.executing):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
 
-        interactive = st.toggle("Run Interactively?", value=config_default.INTERACTIVE_MODE)
-        snippets_only = st.toggle("Use Snippets Only?", value=config_default.USE_SNIPPETS_ONLY_MODE)
-        max_chars = st.number_input("Max Chars/Source (0=unlim)", min_value=0, value=config_default.MAX_TEXT_LENGTH_PER_SOURCE_CHARS, step=1000)
-        chunk_size = st.number_input("Chunk Size (Chars)", min_value=500, value=config_default.SUMMARIZATION_CHUNK_SIZE_CHARS, step=500)
-        chunk_overlap = st.number_input("Chunk Overlap (Chars)", min_value=0, value=config_default.SUMMARIZATION_CHUNK_OVERLAP_CHARS, step=100)
-        process_pdf = st.toggle("Process PDF Files?", value=config_default.PROCESS_PDF_FILES)
+    # --- 1. Start Research Execution ---
+    if st.session_state.start_requested:
+        st.session_state.start_requested = False
+        st.session_state.executing = True
+        
+        config.INTERACTIVE_MODE = interactive
+        config.USE_SNIPPETS_ONLY_MODE = snippets_only
+        config.MAX_RESEARCH_LOOPS = max_loops
+        
+        asyncio.run(run_research_graph(st.session_state.current_topic, config, language))
+        st.session_state.executing = False
+        st.rerun()
 
-        topic = st.text_input("Research Topic:")
-
-        if "research_state" in st.session_state and not st.session_state.research_state.final_report:
-            if st.button("🛑 Stop Research"):
-                st.session_state.research_state.is_interrupted = True
-                st.warning("Stop signal sent. Finishing current task...")
-
-        if st.button("Start Research"):
-            if topic:
-                config = Configuration()
-                config.LLM_PROVIDER = llm_provider
-                config.LLM_MODEL = llm_model
-                config.INTERACTIVE_MODE = interactive
-                config.USE_SNIPPETS_ONLY_MODE = snippets_only
-                config.MAX_TEXT_LENGTH_PER_SOURCE_CHARS = max_chars
-
-                # Simple validation
-                if chunk_overlap >= chunk_size:
-                    chunk_overlap = chunk_size - 1
-                    st.warning(f"Chunk overlap was adjusted to {chunk_overlap} to be less than chunk size.")
-
-                config.SUMMARIZATION_CHUNK_SIZE_CHARS = chunk_size
-                config.SUMMARIZATION_CHUNK_OVERLAP_CHARS = chunk_overlap
-                config.PROCESS_PDF_FILES = process_pdf
-
-                st.session_state.research_state = ResearchState(research_topic=topic, language=language)
-                st.session_state.research_loop = ResearchLoop(config, st.session_state.research_state)
-
-                if not config.INTERACTIVE_MODE:
-                    with st.status("Automated research processing...", expanded=True) as status:
-                        async def progress_update(msg: str):
-                            status.write(msg)
-
-                        st.session_state.research_loop.progress_callback = progress_update
-                        asyncio.run(st.session_state.research_loop.run_loop())
-                        status.update(label="Complete!", state="complete")
-                    st.rerun()
-                else:
-                    st.info("Generating plan...")
-                    asyncio.run(st.session_state.research_loop._generate_research_plan())
-                    st.rerun()
-
-    if "research_state" in st.session_state:
-        state = st.session_state.research_state
-        loop = st.session_state.research_loop
-
-        st.subheader(f"Topic: {state.research_topic}")
-
-        # Progress UI
-        if state.research_plan:
-            st.markdown("**Research Progress:**")
-            cols = st.columns(len(state.research_plan))
-            for i, section in enumerate(state.research_plan):
-                with cols[i]:
-                    icon = "✅" if section['status'] == 'completed' else "⏳" if section['status'] == 'researching' else "⚪"
-                    st.markdown(f"{icon} {section['title']}")
-
-        # Interactive Plan Approval
-        if loop.interactive_mode and state.research_plan and not state.plan_approved:
-            st.divider()
-            st.subheader("Plan Approval")
-            for i, sec in enumerate(state.research_plan):
-                with st.expander(f"Section {i+1}: {sec['title']}", expanded=True):
-                    state.research_plan[i]['title'] = st.text_input(f"Title {i}", value=sec['title'], key=f"t_{i}")
-                    state.research_plan[i]['description'] = st.text_area(f"Desc {i}", value=sec['description'], key=f"d_{i}")
-            if st.button("Approve & Start"):
-                state.plan_approved = True
-                with st.status("Processing research based on approved plan...", expanded=True) as status:
-                    async def progress_update(msg: str):
-                        status.write(msg)
-                    loop.progress_callback = progress_update
-                    asyncio.run(loop.run_loop())
-                st.rerun()
-            return
-
-        # Interactive Query Approval
-        if loop.interactive_mode and state.proposed_query and not state.current_query:
-            st.divider()
-            st.subheader("Query Approval")
-            q = st.text_input("Review Query:", value=state.proposed_query)
-            if st.button("Search with this Query"):
-                state.current_query = q
-                state.proposed_query = None
-                with st.status(f"Searching for '{q}'...", expanded=True) as status:
-                    async def progress_update(msg: str):
-                        status.write(msg)
-                    loop.progress_callback = progress_update
-                    asyncio.run(loop.run_loop())
-                st.rerun()
-
-        # Interactive Source Selection
-        if loop.interactive_mode and state.pending_source_selection and state.search_results:
-            st.divider()
-            st.subheader("Select Sources")
-            selected = []
-            for res in state.search_results:
-                if st.checkbox(res.title, key=f"src_{res.link}"):
-                    selected.append(res)
-            if st.button("Summarize Selected"):
-                with st.status("Summarizing selected sources and continuing research...", expanded=True) as status:
-                    async def progress_update(msg: str):
-                        status.write(msg)
-                    loop.progress_callback = progress_update
-                    asyncio.run(loop._summarize_sources(selected))
-                    asyncio.run(loop.run_loop())
-                st.rerun()
-
-        # Results Display
-        if state.final_report:
-            st.success("Final Report Generated")
-            if state.is_interrupted:
-                st.warning("Note: This report is partial as research was interrupted.")
-            
-            st.download_button(
-                label="📥 レポートをダウンロード (Download Report)",
-                data=format_combined_download_data(state.final_report, state.follow_up_log),
-                file_name="research_report.md",
-                mime="text/markdown"
-            )
-
-            with st.expander("View Report", expanded=True):
-                st.markdown(state.final_report)
-
-            with st.expander("テキストエリアからコピー (Copy Manually)", expanded=False):
-                st.text_area("以下のテキストを全選択(Ctrl+A)してコピー(Ctrl+C)してください", value=state.final_report, height=300)
-
-            # Knowledge Graph
-            if state.knowledge_graph_nodes:
-                st.divider()
-                st.subheader("Knowledge Graph")
-                try:
-                    # Color mapping for entity types
-                    type_colors = {
-                        "Person": "#FF6B6B",
-                        "Organization": "#4ECDC4",
-                        "Concept": "#45B7D1",
-                        "Event": "#FFA07A",
-                        "Technology": "#98D8C8",
-                        "Location": "#F0E68C"
+    # --- 2. Resume Research Execution ---
+    if st.session_state.resume_requested:
+        st.session_state.resume_requested = False
+        st.session_state.executing = True
+        
+        async def resume():
+            status_placeholder = st.empty()
+            with status_placeholder.status("🚀 調査を継続中...", expanded=True) as status:
+                # Show historical logs
+                for old_log in st.session_state.logs:
+                    status.write(old_log)
+                
+                async def cb(m):
+                    st.session_state.logs.append(m)
+                    status.write(m) # Direct write to status
+                    
+                conf = {
+                    "configurable": {
+                        "thread_id": st.session_state.thread_id, 
+                        "progress_callback": cb,
+                        "config": st.session_state.app_config
                     }
+                }
+                async for _ in st.session_state.graph.astream(None, conf):
+                    pass
+                
+                final_v = st.session_state.graph.get_state(conf).values
+                st.session_state.final_report = final_v.get("final_report", "")
+                status.update(label="✅ リサーチ完了！", state="complete", expanded=False)
+        
+        asyncio.run(resume())
+        st.session_state.executing = False
+        st.rerun()
 
-                    nodes = []
-                    for n in state.knowledge_graph_nodes:
-                        props = n.get('properties', {})
-                        mention_count = int(props.get('mention_count', 1))
-                        node_size = 20 + min(mention_count * 5, 40)
-                        
-                        # Security: Escape LLM-generated content
-                        esc_label = html.escape(n['label'])
-                        esc_type = html.escape(n['type'])
-
-                        # Build detailed title for hover
-                        # NOTE: streamlit-agraph also does NOT render HTML in tooltips
-                        hover_info = f"{esc_label} ({esc_type})\n"
-                        for k, v in props.items():
-                            if k not in ['mention_count', 'section']:
-                                hover_info += f"- {html.escape(str(k))}: {html.escape(str(v))}\n"
-                        
-                        source_urls = n.get('source_urls', [])
-                        if source_urls:
-                             hover_info += "\nSources:\n" + "\n".join([f"• {html.escape(str(url))}" for url in source_urls])
-
-                        nodes.append(Node(
-                            id=n['id'], 
-                            label=esc_label,
-                            size=node_size, 
-                            group=n['type'],
-                            color=type_colors.get(n['type'], "#CCCCCC"),
-                            title=hover_info # title is used for mouseover in agraph/vis.js
-                        ))
-
-                    edges = [Edge(source=e['source'], target=e['target'], label=html.escape(e['label'])) for e in state.knowledge_graph_edges]
-                    
-                    config = Config(
-                        width=900, 
-                        height=600, 
-                        directed=True, 
-                        nodeHighlightBehavior=True, 
-                        highlightColor="#F7A7A6", 
-                        staticGraph=False,
-                        collapsible=False
-                    )
-                    
-                    # agraph returns the clicked node id
-                    return_value = agraph(nodes=nodes, edges=edges, config=config)
-                    
-                    if return_value:
-                        # Find the node and open URL if available
-                        clicked_node = next((n for n in state.knowledge_graph_nodes if n['id'] == return_value), None)
-                        if clicked_node and clicked_node.get('source_urls'):
-                            url_to_open = clicked_node['source_urls'][0]
-                            # Security: Validate URL to prevent XSS (e.g., javascript: links)
-                            if url_to_open.startswith(("http://", "https://")):
-                                st.info(f"Opening source: {url_to_open}")
-                                st.link_button("Click here to open the source in a new tab", url_to_open)
-                            else:
-                                st.error(f"Invalid or unsafe source URL: {url_to_open}")
-
-                except Exception as e:
-                    st.error(f"Error rendering graph: {e}")
-
-            # Follow-up
-            st.divider()
-            st.subheader("Follow-up Questions")
-            for qa in state.follow_up_log:
-                with st.chat_message("user"): st.write(qa['question'])
-                with st.chat_message("assistant"): st.write(qa['answer'])
-
-            fq = st.chat_input("Ask a follow-up question...")
-            if fq:
-                state.follow_up_log.append({"question": fq, "answer": "Thinking..."})
-                # Re-run logic for follow-up
-                prompt = loop.format_follow_up_prompt(state.final_report, fq)
-                ans = asyncio.run(loop.llm_client.generate_text(prompt))
-                state.follow_up_log[-1]["answer"] = ans
+    # --- 3. Input Area ---
+    if not st.session_state.final_report and not st.session_state.interrupted and not st.session_state.executing:
+        st.markdown("### 🔍 新しいリサーチを開始")
+        topic = st.text_area("調査したいテーマを入力してください:", placeholder="例: 日本の生成AI市場の現状と2025年までの予測", height=100)
+        
+        if st.button("🚀 調査開始", type="primary"):
+            if not topic:
+                st.warning("テーマを入力してください。")
+            else:
+                st.session_state.current_topic = topic
+                st.session_state.final_report = ""
+                st.session_state.interrupted = False
+                st.session_state.start_requested = True
                 st.rerun()
-        else:
-            if state.new_information:
-                st.info("Latest Findings:")
-                st.write(state.new_information)
+
+    # --- 4. Plan Approval UI ---
+    if st.session_state.interrupted and not st.session_state.executing:
+        st.divider()
+        st.subheader("📋 リサーチ計画の確認・修正")
+        st.info("AIが提案した以下の計画を修正・承認してください。各項目は編集可能です。")
+        
+        config_dict = {"configurable": {"thread_id": st.session_state.thread_id}}
+        full_state = st.session_state.graph.get_state(config_dict).values
+        current_plan = full_state.get("plan", [])
+        
+        edited_plan = []
+        for i, p in enumerate(current_plan):
+            with st.expander(f"セクション {i+1}: {p['title']}", expanded=True):
+                new_title = st.text_input(f"タイトル {i+1}", value=p['title'], key=f"title_{i}")
+                new_desc = st.text_area(f"調査内容 {i+1}", value=p['description'], key=f"desc_{i}")
+                edited_plan.append({"title": new_title, "description": new_desc})
+        
+        col_ok, col_ng = st.columns([1, 4])
+        with col_ok:
+            if st.button("✅ 修正を反映して開始", type="primary"):
+                st.session_state.graph.update_state(config_dict, {
+                    "plan": edited_plan,
+                    "plan_approved": True
+                })
+                st.session_state.interrupted = False
+                st.session_state.resume_requested = True
+                st.rerun()
+        with col_ng:
+            if st.button("❌ キャンセル"):
+                st.session_state.interrupted = False
+                st.session_state.thread_id = None
+                st.rerun()
+
+    # --- 5. Display Results ---
+    if st.session_state.final_report:
+        st.divider()
+        st.subheader("📑 リサーチレポート")
+        
+        # Download Section
+        dcol1, dcol2 = st.columns(2)
+        with dcol1:
+            st.download_button(
+                label="📥 レポート (Markdown) を保存",
+                data=st.session_state.final_report,
+                file_name=f"research_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
+                mime="text/markdown",
+                key="dl_report"
+            )
+        
+        # Visual Summaries (HTML)
+        viz_files = create_viz_html(st.session_state.final_report)
+        if viz_files:
+            with dcol2:
+                for vf in viz_files:
+                    st.download_button(
+                        label=f"📊 {vf['name']} を保存",
+                        data=vf['content'],
+                        file_name=vf['name'],
+                        mime="text/html",
+                        key=f"dl_{vf['name']}"
+                    )
+        
+        # Content Tabs
+        tab1, tab2, tab3 = st.tabs(["📄 レポート本文", "🕸️ ネットワーク図", "📋 コピー用"])
+        
+        with tab1:
+            # Display cleaned markdown
+            clean_md = re.sub(r'##\s*(?:Visual\s*Summary|視覚的要約).*?(?=##|---|$)', '', st.session_state.final_report, flags=re.DOTALL | re.IGNORECASE)
+            clean_md = re.sub(r'```json.*?```', '', clean_md, flags=re.DOTALL)
+            st.markdown(clean_md)
+            
+        with tab2:
+            if viz_files:
+                for vf in viz_files:
+                    st.markdown(f"#### {vf['name']}")
+                    st.components.v1.html(vf['content'], height=600, scrolling=True)
+            else:
+                st.info("このレポートにはネットワーク図が含まれていません。")
+                
+        with tab3:
+            st.info("以下のエリアを選択してコピーしてください。")
+            st.text_area("Markdown Source", value=st.session_state.final_report, height=600)
 
 if __name__ == "__main__":
+    import datetime
     main()
