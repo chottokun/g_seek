@@ -1,5 +1,7 @@
 import logging
 import asyncio
+import re
+import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from langgraph.graph import StateGraph, END
@@ -29,22 +31,33 @@ async def planner_node(state: AgentState, config: Configuration, planner: Resear
     if available_skills:
         skill_descriptions = "\n".join([f"- {s['id']}: {s['description']}" for s in available_skills])
         trigger_prompt = (
-            f"Topic: {state['topic']}\n\n"
-            f"Available Skills:\n{skill_descriptions}\n\n"
-            "Analyze the topic and the list of available skills. "
-            "Select ONLY the skills that are directly relevant and strictly necessary for researching this specific topic. "
-            "Guidelines:\n"
-            "1. 'web-search' and 'arxiv-research' are general utility skills and should be selected if the topic is technical or news-oriented.\n"
-            "2. 'domain-xxx' skills contain specific past research findings. ONLY select them if the current topic is a direct continuation or deeply related to that specific domain.\n"
-            "3. If in doubt, do not select a skill.\n\n"
-            "Respond with a comma-separated list of skill IDs, or 'None' if no skills are strictly relevant."
+            f"Current Topic: {state['topic']}\n\n"
+            f"Available Past Research Skills:\n{skill_descriptions}\n\n"
+            "Task: Select ONLY the skills that are strictly necessary and highly relevant to the current topic.\n"
+            "Strict Guidelines:\n"
+            "1. ONLY select 'domain-xxx' skills if the current topic is a direct follow-up or covers the exact same domain. If the topic is just broadly related, DO NOT select it.\n"
+            "2. 'web-search' is a general tool and should be selected for most cases.\n"
+            "3. If multiple skills seem similar, select only the most relevant one.\n"
+            "4. Accuracy is more important than helpfulness. Do not pollute the context with irrelevant past data.\n\n"
+            "Respond in JSON format:\n"
+            "{\n"
+            "  \"selected_ids\": [\"id1\", \"id2\"],\n"
+            "  \"reasoning\": \"Brief explanation of why these specific skills are needed\"\n"
+            "}"
         )
         try:
-            from deep_research_project.tools.llm_client import LLMClient
-            # We assume planner has access to llm_client or we use one from config
+            # Using generate_text but parsing as JSON for reliability
             trigger_resp = await planner.llm_client.generate_text(trigger_prompt)
-            if "none" not in trigger_resp.lower():
-                selected_skill_ids = [s.strip() for s in trigger_resp.split(",") if s.strip() in skills_mgr.skills]
+            # Find JSON block if any
+            json_match = re.search(r"(\{.*\})", trigger_resp, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group(1))
+                selected_skill_ids = [sid for sid in data.get("selected_ids", []) if sid in skills_mgr.skills]
+                logger.info(f"Skill Selection Reasoning: {data.get('reasoning')}")
+            else:
+                # Fallback to simple comma split if JSON parsing fails
+                if "none" not in trigger_resp.lower():
+                    selected_skill_ids = [s.strip() for s in trigger_resp.split(",") if s.strip() in skills_mgr.skills]
         except Exception as e:
             logger.error(f"Skill triggering failed: {e}")
 
@@ -258,8 +271,11 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
                 patterns.append(clean)
         
         if patterns:
-            skill_name = f"Domain: {state['topic'][:40]}..."
-            description = f"Specialized methodology and insights for: {state['topic']}."
+            skill_name = f"Domain: {state['topic'][:40]}"
+            # Generate a better description using the extracted patterns
+            summary_desc = ". ".join(patterns[:2])
+            if len(summary_desc) > 150: summary_desc = summary_desc[:147] + "..."
+            description = f"Methodology & Insights: {summary_desc}"
             
             content = "## Domain Expertise: " + state["topic"] + "\n\n"
             content += "### Key Methodological Patterns\n"

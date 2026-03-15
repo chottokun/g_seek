@@ -116,11 +116,12 @@ async def run_research_graph(topic: str, config: Configuration, language: str):
     # UI Setup
     status_placeholder = st.empty()
     with status_placeholder.status("🚀 リサーチ進行中...", expanded=True) as status:
+        log_container = st.container(height=300) # Dedicated area
         p_bar = st.progress(0, text="準備中...")
 
         async def progress_cb(msg: str):
             st.session_state.logs.append(msg)
-            status.write(msg) # Write directly to status for guaranteed visibility
+            log_container.write(msg) # Write to container for better display
             
             # Progress bar logic
             if "Section" in msg and "/" in msg:
@@ -132,6 +133,7 @@ async def run_research_graph(topic: str, config: Configuration, language: str):
                         total = int(match.group(2))
                         p_bar.progress(current / total, text=f"進捗: セクション {current}/{total}")
                 except: pass
+            await asyncio.sleep(0.01) # Yield to Streamlit
             
         config_dict = {
             "configurable": {
@@ -223,13 +225,15 @@ def main():
         async def resume():
             status_placeholder = st.empty()
             with status_placeholder.status("🚀 調査を継続中...", expanded=True) as status:
+                log_container = st.container(height=300)
                 # Show historical logs
                 for old_log in st.session_state.logs:
-                    status.write(old_log)
+                    log_container.write(old_log)
                 
                 async def cb(m):
                     st.session_state.logs.append(m)
-                    status.write(m) # Direct write to status
+                    log_container.write(m)
+                    await asyncio.sleep(0.01)
                     
                 conf = {
                     "configurable": {

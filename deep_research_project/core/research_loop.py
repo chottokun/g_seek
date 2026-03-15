@@ -344,12 +344,9 @@ class ResearchLoop:
                 if self.progress_callback:
                     await self.progress_callback(f"🚀 Processing {len(incomplete_sections)} sections in parallel (max {getattr(self.config, 'MAX_CONCURRENT_SECTIONS', 3)} at once)...")
                 
-                # Global semaphore to control cross-section concurrency across all instances
-                if not hasattr(ResearchLoop, "_section_semaphore"):
-                    max_sections = getattr(self.config, "MAX_CONCURRENT_SECTIONS", 3)
-                    ResearchLoop._section_semaphore = asyncio.Semaphore(max_sections)
-                
-                section_semaphore = ResearchLoop._section_semaphore
+                # Instance-level semaphore to control concurrency within this loop
+                max_sections = getattr(self.config, "MAX_CONCURRENT_SECTIONS", 3)
+                section_semaphore = asyncio.Semaphore(max_sections)
 
                 # Wrap progress callback to include section title context
                 async def run_section_with_context(sec):
