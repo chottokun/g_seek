@@ -9,7 +9,7 @@ import logging
 import traceback
 import asyncio
 import aiofiles
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from pyvis.network import Network
 
 # Ensure imports from parent directory
