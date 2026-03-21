@@ -6,12 +6,12 @@ import os
 from deep_research_project.core.skills_manager import SkillRegistry
 
 class TestSkillRegistry(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
+    async def asyncSetUp(self):
         # Create a temporary directory for skills
         self.test_dir = tempfile.mkdtemp()
         self.skills_dir = Path(self.test_dir) / "skills"
 
-    def tearDown(self):
+    async def asyncTearDown(self):
         # Remove the directory after the test
         shutil.rmtree(self.test_dir)
 
