@@ -55,32 +55,34 @@ def create_viz_html(report: str):
         if raw_match: json_matches = [raw_match.group(1)]
             
     html_files = []
-    for idx, json_str in enumerate(json_matches):
-        data = robust_json_repair(json_str)
-        if not data or 'nodes' not in data: continue
-        try:
-            net = Network(notebook=False, height="600px", width="100%", directed=True)
-            net.set_options('{"physics": {"enabled": true}}')
-            for node in data.get('nodes', []):
-                if 'id' not in node: continue
-                nid = str(node['id'])
-                label = str(node.get('label', nid))
-                color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
-                desc = node.get('description', '')
-                net.add_node(nid, label=label, color=color, shape="box", title=desc)
-            for edge in data.get('edges', []):
-                u, v = edge.get('from'), edge.get('to')
-                if u is not None and v is not None:
-                    net.add_edge(str(u), str(v), color="#999999", label=edge.get('label', ''))
-            
-            with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as tf:
-                tmp_path = tf.name
-            net.save_graph(tmp_path)
-            with open(tmp_path, "r", encoding="utf-8") as f:
-                html_files.append({"name": f"Visual_Summary_{idx+1}.html", "content": f.read()})
-            os.unlink(tmp_path)
-        except Exception as e:
-            logger.error(f"Visualization error: {e}")
+    if not json_matches:
+        return html_files
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for idx, json_str in enumerate(json_matches):
+            data = robust_json_repair(json_str)
+            if not data or 'nodes' not in data: continue
+            try:
+                net = Network(notebook=False, height="600px", width="100%", directed=True)
+                net.set_options('{"physics": {"enabled": true}}')
+                for node in data.get('nodes', []):
+                    if 'id' not in node: continue
+                    nid = str(node['id'])
+                    label = str(node.get('label', nid))
+                    color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
+                    desc = node.get('description', '')
+                    net.add_node(nid, label=label, color=color, shape="box", title=desc)
+                for edge in data.get('edges', []):
+                    u, v = edge.get('from'), edge.get('to')
+                    if u is not None and v is not None:
+                        net.add_edge(str(u), str(v), color="#999999", label=edge.get('label', ''))
+
+                tmp_path = os.path.join(tmp_dir, f"viz_{idx}.html")
+                net.save_graph(tmp_path)
+                with open(tmp_path, "r", encoding="utf-8") as f:
+                    html_files.append({"name": f"Visual_Summary_{idx+1}.html", "content": f.read()})
+            except Exception as e:
+                logger.error(f"Visualization error: {e}")
     return html_files
 
 # --- UI Application ---

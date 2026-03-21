@@ -225,121 +225,119 @@ async def run_graph_and_render(graph, input_state, config_dict, config):
             
             file_elements = []
             
-            # --- Visual Summary Creation (Wrapped in total safety) ---
-            for idx, json_str in enumerate(json_matches):
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                # --- Visual Summary Creation (Wrapped in total safety) ---
+                for idx, json_str in enumerate(json_matches):
+                    try:
+                        def try_repair_json(s):
+                            if not s: return None
+                            try:
+                                return json.loads(s)
+                            except json.JSONDecodeError:
+                                last_brace = s.rfind('}')
+                                if last_brace != -1:
+                                    try: return json.loads(s[:last_brace+1])
+                                    except: pass
+                                return None
+
+                        json_obj = try_repair_json(json_str)
+                        if not json_obj or not isinstance(json_obj, dict):
+                            logger.warning(f"DEBUG: JSON match {idx} is not a valid object.")
+                            continue
+
+                        # ENHANCED SAFETY: Ensure edges exists to prevent Pydantic-like skip
+                        if 'nodes' not in json_obj:
+                            logger.warning(f"DEBUG: JSON match {idx} is missing 'nodes'.")
+                            continue
+                        
+                        net = Network(notebook=False, height="600px", width="100%", directed=True)
+                        net.set_options('{"physics": {"enabled": true}}')
+
+                        node_count = 0
+                        for node in json_obj.get('nodes', []):
+                            if not node or not isinstance(node, dict) or 'id' not in node: continue
+                            nid = str(node['id'])
+                            label = str(node.get('label', nid))
+                            color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
+                            title_html = f"<b>{label}</b>"
+                            if node.get('description'): title_html += f"<br><br>{str(node['description'])}"
+                            net.add_node(nid, label=label, color=color, shape="box", title=title_html)
+                            node_count += 1
+
+                        edge_count = 0
+                        for edge in json_obj.get('edges', []):
+                            if not edge or not isinstance(edge, dict): continue
+                            u, v = edge.get('from'), edge.get('to')
+                            if u is not None and v is not None:
+                                net.add_edge(str(u), str(v), color="#999999")
+                                edge_count += 1
+                        
+                        if node_count > 0:
+                            tmp_path = os.path.join(tmp_dir, f"viz_{idx}.html")
+                            net.save_graph(tmp_path)
+
+                            with open(tmp_path, "r", encoding="utf-8") as f:
+                                viz_content = f.read()
+
+                            file_elements.append(
+                                cl.File(name=f"Visual_Summary_{idx+1}.html", content=viz_content, display="side")
+                            )
+                            logger.info(f"DEBUG: Created Visual Summary {idx+1} with {node_count} nodes.")
+
+                    except Exception as e:
+                        logger.error(f"CRITICAL: Failed to process Graph {idx}: {e}", exc_info=True)
+
+                # --- Report File Creation ---
                 try:
-                    def try_repair_json(s):
-                        if not s: return None
-                        try:
-                            return json.loads(s)
-                        except json.JSONDecodeError:
-                            last_brace = s.rfind('}')
-                            if last_brace != -1:
-                                try: return json.loads(s[:last_brace+1])
-                                except: pass
-                            return None
-
-                    json_obj = try_repair_json(json_str)
-                    if not json_obj or not isinstance(json_obj, dict): 
-                        logger.warning(f"DEBUG: JSON match {idx} is not a valid object.")
-                        continue
-
-                    # ENHANCED SAFETY: Ensure edges exists to prevent Pydantic-like skip
-                    if 'nodes' not in json_obj: 
-                        logger.warning(f"DEBUG: JSON match {idx} is missing 'nodes'.")
-                        continue
-                    
-                    net = Network(notebook=False, height="600px", width="100%", directed=True)
-                    net.set_options('{"physics": {"enabled": true}}')
-                    
-                    node_count = 0
-                    for node in json_obj.get('nodes', []):
-                        if not node or not isinstance(node, dict) or 'id' not in node: continue
-                        nid = str(node['id'])
-                        label = str(node.get('label', nid))
-                        color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
-                        title_html = f"<b>{label}</b>"
-                        if node.get('description'): title_html += f"<br><br>{str(node['description'])}"
-                        net.add_node(nid, label=label, color=color, shape="box", title=title_html)
-                        node_count += 1
-                        
-                    edge_count = 0
-                    for edge in json_obj.get('edges', []):
-                        if not edge or not isinstance(edge, dict): continue
-                        u, v = edge.get('from'), edge.get('to')
-                        if u is not None and v is not None:
-                            net.add_edge(str(u), str(v), color="#999999")
-                            edge_count += 1
-                    
-                    if node_count > 0:
-                        with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"viz_{idx}_", delete=False) as tf:
-                            tmp_path = tf.name
-                        net.save_graph(tmp_path)
-                        
-                        file_elements.append(
-                            cl.File(name=f"Visual_Summary_{idx+1}.html", path=tmp_path, display="side")
-                        )
-                        logger.info(f"DEBUG: Created Visual Summary {idx+1} with {node_count} nodes.")
-
+                    file_elements.append(
+                        cl.File(name="research_report.md", content=report, display="side")
+                    )
                 except Exception as e:
-                    logger.error(f"CRITICAL: Failed to process Graph {idx}: {e}", exc_info=True)
+                    logger.error(f"DEBUG: Failed to create report file: {e}")
 
-            # --- Report File Creation ---
-            try:
-                with tempfile.NamedTemporaryFile(suffix=".md", prefix="report_", delete=False) as tf:
-                    report_path = tf.name
-                with open(report_path, "w", encoding="utf-8") as f:
-                    f.write(report)
+                # --- Final Messaging Flow (SPLIT TO PREVENT UI CRASH) ---
                 
-                file_elements.append(
-                    cl.File(name="research_report.md", path=report_path, display="side")
-                )
-            except Exception as e:
-                logger.error(f"DEBUG: Failed to create report file: {e}")
+                # Step 1: Clean the text for chat display
+                # The report is structured as: [Body] --- [Visual Summary] --- [Sources]
+                # We want to show Body and Sources in chat, but remove the Visual Summary JSON.
 
-            # --- Final Messaging Flow (SPLIT TO PREVENT UI CRASH) ---
-            
-            # Step 1: Clean the text for chat display
-            # The report is structured as: [Body] --- [Visual Summary] --- [Sources]
-            # We want to show Body and Sources in chat, but remove the Visual Summary JSON.
-            
-            clean_report = report
-            if "---" in report:
-                parts = report.split("---")
-                if len(parts) >= 3:
-                    # parts[0] is body, parts[1] is visual summary, parts[2] is sources
-                    body = parts[0].strip()
-                    sources = parts[2].strip()
-                    # Remove the header "## Sources" if we are adding it back clearly
-                    clean_report = f"{body}\n\n---\n\n{sources}"
-                elif len(parts) == 2:
-                    # Only one separator? 
-                    # If it has JSON, it's probably Body --- Visual Summary
-                    if "```json" in parts[1]:
-                        clean_report = parts[0].strip() + "\n\n*(リサーチが完了しました)*"
-                    else:
-                        clean_report = report # Keep as is
-            
-            # Final safety: remove any large JSON blocks from chat message
-            clean_report = re.sub(r"```json.*?```", "\n*(詳細は添付の視覚的要約ファイルをご確認ください)*\n", clean_report, flags=re.DOTALL)
-            clean_report = re.sub(r"##\s*Visual\s*Summary", "", clean_report, flags=re.IGNORECASE)
-            
-            clean_report = clean_report.strip()
-            if not clean_report:
-                clean_report = "リサーチが完了しました。詳細は添付のレポートファイルをご確認ください。"
+                clean_report = report
+                if "---" in report:
+                    parts = report.split("---")
+                    if len(parts) >= 3:
+                        # parts[0] is body, parts[1] is visual summary, parts[2] is sources
+                        body = parts[0].strip()
+                        sources = parts[2].strip()
+                        # Remove the header "## Sources" if we are adding it back clearly
+                        clean_report = f"{body}\n\n---\n\n{sources}"
+                    elif len(parts) == 2:
+                        # Only one separator?
+                        # If it has JSON, it's probably Body --- Visual Summary
+                        if "```json" in parts[1]:
+                            clean_report = parts[0].strip() + "\n\n*(リサーチが完了しました)*"
+                        else:
+                            clean_report = report # Keep as is
 
-            # Step 2: Send the text and files correctly
-            # In latest Chainlit, we should send the message with elements.
-            # Using display="side" in cl.File keeps them in the sidebar,
-            # but we also want them prominently attached to the final report.
-            
-            await cl.Message(content=clean_report, elements=file_elements).send()
-            logger.info(f"DEBUG: Sent final report with {len(file_elements)} attachments.")
-            
-            # Step 3: Clear session for next request
-            cl.user_session.set("previous_context", report)
-            cl.user_session.set("graph", None)
-            logger.info("DEBUG: Research cycle finished and state reset.")
+                # Final safety: remove any large JSON blocks from chat message
+                clean_report = re.sub(r"```json.*?```", "\n*(詳細は添付の視覚的要約ファイルをご確認ください)*\n", clean_report, flags=re.DOTALL)
+                clean_report = re.sub(r"##\s*Visual\s*Summary", "", clean_report, flags=re.IGNORECASE)
+
+                clean_report = clean_report.strip()
+                if not clean_report:
+                    clean_report = "リサーチが完了しました。詳細は添付のレポートファイルをご確認ください。"
+
+                # Step 2: Send the text and files correctly
+                # In latest Chainlit, we should send the message with elements.
+                # Using display="side" in cl.File keeps them in the sidebar,
+                # but we also want them prominently attached to the final report.
+
+                await cl.Message(content=clean_report, elements=file_elements).send()
+                logger.info(f"DEBUG: Sent final report with {len(file_elements)} attachments.")
+
+                # Step 3: Clear session for next request
+                cl.user_session.set("previous_context", report)
+                cl.user_session.set("graph", None)
+                logger.info("DEBUG: Research cycle finished and state reset.")
 
         else:
             logger.warning("DEBUG: Final report synthesis finished but 'final_report' is missing from state.")

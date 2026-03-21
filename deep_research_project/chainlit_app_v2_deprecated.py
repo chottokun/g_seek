@@ -43,7 +43,7 @@ def clean_report_for_ui(report: str):
     
     return cleaned.strip()
 
-async def create_visual_summary(report: str):
+async def create_visual_summary(report: str, tmp_dir: str):
     """
     Extracts the Visual Summary JSON and saves it as an HTML file.
     Returns a list of cl.File elements.
@@ -88,10 +88,11 @@ async def create_visual_summary(report: str):
                     net.add_edge(str(u), str(v), color="#999999")
             
             if node_count > 0:
-                with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"viz_{idx}_", delete=False) as tf:
-                    tmp_path = tf.name
+                tmp_path = os.path.join(tmp_dir, f"viz_{idx}.html")
                 net.save_graph(tmp_path)
-                elements.append(cl.File(name=f"Network_Graph_{idx+1}.html", path=tmp_path, display="inline"))
+                with open(tmp_path, "r", encoding="utf-8") as f:
+                    viz_content = f.read()
+                elements.append(cl.File(name=f"Network_Graph_{idx+1}.html", content=viz_content, display="inline"))
                 
         except Exception as e:
             logger.error(f"Visual Summary Error: {e}")
@@ -236,18 +237,14 @@ async def run_v2(graph, input_state, config_dict):
                 display_text = clean_md[:MAX_CHAR_LIMIT] + "\n\n---\n\n> ⚠️ **レポートが長大なため、チャット表示を省略しました。分析の全内容は、以下の添付ファイル（research_report.md）をダウンロードしてご確認ください。**"
             
             # 3. Create Attachments
-            attachments = await create_visual_summary(report)
-            
-            # Add Main Report as File (Always side display for guaranteed download button)
-            with tempfile.NamedTemporaryFile(suffix=".md", prefix="final_", delete=False) as tf:
-                md_path = tf.name
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write(report)
-            
-            attachments.append(cl.File(name="research_report.md", path=md_path, display="side"))
-            
-            # 4. Final Delivery
-            await cl.Message(content=display_text, elements=attachments).send()
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                attachments = await create_visual_summary(report, tmp_dir)
+
+                # Add Main Report as File (Always side display for guaranteed download button)
+                attachments.append(cl.File(name="research_report.md", content=report, display="side"))
+
+                # 4. Final Delivery
+                await cl.Message(content=display_text, elements=attachments).send()
             
             # Session maintenance
             cl.user_session.set("previous_context", report)

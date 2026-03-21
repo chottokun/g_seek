@@ -98,7 +98,7 @@ def robust_json_repair(json_str: str):
             
     return None
 
-async def process_visual_summary(report: str, thread_id: str):
+async def process_visual_summary(report: str, thread_id: str, tmp_dir: str):
     """Extracts Visual Summary JSON and creates temporary HTML files for visualization."""
     # Pattern to match JSON blocks
     json_pattern = r"```json\s*\n(.*?)\n?```"
@@ -133,16 +133,18 @@ async def process_visual_summary(report: str, thread_id: str):
             for edge in json_obj.get('edges', []):
                 net.add_edge(str(edge['from']), str(edge['to']), title=edge.get('label', ''), label=edge.get('label', ''))
             
-            with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
-                tmp_path = tf.name
+            tmp_path = os.path.join(tmp_dir, f"visual_summary_{idx}.html")
             
             # Use to_thread to keep I/O from blocking the event loop
             await asyncio.to_thread(net.save_graph, tmp_path)
             
+            async with aiofiles.open(tmp_path, mode="r", encoding="utf-8") as f:
+                content = await f.read()
+
             file_elements.append(
                 cl.File(
                     name=f"Visual_Summary_{idx+1}.html",
-                    path=tmp_path,
+                    content=content,
                     display="inline"
                 )
             )
@@ -351,40 +353,36 @@ async def execute_research(graph, input_state, config_dict):
         cl.user_session.set("full_report", report)
         
         if report:
-            # 1. Non-blocking Visual Summary processing (from PR #89)
-            file_elements = await process_visual_summary(report, thread_id)
-            
-            # 2. Non-blocking Report File Creation
-            try:
-                with tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
-                    report_path = tf.name
-                async with aiofiles.open(report_path, "w", encoding="utf-8") as f:
-                    await f.write(report)
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                # 1. Non-blocking Visual Summary processing (from PR #89)
+                file_elements = await process_visual_summary(report, thread_id, tmp_dir)
                 
-                file_elements.append(
-                    cl.File(
-                        name="Full_Research_Report.md",
-                        path=report_path,
-                        display="inline"
+                # 2. Non-blocking Report File Creation
+                try:
+                    file_elements.append(
+                        cl.File(
+                            name="Full_Research_Report.md",
+                            content=report,
+                            display="inline"
+                        )
                     )
-                )
-            except Exception:
-                logger.error(f"Failed to save report file: {traceback.format_exc()}")
+                except Exception:
+                    logger.error(f"Failed to save report file: {traceback.format_exc()}")
 
-            # 3. Clean text for chat display
-            display_text = clean_report_for_display(report)
-            
-            # 4. Prepare the action button
-            actions = [
-                cl.Action(name="copy_report", value="copy", label="📋 全文をコピー用に表示", payload={})
-            ]
-            
-            # Truncate preview if very long
-            if len(display_text) > 10000:
-                display_text = display_text[:10000] + "\n\n---\n> ⚠️ **レポートが長いため一部を省略しました。全内容は下のボタンを押して取得してください。**"
-            
-            # Final message with elements (Downloadable report and HTML visualization)
-            await cl.Message(content=display_text, actions=actions, elements=file_elements).send()
+                # 3. Clean text for chat display
+                display_text = clean_report_for_display(report)
+
+                # 4. Prepare the action button
+                actions = [
+                    cl.Action(name="copy_report", value="copy", label="📋 全文をコピー用に表示", payload={})
+                ]
+
+                # Truncate preview if very long
+                if len(display_text) > 10000:
+                    display_text = display_text[:10000] + "\n\n---\n> ⚠️ **レポートが長いため一部を省略しました。全内容は下のボタンを押して取得してください。**"
+
+                # Final message with elements (Downloadable report and HTML visualization)
+                await cl.Message(content=display_text, actions=actions, elements=file_elements).send()
             
             # Reset session for next research
             cl.user_session.set("previous_context", report)
