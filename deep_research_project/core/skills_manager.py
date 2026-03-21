@@ -1,13 +1,8 @@
 import logging
 import asyncio
-import aiofiles
 from typing import List, Dict, Optional
 from pathlib import Path
 import yaml
-try:
-    from yaml import CSafeLoader as SafeLoader, CSafeDumper as SafeDumper
-except ImportError:
-    from yaml import SafeLoader as SafeLoader, SafeDumper as SafeDumper
 import re
 
 logger = logging.getLogger(__name__)
@@ -15,7 +10,7 @@ logger = logging.getLogger(__name__)
 class SkillRegistry:
     """Manages discovery, loading, and registration of modular skills (Anthropic style)."""
     
-    def __init__(self, static_skills_dir: str = "data/skills/static", dynamic_skills_dir: str = "data/skills/dynamic"):
+    def __init__(self, static_skills_dir: str = ".agents/skills", dynamic_skills_dir: str = "data/skills"):
         self.static_skills_dir = Path(static_skills_dir)
         self.dynamic_skills_dir = Path(dynamic_skills_dir)
         self.static_skills_dir.mkdir(parents=True, exist_ok=True)
@@ -56,7 +51,7 @@ class SkillRegistry:
         if match:
             yaml_content = match.group(1)
             markdown_body = match.group(2)
-            data = yaml.load(yaml_content, Loader=SafeLoader)
+            data = yaml.safe_load(yaml_content)
             data["content"] = markdown_body
             return data
         else:
@@ -93,16 +88,16 @@ class SkillRegistry:
         if created_at:
             frontmatter["created_at"] = created_at
             
-        # Ensure directory exists (offload to thread as it's a blocking OS call)
-        await asyncio.to_thread(skill_path.mkdir, parents=True, exist_ok=True)
+        def _sync_save():
+            skill_path.mkdir(parents=True, exist_ok=True)
+            skill_file = skill_path / "SKILL.md"
+            yaml_str = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False).strip()
+            full_content = f"---\n{yaml_str}\n---\n\n{content}"
 
-        skill_file = skill_path / "SKILL.md"
-        # Use optimized dumper for performance
-        yaml_str = yaml.dump(frontmatter, Dumper=SafeDumper, allow_unicode=True, default_flow_style=False).strip()
-        full_content = f"---\n{yaml_str}\n---\n\n{content}"
+            with open(skill_file, "w", encoding="utf-8") as f:
+                f.write(full_content)
 
-        async with aiofiles.open(skill_file, "w", encoding="utf-8") as f:
-            await f.write(full_content)
+        await asyncio.to_thread(_sync_save)
         
         # Partially reload registry (optimized)
         self.skills[skill_id] = {
