@@ -1,6 +1,5 @@
 import logging
 import asyncio
-import aiofiles
 from typing import List, Dict, Optional
 from pathlib import Path
 import yaml
@@ -92,17 +91,23 @@ class SkillRegistry:
         }
         if created_at:
             frontmatter["created_at"] = created_at
+
+        def _sync_save():
+            # Ensure directory exists
+            skill_path.mkdir(parents=True, exist_ok=True)
+            skill_file = skill_path / "SKILL.md"
             
-        # Ensure directory exists (offload to thread as it's a blocking OS call)
-        await asyncio.to_thread(skill_path.mkdir, parents=True, exist_ok=True)
+            # Use optimized dumper for performance (CPU-bound)
+            yaml_str = yaml.dump(frontmatter, Dumper=SafeDumper, allow_unicode=True, default_flow_style=False).strip()
+            full_content = f"---\n{yaml_str}\n---\n\n{content}"
 
-        skill_file = skill_path / "SKILL.md"
-        # Use optimized dumper for performance
-        yaml_str = yaml.dump(frontmatter, Dumper=SafeDumper, allow_unicode=True, default_flow_style=False).strip()
-        full_content = f"---\n{yaml_str}\n---\n\n{content}"
+            # Synchronous write in a background thread is more efficient for small files
+            with open(skill_file, "w", encoding="utf-8") as f:
+                f.write(full_content)
 
-        async with aiofiles.open(skill_file, "w", encoding="utf-8") as f:
-            await f.write(full_content)
+        # Offload combined CPU and I/O work to a single background thread
+        # This reduces event loop overhead and context switching compared to multiple await calls.
+        await asyncio.to_thread(_sync_save)
         
         # Partially reload registry (optimized)
         self.skills[skill_id] = {
