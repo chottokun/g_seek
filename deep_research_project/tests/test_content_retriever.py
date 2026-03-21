@@ -1,5 +1,6 @@
 import unittest
 import asyncio
+import socket
 from unittest.mock import MagicMock, AsyncMock, patch
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.content_retriever import ContentRetriever
@@ -75,6 +76,38 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         retriever = ContentRetriever(self.mock_config)
         text = await retriever.retrieve_and_extract("http://example.com/test.pdf")
         self.assertIn("PDF Page Content", text)
+
+    async def test_resolve_and_validate_url_invalid_url(self):
+        retriever = ContentRetriever(self.mock_config)
+        with self.assertRaisesRegex(ValueError, "Invalid URL"):
+            await retriever._resolve_and_validate_url("http://")
+
+    async def test_resolve_and_validate_url_already_ip(self):
+        retriever = ContentRetriever(self.mock_config)
+        ip = await retriever._resolve_and_validate_url("http://1.1.1.1")
+        self.assertEqual(ip, "1.1.1.1")
+
+    @patch("socket.getaddrinfo")
+    async def test_resolve_and_validate_url_gaierror(self, mock_getaddrinfo):
+        mock_getaddrinfo.side_effect = socket.gaierror("Name or service not known")
+        retriever = ContentRetriever(self.mock_config)
+        with self.assertRaisesRegex(ValueError, "Could not resolve hostname"):
+            await retriever._resolve_and_validate_url("http://nonexistent.example.com")
+
+    @patch("socket.getaddrinfo")
+    async def test_resolve_and_validate_url_no_ips(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = []
+        retriever = ContentRetriever(self.mock_config)
+        with self.assertRaisesRegex(ValueError, "No IP addresses found"):
+            await retriever._resolve_and_validate_url("http://example.com")
+
+    @patch("socket.getaddrinfo")
+    async def test_resolve_and_validate_url_restricted_ip(self, mock_getaddrinfo):
+        self.mock_config.BLOCK_LOCAL_IP_ACCESS = True
+        mock_getaddrinfo.return_value = [(None, None, None, None, ("127.0.0.1", 80))]
+        retriever = ContentRetriever(self.mock_config)
+        with self.assertRaisesRegex(ValueError, "Access to restricted IP"):
+            await retriever._resolve_and_validate_url("http://localhost")
 
 if __name__ == "__main__":
     unittest.main()
