@@ -46,17 +46,30 @@ class ResearchReflector:
         """Merges new nodes into the existing nodes list."""
         node_map = {n['id']: n for n in existing_nodes}
         for new_node in new_nodes:
-            if new_node.id in node_map:
-                existing_node = node_map[new_node.id]
-                existing_node.setdefault('properties', {}).update(new_node.properties)
+            new_id = new_node.id
+            if new_id in node_map:
+                existing_node = node_map[new_id]
+                new_props = new_node.properties
+
+                if 'properties' not in existing_node:
+                    existing_node['properties'] = new_props.copy()
+                elif new_props:
+                    existing_node['properties'].update(new_props)
                 
                 # Merge source URLs (unique)
-                existing_urls = set(existing_node.get('source_urls', []))
-                existing_urls.update(new_node.source_urls)
-                existing_node['source_urls'] = list(existing_urls)
+                new_urls = new_node.source_urls
+                if new_urls:
+                    existing_urls = existing_node.get('source_urls', [])
+                    if not existing_urls:
+                        existing_node['source_urls'] = list(new_urls)
+                    else:
+                        combined_urls = set(existing_urls)
+                        combined_urls.update(new_urls)
+                        if len(combined_urls) > len(existing_urls):
+                            existing_node['source_urls'] = list(combined_urls)
                 
                 # Update Centrality (mention_count)
-                props = existing_node['properties']
+                props = existing_node.setdefault('properties', {})
                 try:
                     current_count = int(props.get('mention_count', 1))
                     props['mention_count'] = str(current_count + 1)
@@ -66,21 +79,34 @@ class ResearchReflector:
                 node_data = new_node.model_dump()
                 node_data.setdefault('properties', {})['mention_count'] = "1"
                 existing_nodes.append(node_data)
-                node_map[new_node.id] = node_data
+                node_map[new_id] = node_data
 
     def _merge_edges(self, new_edges: List[KGEdge], existing_edges: List[dict]):
         """Merges new edges into the existing edges list."""
         edge_map = {(e['source'], e['target'], e.get('label')): e for e in existing_edges}
         for new_edge in new_edges:
-            edge_key = (new_edge.source, new_edge.target, new_edge.label)
+            source, target, label = new_edge.source, new_edge.target, new_edge.label
+            edge_key = (source, target, label)
             if edge_key in edge_map:
                 existing_edge = edge_map[edge_key]
-                existing_edge.setdefault('properties', {}).update(new_edge.properties)
+                new_props = new_edge.properties
+
+                if 'properties' not in existing_edge:
+                    existing_edge['properties'] = new_props.copy()
+                elif new_props:
+                    existing_edge['properties'].update(new_props)
                 
                 # Merge source URLs
-                existing_urls = set(existing_edge.get('source_urls', []))
-                existing_urls.update(new_edge.source_urls)
-                existing_edge['source_urls'] = list(existing_urls)
+                new_urls = new_edge.source_urls
+                if new_urls:
+                    existing_urls = existing_edge.get('source_urls', [])
+                    if not existing_urls:
+                        existing_edge['source_urls'] = list(new_urls)
+                    else:
+                        combined_urls = set(existing_urls)
+                        combined_urls.update(new_urls)
+                        if len(combined_urls) > len(existing_urls):
+                            existing_edge['source_urls'] = list(combined_urls)
             else:
                 edge_data = new_edge.model_dump()
                 existing_edges.append(edge_data)
