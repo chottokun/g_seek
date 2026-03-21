@@ -4,9 +4,9 @@ from typing import List, Dict, Optional
 from pathlib import Path
 import yaml
 try:
-    from yaml import CSafeLoader as SafeLoader, CSafeDumper as SafeDumper
+    from yaml import CSafeDumper as SafeDumper
 except ImportError:
-    from yaml import SafeLoader as SafeLoader, SafeDumper as SafeDumper
+    from yaml import SafeDumper
 import re
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class SkillRegistry:
     """Manages discovery, loading, and registration of modular skills (Anthropic style)."""
     
-    def __init__(self, static_skills_dir: str = "data/skills/static", dynamic_skills_dir: str = "data/skills/dynamic"):
+    def __init__(self, static_skills_dir: str = ".agents/skills", dynamic_skills_dir: str = "data/skills"):
         self.static_skills_dir = Path(static_skills_dir)
         self.dynamic_skills_dir = Path(dynamic_skills_dir)
         self.static_skills_dir.mkdir(parents=True, exist_ok=True)
@@ -55,7 +55,7 @@ class SkillRegistry:
         if match:
             yaml_content = match.group(1)
             markdown_body = match.group(2)
-            data = yaml.load(yaml_content, Loader=SafeLoader)
+            data = yaml.safe_load(yaml_content)
             data["content"] = markdown_body
             return data
         else:
