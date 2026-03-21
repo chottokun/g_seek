@@ -122,6 +122,9 @@ class ResearchReflector:
                                  section_description: str, accumulated_summary: str, 
                                  language: str) -> Tuple[str, Optional[str]]:
         """Evaluates if more research is needed for the current context."""
+        if not accumulated_summary.strip():
+            return "CONTINUE", topic
+
         from datetime import datetime
         current_date = datetime.now().strftime("%Y-%m-%d")
 

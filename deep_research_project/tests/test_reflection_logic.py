@@ -5,11 +5,137 @@ from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.reflection import ResearchReflector
 from deep_research_project.core.state import KnowledgeGraphModel, KGNode, KGEdge
 
-class TestReflectionLogic(unittest.TestCase):
+class TestReflectionLogic(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.config = MagicMock(spec=Configuration)
         self.llm_client = MagicMock(spec=LLMClient)
         self.reflector = ResearchReflector(self.config, self.llm_client)
+
+    async def test_reflect_and_decide_early_return(self):
+        """Test: early return when accumulated_summary is empty"""
+        topic = "AI agents"
+        evaluation, next_query = await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="Intro",
+            section_description="Introduction to AI",
+            accumulated_summary="",
+            language="English"
+        )
+        self.assertEqual(evaluation, "CONTINUE")
+        self.assertEqual(next_query, topic)
+
+        # Test with whitespace
+        evaluation, next_query = await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="Intro",
+            section_description="Introduction to AI",
+            accumulated_summary="   \n  ",
+            language="English"
+        )
+        self.assertEqual(evaluation, "CONTINUE")
+        self.assertEqual(next_query, topic)
+
+    async def test_reflect_and_decide_parsing(self):
+        """Test parsing of LLM response for EVALUATION and QUERY"""
+        topic = "AI agents"
+
+        # Test CONTINUE with query
+        self.llm_client.generate_text.return_value = "EVALUATION: CONTINUE\nQUERY: latest AI agent frameworks"
+        evaluation, next_query = await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="Intro",
+            section_description="Intro",
+            accumulated_summary="Some info",
+            language="English"
+        )
+        self.assertEqual(evaluation, "CONTINUE")
+        self.assertEqual(next_query, "latest AI agent frameworks")
+
+        # Test CONCLUDE
+        self.llm_client.generate_text.return_value = "EVALUATION: CONCLUDE\nQUERY: None"
+        evaluation, next_query = await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="Intro",
+            section_description="Intro",
+            accumulated_summary="Some info",
+            language="English"
+        )
+        self.assertEqual(evaluation, "CONCLUDE")
+        self.assertIsNone(next_query)
+
+        # Test variations in formatting
+        self.llm_client.generate_text.return_value = "evaluation: continue\nquery: \"multi-agent systems\""
+        evaluation, next_query = await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="Intro",
+            section_description="Intro",
+            accumulated_summary="Some info",
+            language="English"
+        )
+        self.assertEqual(evaluation, "CONTINUE")
+        self.assertEqual(next_query, "multi-agent systems")
+
+    async def test_reflect_and_decide_languages(self):
+        """Test that correct prompts are used for different languages"""
+        topic = "AI agents"
+        self.llm_client.generate_text.return_value = "EVALUATION: CONCLUDE\nQUERY: None"
+
+        # English
+        await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="Intro",
+            section_description="Intro",
+            accumulated_summary="Some info",
+            language="English"
+        )
+        call_args = self.llm_client.generate_text.call_args
+        self.assertIn("Research Topic: AI agents", call_args.kwargs['prompt'])
+        self.assertIn("Section Objective: Intro", call_args.kwargs['prompt'])
+
+        # Japanese
+        await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="導入",
+            section_description="導入説明",
+            accumulated_summary="情報",
+            language="Japanese"
+        )
+        call_args = self.llm_client.generate_text.call_args
+        self.assertIn("リサーチトピック: AI agents", call_args.kwargs['prompt'])
+        self.assertIn("セクション: 導入", call_args.kwargs['prompt'])
+
+    async def test_reflect_and_decide_sanitization(self):
+        """Test that next_query is sanitized"""
+        topic = "AI agents"
+        # Long query and markdown
+        long_query = "A" * 200
+        self.llm_client.generate_text.return_value = f"EVALUATION: CONTINUE\nQUERY: **{long_query}**"
+
+        evaluation, next_query = await self.reflector.reflect_and_decide(
+            topic=topic,
+            section_title="Intro",
+            section_description="Intro",
+            accumulated_summary="Some info",
+            language="English"
+        )
+        self.assertEqual(evaluation, "CONTINUE")
+        self.assertTrue(len(next_query) <= 100)
+        self.assertNotIn("**", next_query)
+
+    async def test_reflect_alias(self):
+        """Test the reflect alias method"""
+        topic = "AI agents"
+        self.llm_client.generate_text.return_value = "EVALUATION: CONTINUE\nQUERY: next step"
+
+        result = await self.reflector.reflect(
+            topic=topic,
+            section_title="Intro",
+            section_description="Intro",
+            accumulated_summary="Some info",
+            language="English"
+        )
+        self.assertEqual(result["evaluation"], "CONTINUE")
+        self.assertEqual(result["query"], "next step")
 
     def test_merge_into_empty_graph(self):
         """Test 1: Merge into empty graph"""
