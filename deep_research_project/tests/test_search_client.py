@@ -131,5 +131,43 @@ class TestSearchClient(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(results, [])
 
+    async def test_search_none_query(self):
+        """Test search with None query handles exceptions."""
+        self.mock_config.SEARCH_API = "duckduckgo"
+        with patch('deep_research_project.tools.search_client.DuckDuckGoSearchAPIWrapper') as MockDDG:
+            mock_tool = MockDDG.return_value
+            mock_tool.results.side_effect = Exception("query is mandatory")
+            client = SearchClient(self.mock_config)
+            results = await client.search(None)
+            self.assertEqual(results, [])
+
+    async def test_search_invalid_num_results_type(self):
+        """Test search with invalid num_results type handles TypeError."""
+        # DuckDuckGo path - should be caught by the general Exception handler in search()
+        self.mock_config.SEARCH_API = "duckduckgo"
+        with patch('deep_research_project.tools.search_client.DuckDuckGoSearchAPIWrapper') as MockDDG:
+            mock_tool = MockDDG.return_value
+            mock_tool.results.side_effect = TypeError("unsupported operand type")
+            client = SearchClient(self.mock_config)
+            results = await client.search("test", num_results="invalid")
+            self.assertEqual(results, [])
+
+        # SearxNG path - should be caught by the specific TypeError handler in _sync_search()
+        self.mock_config.SEARCH_API = "searxng"
+        with patch('deep_research_project.tools.search_client.SearxSearchWrapper') as MockSearx:
+            mock_tool = MockSearx.return_value
+
+            def side_effect(*args, **kwargs):
+                if 'num_results' in kwargs and isinstance(kwargs['num_results'], str):
+                    raise TypeError("num_results must be an integer")
+                return [{"title": "Fallback", "link": "#", "snippet": "..."}]
+
+            mock_tool.results.side_effect = side_effect
+            client = SearchClient(self.mock_config)
+            results = await client.search("test", num_results="invalid")
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0].title, "Fallback")
+
 if __name__ == '__main__':
     unittest.main()
