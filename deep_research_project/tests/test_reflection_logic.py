@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.reflection import ResearchReflector
-from deep_research_project.core.state import KnowledgeGraphModel, KGNode, KGEdge
+from deep_research_project.core.state import KnowledgeGraphModel, KGNode, KGEdge, Source
 
 class TestReflectionLogic(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -259,6 +259,37 @@ class TestReflectionLogic(unittest.IsolatedAsyncioTestCase):
         self.reflector._merge_knowledge_graph(new_kg, existing_nodes, existing_edges)
         self.assertEqual(existing_nodes[0]["properties"]["p"], "v")
         self.assertEqual(existing_edges[0]["properties"]["ep"], "ev")
+
+    def test_merge_with_none_properties(self):
+        """Test: Handle existing nodes/edges with properties=None"""
+        existing_nodes = [{"id": "Node1", "label": "L", "type": "T", "properties": None, "source_urls": []}]
+        existing_edges = [{"source": "N1", "target": "N2", "label": "R", "properties": None, "source_urls": []}]
+
+        new_kg = KnowledgeGraphModel(
+            nodes=[KGNode(id="Node1", label="L", type="T", properties={"p": "v"}, source_urls=[])],
+            edges=[KGEdge(source="N1", target="N2", label="R", properties={"ep": "ev"}, source_urls=[])]
+        )
+
+        self.reflector._merge_knowledge_graph(new_kg, existing_nodes, existing_edges)
+
+        self.assertEqual(existing_nodes[0]["properties"]["p"], "v")
+        self.assertEqual(existing_nodes[0]["properties"]["mention_count"], "2")
+        self.assertEqual(existing_edges[0]["properties"]["ep"], "ev")
+
+    async def test_extract_knowledge_graph_error_handling(self):
+        """Test: extract_knowledge_graph handles LLM errors gracefully"""
+        self.llm_client.generate_structured.side_effect = Exception("LLM Error")
+
+        existing_nodes = []
+        existing_edges = []
+
+        # Should not raise exception
+        await self.reflector.extract_knowledge_graph(
+            "Some text that is long enough to trigger extraction.",
+            [Source(title="S", link="L")],
+            "Title", "English", existing_nodes, existing_edges
+        )
+        self.assertEqual(len(existing_nodes), 0)
 
 if __name__ == "__main__":
     unittest.main()
