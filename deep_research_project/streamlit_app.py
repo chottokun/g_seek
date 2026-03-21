@@ -20,7 +20,6 @@ from deep_research_project.core.graph import create_research_graph
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
-from langgraph.checkpoint.memory import MemorySaver
 
 # Logger setup
 logging.basicConfig(level=logging.INFO)
