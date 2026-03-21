@@ -8,7 +8,6 @@ import tempfile
 import logging
 import traceback
 import uuid
-import html
 from typing import Dict, List, Optional, Any
 from pyvis.network import Network
 
