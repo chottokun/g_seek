@@ -135,7 +135,7 @@ async def run_research_graph(topic: str, config: Configuration, language: str):
                         total = int(match.group(2))
                         p_bar.progress(current / total, text=f"進捗: セクション {current}/{total}")
                 except: pass
-            await asyncio.sleep(0.01) # Yield to Streamlit
+            await asyncio.sleep(0) # Yield to Streamlit
             
         config_dict = {
             "configurable": {
@@ -235,7 +235,7 @@ def main():
                 async def cb(m):
                     st.session_state.logs.append(m)
                     log_container.write(m)
-                    await asyncio.sleep(0.01)
+                    await asyncio.sleep(0)
                     
                 conf = {
                     "configurable": {
