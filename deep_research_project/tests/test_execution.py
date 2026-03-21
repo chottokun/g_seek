@@ -139,6 +139,58 @@ class TestResearchExecutor(unittest.IsolatedAsyncioTestCase):
         scores = await self.executor.score_relevance_batch("query", results, "English")
         self.assertEqual(scores, [0.9, 0.1])
 
+    async def test_score_relevance_batch_empty(self):
+        scores = await self.executor.score_relevance_batch("query", [], "English")
+        self.assertEqual(scores, [])
+        self.mock_llm_client.generate_structured.assert_not_called()
+
+    async def test_score_relevance_batch_japanese(self):
+        results = [SearchResult(title="T1", link="L1", snippet="S1")]
+        mock_batch_response = MagicMock()
+        mock_batch_response.scores = [0.9]
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=mock_batch_response)
+
+        await self.executor.score_relevance_batch("クエリ", results, "Japanese")
+
+        # Check that Japanese keywords are in the prompt
+        args, kwargs = self.mock_llm_client.generate_structured.call_args
+        prompt = args[0]
+        self.assertIn("クエリ", prompt)
+        self.assertIn("関連性", prompt)
+
+    async def test_score_relevance_batch_clamping(self):
+        results = [
+            SearchResult(title="T1", link="L1", snippet="S1"),
+            SearchResult(title="T2", link="L2", snippet="S2")
+        ]
+        mock_batch_response = MagicMock()
+        mock_batch_response.scores = [1.5, -0.5]
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=mock_batch_response)
+
+        scores = await self.executor.score_relevance_batch("query", results, "English")
+        self.assertEqual(scores, [1.0, 0.0])
+
+    async def test_score_relevance_batch_padding(self):
+        results = [
+            SearchResult(title="T1", link="L1", snippet="S1"),
+            SearchResult(title="T2", link="L2", snippet="S2")
+        ]
+        mock_batch_response = MagicMock()
+        mock_batch_response.scores = [0.9] # Only one score for two results
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=mock_batch_response)
+
+        scores = await self.executor.score_relevance_batch("query", results, "English")
+        self.assertEqual(scores, [0.9, 0.5])
+
+    async def test_score_relevance_batch_truncation(self):
+        results = [SearchResult(title="T1", link="L1", snippet="S1")]
+        mock_batch_response = MagicMock()
+        mock_batch_response.scores = [0.9, 0.1] # Two scores for one result
+        self.mock_llm_client.generate_structured = AsyncMock(return_value=mock_batch_response)
+
+        scores = await self.executor.score_relevance_batch("query", results, "English")
+        self.assertEqual(scores, [0.9])
+
     async def test_score_relevance_batch_fallback(self):
         results = [
             SearchResult(title="T1", link="L1", snippet="S1"),
