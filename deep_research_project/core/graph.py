@@ -1,9 +1,9 @@
 import logging
-import asyncio
 import re
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from deep_research_project.core.graph_state import AgentState
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 async def planner_node(state: AgentState, config: Configuration, planner: ResearchPlanner, skills_mgr: SkillRegistry):
     """Initial planning node. Consults SkillRegistry for dynamic discovery (SkillsMiddleware)."""
-    logger.info(f"--- PLANNER NODE ---")
-    
+    logger.info("--- PLANNER NODE ---")
+
     # Progressive Disclosure: Get available skills metadata
     available_skills = skills_mgr.list_skills()
     
@@ -89,8 +89,6 @@ async def planner_node(state: AgentState, config: Configuration, planner: Resear
         "sources": []
     }
 
-from langchain_core.runnables import RunnableConfig
-
 async def researcher_node(state: AgentState, config: RunnableConfig, planner: ResearchPlanner, executor: ResearchExecutor, orchestrator: Any):
     """Execution node. Performs web search or delegates to specialized sub-agents."""
     idx = state["current_section_index"]
@@ -134,8 +132,10 @@ async def researcher_node(state: AgentState, config: RunnableConfig, planner: Re
         all_findings = []
         all_sources = []
         for sec in r_state.research_plan:
-            if sec.get('summary'): all_findings.append(sec['summary'])
-            if sec.get('sources'): all_sources.extend(sec['sources'])
+            if sec.get('summary'):
+                all_findings.append(sec['summary'])
+            if sec.get('sources'):
+                all_sources.extend(sec['sources'])
         
         return {
             "findings": all_findings,
@@ -166,9 +166,9 @@ async def researcher_node(state: AgentState, config: RunnableConfig, planner: Re
 async def reflector_node(state: AgentState, config: Configuration, reflector: ResearchReflector):
     """Reflection node. Decides if more research is needed or moves to next section."""
     idx = state["current_section_index"]
-    
-    logger.info(f"--- REFLECTOR NODE ---")
-    
+
+    logger.info("--- REFLECTOR NODE ---")
+
     # Boundary check to prevent IndexError
     if idx < 0 or idx >= len(state["plan"]):
         logger.info("Reflector called at the end of plan or with invalid index.")
@@ -209,8 +209,8 @@ async def reflector_node(state: AgentState, config: Configuration, reflector: Re
 
 async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills_mgr: SkillRegistry, config: Configuration):
     """Learns research expertise and generates or refines standardized SKILL.md documents."""
-    logger.info(f"--- SKILLS EXTRACTOR NODE ---")
-    
+    logger.info("--- SKILLS EXTRACTOR NODE ---")
+
     if not getattr(config, "EVOLVE_SKILLS", True):
         logger.info("EVOLVE_SKILLS is disabled. Skipping skill extraction.")
         return {"newly_extracted_skill": None}
@@ -274,7 +274,8 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
             skill_name = f"Domain: {state['topic'][:40]}"
             # Generate a better description using the extracted patterns
             summary_desc = ". ".join(patterns[:2])
-            if len(summary_desc) > 150: summary_desc = summary_desc[:147] + "..."
+            if len(summary_desc) > 150:
+                summary_desc = summary_desc[:147] + "..."
             description = f"Methodology & Insights: {summary_desc}"
             
             content = "## Domain Expertise: " + state["topic"] + "\n\n"
@@ -293,8 +294,8 @@ async def skills_extractor_node(state: AgentState, llm_client: LLMClient, skills
 
 async def final_reporter_node(state: AgentState, reporter: ResearchReporter):
     """Generates the final research report."""
-    logger.info(f"--- FINAL REPORTER NODE ---")
-    
+    logger.info("--- FINAL REPORTER NODE ---")
+
     findings = state.get("findings", [])
     sources = state.get("sources", [])
     
@@ -302,11 +303,13 @@ async def final_reporter_node(state: AgentState, reporter: ResearchReporter):
     
     # Debug nested list structure if any
     if findings and isinstance(findings[0], list):
-        logger.warning(f"Detected nested findings list! Flattening for reporter.")
+        logger.warning("Detected nested findings list! Flattening for reporter.")
         flattened_findings = []
         for f in findings:
-            if isinstance(f, list): flattened_findings.extend(f)
-            else: flattened_findings.append(f)
+            if isinstance(f, list):
+                flattened_findings.extend(f)
+            else:
+                flattened_findings.append(f)
         findings = flattened_findings
 
     report = await reporter.finalize_report(
