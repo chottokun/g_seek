@@ -4,12 +4,12 @@ import os
 import sys
 import re
 import json
-import tempfile
 import logging
 import traceback
 import asyncio
 import aiofiles
-from typing import Dict, Optional, List
+import aiofiles.tempfile
+from typing import Dict, Optional
 from pyvis.network import Network
 
 # Ensure imports from parent directory
@@ -20,7 +20,6 @@ from deep_research_project.core.graph import create_research_graph
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
-from langgraph.checkpoint.memory import MemorySaver
 from chainlit.input_widget import Select, Switch
 
 # Logger setup
@@ -133,7 +132,7 @@ async def process_visual_summary(report: str, thread_id: str):
             for edge in json_obj.get('edges', []):
                 net.add_edge(str(edge['from']), str(edge['to']), title=edge.get('label', ''), label=edge.get('label', ''))
             
-            with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
+            async with aiofiles.tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
                 tmp_path = tf.name
             
             # Use to_thread to keep I/O from blocking the event loop
@@ -221,7 +220,6 @@ async def main(message: cl.Message):
     
     # 1. New Research Session
     if not graph:
-        memory = MemorySaver()
         llm = LLMClient(config)
         search = SearchClient(config)
         retriever = ContentRetriever(config)
@@ -292,7 +290,6 @@ async def main(message: cl.Message):
 
 async def execute_research(graph, input_state, config_dict):
     config = config_dict["configurable"]["config"]
-    ui_manager = cl.user_session.get("ui_manager")
     thread_id = config_dict["configurable"]["thread_id"]
     
     try:
@@ -356,7 +353,7 @@ async def execute_research(graph, input_state, config_dict):
             
             # 2. Non-blocking Report File Creation
             try:
-                with tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
+                async with aiofiles.tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
                     report_path = tf.name
                 async with aiofiles.open(report_path, "w", encoding="utf-8") as f:
                     await f.write(report)
