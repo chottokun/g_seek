@@ -109,5 +109,11 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "Access to restricted IP"):
             await retriever._resolve_and_validate_url("http://localhost")
 
+    async def test_retrieve_and_extract_validation_failure(self):
+        retriever = ContentRetriever(self.mock_config)
+        # Using an invalid URL that triggers ValueError in _resolve_and_validate_url
+        text = await retriever.retrieve_and_extract("http://")
+        self.assertEqual(text, "")
+
 if __name__ == "__main__":
     unittest.main()
