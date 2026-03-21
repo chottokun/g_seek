@@ -55,7 +55,7 @@ class Configuration(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO")
 
     # Interactive Mode Configuration
-    INTERACTIVE_MODE: bool = Field(default=True)
+    INTERACTIVE_MODE: bool = Field(default=False)
 
     # Security Configuration
     BLOCK_LOCAL_IP_ACCESS: bool = Field(default=False)
