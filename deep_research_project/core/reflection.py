@@ -49,9 +49,9 @@ class ResearchReflector:
             new_id = new_node.id
             if new_id in node_map:
                 existing_node = node_map[new_id]
-                new_props = new_node.properties
+                new_props = new_node.properties or {}
 
-                if 'properties' not in existing_node:
+                if existing_node.get('properties') is None:
                     existing_node['properties'] = new_props.copy()
                 elif new_props:
                     existing_node['properties'].update(new_props)
@@ -89,9 +89,9 @@ class ResearchReflector:
             edge_key = (source, target, label)
             if edge_key in edge_map:
                 existing_edge = edge_map[edge_key]
-                new_props = new_edge.properties
+                new_props = new_edge.properties or {}
 
-                if 'properties' not in existing_edge:
+                if existing_edge.get('properties') is None:
                     existing_edge['properties'] = new_props.copy()
                 elif new_props:
                     existing_edge['properties'].update(new_props)
