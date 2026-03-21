@@ -8,6 +8,7 @@ import tempfile
 import logging
 import traceback
 import uuid
+from typing import Dict, List, Optional, Any
 from pyvis.network import Network
 
 # Adjust path to import from core
@@ -29,27 +30,42 @@ def robust_json_repair(json_str: str):
     """Attempts to repair common LLM JSON output issues."""
     json_str = json_str.strip()
     if not json_str: return None
+    
+    # Remove markdown code blocks if present
     json_str = re.sub(r'^```json\s*', '', json_str)
     json_str = re.sub(r'\s*```$', '', json_str)
+    
     try:
         return json.loads(json_str)
     except json.JSONDecodeError:
+        # Try to fix truncated JSON by adding missing closing braces
         for i in range(1, 10):
-            try: return json.loads(json_str + '}' * i)
-            except: continue
+            try:
+                return json.loads(json_str + '}' * i)
+            except Exception:
+                continue
+            
+        # Try to find the last complete object
         last_brace = json_str.rfind('}')
         if last_brace != -1:
-            try: return json.loads(json_str[:last_brace+1])
-            except: pass
+            try:
+                return json.loads(json_str[:last_brace+1])
+            except Exception:
+                pass
+            
     return None
 
 def create_viz_html(report: str):
     """Generates HTML strings for network visualizations found in the report."""
+    # Pattern to match JSON blocks
     json_pattern = r"```json\s*\n(.*?)\n?```"
     json_matches = re.findall(json_pattern, report, re.DOTALL)
+    
+    # Fallback: if no code blocks, look for a raw JSON-like structure starting with "{" and ending with "}"
     if not json_matches:
-        raw_match = re.search(r"(\{.*\"nodes\".*\"edges\".*\})", report, re.DOTALL | re.IGNORECASE)
-        if raw_match: json_matches = [raw_match.group(1)]
+        raw_json_match = re.search(r"(\{\s*\"nodes\":.*?\})", report, re.DOTALL | re.IGNORECASE)
+        if raw_json_match:
+            json_matches = [raw_json_match.group(1)]
             
     html_files = []
     if not json_matches:
@@ -61,7 +77,11 @@ def create_viz_html(report: str):
             if not data or 'nodes' not in data: continue
             try:
                 net = Network(notebook=False, height="600px", width="100%", directed=True)
-                net.set_options('{"physics": {"enabled": true}}')
+                # Options for a nicer look
+                net.set_options("""
+                var options = { "physics": { "barnesHut": { "gravitationalConstant": -3000, "centralGravity": 0.3, "springLength": 150 } } }
+                """)
+                
                 for node in data.get('nodes', []):
                     if 'id' not in node: continue
                     nid = str(node['id'])
@@ -69,6 +89,7 @@ def create_viz_html(report: str):
                     color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
                     desc = node.get('description', '')
                     net.add_node(nid, label=label, color=color, shape="box", title=desc)
+                    
                 for edge in data.get('edges', []):
                     u, v = edge.get('from'), edge.get('to')
                     if u is not None and v is not None:
@@ -80,6 +101,7 @@ def create_viz_html(report: str):
                     html_files.append({"name": f"Visual_Summary_{idx+1}.html", "content": f.read()})
             except Exception as e:
                 logger.error(f"Visualization error: {e}")
+                
     return html_files
 
 # --- UI Application ---
