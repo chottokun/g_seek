@@ -85,14 +85,16 @@ def robust_json_repair(json_str: str):
         for i in range(1, 10):
             try:
                 return json.loads(json_str + '}' * i)
-            except: continue
+            except Exception:
+                continue
             
         # Try to find the last complete object
         last_brace = json_str.rfind('}')
         if last_brace != -1:
             try:
                 return json.loads(json_str[:last_brace+1])
-            except: pass
+            except Exception:
+                pass
             
     return None
 
