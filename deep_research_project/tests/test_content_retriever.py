@@ -1,5 +1,6 @@
 import unittest
 import asyncio
+import socket
 from unittest.mock import MagicMock, AsyncMock, patch
 from deep_research_project.config.config import Configuration
 from deep_research_project.tools.content_retriever import ContentRetriever
@@ -75,6 +76,35 @@ class TestContentRetriever(unittest.IsolatedAsyncioTestCase):
         retriever = ContentRetriever(self.mock_config)
         text = await retriever.retrieve_and_extract("http://example.com/test.pdf")
         self.assertIn("PDF Page Content", text)
+
+    async def test_resolve_and_validate_url_invalid(self):
+        retriever = ContentRetriever(self.mock_config)
+        with self.assertRaises(ValueError) as cm:
+            await retriever._resolve_and_validate_url("http://")
+        self.assertIn("Invalid URL", str(cm.exception))
+
+    @patch("socket.getaddrinfo")
+    async def test_resolve_and_validate_url_resolution_failure(self, mock_getaddrinfo):
+        mock_getaddrinfo.side_effect = socket.gaierror
+        retriever = ContentRetriever(self.mock_config)
+        with self.assertRaises(ValueError) as cm:
+            await retriever._resolve_and_validate_url("http://nonexistent.example.com")
+        self.assertIn("Could not resolve hostname", str(cm.exception))
+
+    @patch("socket.getaddrinfo")
+    async def test_resolve_and_validate_url_restricted_ip(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(None, None, None, None, ("127.0.0.1", 80))]
+        self.mock_config.BLOCK_LOCAL_IP_ACCESS = True
+        retriever = ContentRetriever(self.mock_config)
+        with self.assertRaises(ValueError) as cm:
+            await retriever._resolve_and_validate_url("http://localhost")
+        self.assertIn("Access to restricted IP", str(cm.exception))
+
+    async def test_retrieve_and_extract_validation_failure(self):
+        retriever = ContentRetriever(self.mock_config)
+        # Using an invalid URL that triggers ValueError in _resolve_and_validate_url
+        text = await retriever.retrieve_and_extract("http://")
+        self.assertEqual(text, "")
 
 if __name__ == "__main__":
     unittest.main()
