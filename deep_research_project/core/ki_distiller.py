@@ -2,7 +2,6 @@ import logging
 import json
 import os
 from datetime import datetime
-from typing import Dict, List, Optional
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.core.prompts import (
     KI_METADATA_PROMPT_JA, KI_METADATA_PROMPT_EN
