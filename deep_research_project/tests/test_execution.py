@@ -127,6 +127,30 @@ class TestResearchExecutor(unittest.IsolatedAsyncioTestCase):
         score = await self.executor.score_relevance("query", result, "English")
         self.assertEqual(score, 0.5) # Default
 
+    async def test_score_relevance_attribute_error(self):
+        result = SearchResult(title="T1", link="L1", snippet="S1")
+        # Returning None will cause .strip() to raise AttributeError
+        self.mock_llm_client.generate_text = AsyncMock(return_value=None)
+
+        score = await self.executor.score_relevance("query", result, "English")
+        self.assertEqual(score, 0.5)
+
+    async def test_score_relevance_index_error(self):
+        result = SearchResult(title="T1", link="L1", snippet="S1")
+        # Empty string (after strip) will cause split()[0] to raise IndexError
+        self.mock_llm_client.generate_text = AsyncMock(return_value="   ")
+
+        score = await self.executor.score_relevance("query", result, "English")
+        self.assertEqual(score, 0.5)
+
+    async def test_score_relevance_value_error(self):
+        result = SearchResult(title="T1", link="L1", snippet="S1")
+        # Non-numeric string will cause float() to raise ValueError
+        self.mock_llm_client.generate_text = AsyncMock(return_value="not-a-number")
+
+        score = await self.executor.score_relevance("query", result, "English")
+        self.assertEqual(score, 0.5)
+
     async def test_score_relevance_batch_success(self):
         results = [
             SearchResult(title="T1", link="L1", snippet="S1"),
