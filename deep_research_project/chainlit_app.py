@@ -9,7 +9,7 @@ import logging
 import traceback
 import asyncio
 import aiofiles
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from pyvis.network import Network
 
 # Ensure imports from parent directory
@@ -20,7 +20,6 @@ from deep_research_project.core.graph import create_research_graph
 from deep_research_project.tools.llm_client import LLMClient
 from deep_research_project.tools.search_client import SearchClient
 from deep_research_project.tools.content_retriever import ContentRetriever
-from langgraph.checkpoint.memory import MemorySaver
 from chainlit.input_widget import Select, Switch
 
 # Logger setup
@@ -72,7 +71,8 @@ class UIProgressManager:
 def robust_json_repair(json_str: str):
     """Attempts to repair common LLM JSON output issues."""
     json_str = json_str.strip()
-    if not json_str: return None
+    if not json_str:
+        return None
     
     # Remove markdown code blocks if present
     json_str = re.sub(r'^```json\s*', '', json_str)
@@ -114,7 +114,8 @@ async def process_visual_summary(report: str, thread_id: str, tmp_dir: str):
     for idx, json_str in enumerate(json_matches):
         try:
             json_obj = robust_json_repair(json_str)
-            if not json_obj or "nodes" not in json_obj: continue
+            if not json_obj or "nodes" not in json_obj:
+                continue
 
             net = Network(notebook=False, height="600px", width="100%", directed=True)
             # Options for a nicer look
@@ -126,8 +127,10 @@ async def process_visual_summary(report: str, thread_id: str, tmp_dir: str):
                 color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
                 label = node.get('label', str(node.get('id', '')))
                 title_html = f"<b>{label}</b>"
-                if 'description' in node and node['description']: title_html += f"<br><br>{node['description']}"
-                if 'url' in node and node['url']: title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
+                if 'description' in node and node['description']:
+                    title_html += f"<br><br>{node['description']}"
+                if 'url' in node and node['url']:
+                    title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
                 net.add_node(node.get('id'), label=label, color=color, shape="box", title=title_html)
                 
             for edge in json_obj.get('edges', []):
@@ -140,7 +143,7 @@ async def process_visual_summary(report: str, thread_id: str, tmp_dir: str):
             
             async with aiofiles.open(tmp_path, mode="r", encoding="utf-8") as f:
                 content = await f.read()
-
+            
             file_elements.append(
                 cl.File(
                     name=f"Visual_Summary_{idx+1}.html",
@@ -223,7 +226,6 @@ async def main(message: cl.Message):
     
     # 1. New Research Session
     if not graph:
-        memory = MemorySaver()
         llm = LLMClient(config)
         search = SearchClient(config)
         retriever = ContentRetriever(config)
@@ -294,7 +296,6 @@ async def main(message: cl.Message):
 
 async def execute_research(graph, input_state, config_dict):
     config = config_dict["configurable"]["config"]
-    ui_manager = cl.user_session.get("ui_manager")
     thread_id = config_dict["configurable"]["thread_id"]
     
     try:
