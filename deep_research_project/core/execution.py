@@ -116,9 +116,10 @@ class ResearchExecutor:
             return []
 
         # Construct a batch prompt
-        items_text = ""
-        for i, res in enumerate(results):
-            items_text += f"\n---\nRESULT ID: {i}\nTITLE: {res.title}\nSNIPPET: {res.snippet}\n"
+        items_text = "".join([
+            f"\n---\nRESULT ID: {i}\nTITLE: {res.title}\nSNIPPET: {res.snippet}\n"
+            for i, res in enumerate(results)
+        ])
 
         if language == "Japanese":
             prompt = f"""クエリ: {query}
