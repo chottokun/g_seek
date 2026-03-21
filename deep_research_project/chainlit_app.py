@@ -8,6 +8,7 @@ import tempfile
 import logging
 import traceback
 import asyncio
+import aiofiles
 from typing import Dict, Optional, List
 from pyvis.network import Network
 
@@ -96,9 +97,57 @@ def robust_json_repair(json_str: str):
     return None
 
 async def process_visual_summary(report: str, thread_id: str):
-    """(Temporarily disabled cl.File due to Chainlit bug) Extracts Visual Summary JSON."""
-    # We'll just return a placeholder or raw info since cl.File crashes the UI
-    return ""
+    """Extracts Visual Summary JSON and creates temporary HTML files for visualization."""
+    # Pattern to match JSON blocks
+    json_pattern = r"```json\s*\n(.*?)\n?```"
+    json_matches = re.findall(json_pattern, report, re.DOTALL)
+    
+    # Fallback: if no code blocks, look for a raw JSON-like structure starting with "{" and ending with "}"
+    if not json_matches:
+        raw_json_match = re.search(r"(\{\s*\"nodes\":.*?\})", report, re.DOTALL | re.IGNORECASE)
+        if raw_json_match:
+            json_matches = [raw_json_match.group(1)]
+    
+    file_elements = []
+    for idx, json_str in enumerate(json_matches):
+        try:
+            json_obj = robust_json_repair(json_str)
+            if not json_obj or "nodes" not in json_obj: continue
+
+            net = Network(notebook=False, height="600px", width="100%", directed=True)
+            # Options for a nicer look
+            net.set_options("""
+            var options = { "physics": { "barnesHut": { "gravitationalConstant": -3000, "centralGravity": 0.3, "springLength": 150 } } }
+            """)
+            
+            for node in json_obj.get('nodes', []):
+                color = "#ff9999" if node.get('type') == 'core' else "#99ccff"
+                label = node.get('label', str(node.get('id', '')))
+                title_html = f"<b>{label}</b>"
+                if 'description' in node and node['description']: title_html += f"<br><br>{node['description']}"
+                if 'url' in node and node['url']: title_html += f"<br><br><a href='{node['url']}' target='_blank'>[出典リンクを開く]</a>"
+                net.add_node(node.get('id'), label=label, color=color, shape="box", title=title_html)
+                
+            for edge in json_obj.get('edges', []):
+                net.add_edge(str(edge['from']), str(edge['to']), title=edge.get('label', ''), label=edge.get('label', ''))
+            
+            with tempfile.NamedTemporaryFile(suffix=".html", prefix=f"visual_summary_{idx}_", delete=False) as tf:
+                tmp_path = tf.name
+            
+            # Use to_thread to keep I/O from blocking the event loop
+            await asyncio.to_thread(net.save_graph, tmp_path)
+            
+            file_elements.append(
+                cl.File(
+                    name=f"Visual_Summary_{idx+1}.html",
+                    path=tmp_path,
+                    display="inline"
+                )
+            )
+        except Exception:
+            logger.error(f"Failed to process graph {idx}: {traceback.format_exc()}")
+            
+    return file_elements
 
 def clean_report_for_display(report: str):
     """Removes the large JSON blocks and internal technical sections from the chat display."""
@@ -242,6 +291,7 @@ async def main(message: cl.Message):
 async def execute_research(graph, input_state, config_dict):
     config = config_dict["configurable"]["config"]
     ui_manager = cl.user_session.get("ui_manager")
+    thread_id = config_dict["configurable"]["thread_id"]
     
     try:
         async for event in graph.astream(input_state, config_dict):
@@ -299,10 +349,30 @@ async def execute_research(graph, input_state, config_dict):
         cl.user_session.set("full_report", report)
         
         if report:
-            # 1. Clean text for chat display
+            # 1. Non-blocking Visual Summary processing (from PR #89)
+            file_elements = await process_visual_summary(report, thread_id)
+            
+            # 2. Non-blocking Report File Creation
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".md", prefix="research_report_", delete=False) as tf:
+                    report_path = tf.name
+                async with aiofiles.open(report_path, "w", encoding="utf-8") as f:
+                    await f.write(report)
+                
+                file_elements.append(
+                    cl.File(
+                        name="Full_Research_Report.md",
+                        path=report_path,
+                        display="inline"
+                    )
+                )
+            except Exception:
+                logger.error(f"Failed to save report file: {traceback.format_exc()}")
+
+            # 3. Clean text for chat display
             display_text = clean_report_for_display(report)
             
-            # 2. Prepare the action button
+            # 4. Prepare the action button
             actions = [
                 cl.Action(name="copy_report", value="copy", label="📋 全文をコピー用に表示", payload={})
             ]
@@ -311,13 +381,13 @@ async def execute_research(graph, input_state, config_dict):
             if len(display_text) > 10000:
                 display_text = display_text[:10000] + "\n\n---\n> ⚠️ **レポートが長いため一部を省略しました。全内容は下のボタンを押して取得してください。**"
             
-            # Final message (STRICTLY NO ELEMENTS)
-            await cl.Message(content=display_text, actions=actions).send()
+            # Final message with elements (Downloadable report and HTML visualization)
+            await cl.Message(content=display_text, actions=actions, elements=file_elements).send()
             
             # Reset session for next research
             cl.user_session.set("previous_context", report)
             cl.user_session.set("graph", None)
-            logger.info("Research completed. Action button sent.")
+            logger.info("Research completed. Action button and file elements sent.")
         else:
             await cl.Message(content="⚠️ レポートの生成に失敗しました。").send()
             cl.user_session.set("graph", None)
